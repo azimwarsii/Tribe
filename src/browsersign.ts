@@ -27,7 +27,9 @@ export const canAsk = (user: number) => ctx.getStore()?.user === user;
 function ask(user: number, kind: SignKind, payload: unknown, label: string): Promise<Hex> {
   return new Promise<Hex>((resolve, reject) => {
     const id = randomUUID();
+    console.log(`${new Date().toISOString()} MetaMask request for user ${user}: ${label}`);
     const timer = setTimeout(() => {
+      console.warn(`${new Date().toISOString()} MetaMask request for user ${user} timed out: ${label}`);
       queue.delete(id);
       reject(new Error("MetaMask didn't answer in time, so nothing was placed. Keep this tab open and try again."));
     }, TIMEOUT_MS);
@@ -73,6 +75,11 @@ export function answerRequest(user: number, id: string, a: { result?: string; er
   if (!r || r.user !== user) throw new Error("That signature request is no longer waiting");
   queue.delete(id);
   clearTimeout(r.timer);
-  if (a.result && /^0x[0-9a-fA-F]+$/.test(a.result)) r.resolve(a.result as Hex);
-  else r.reject(new Error(a.error ? `Not signed: ${a.error}` : "Not signed"));
+  if (a.result && /^0x[0-9a-fA-F]+$/.test(a.result)) {
+    console.log(`${new Date().toISOString()} MetaMask ${r.kind === "tx" ? `sent ${a.result}` : "signed"}: ${r.label}`);
+    r.resolve(a.result as Hex);
+  } else {
+    console.warn(`${new Date().toISOString()} MetaMask did not sign (${r.label}): ${a.error ?? "no reason"}`);
+    r.reject(new Error(a.error ? `Not signed: ${a.error}` : "Not signed"));
+  }
 }

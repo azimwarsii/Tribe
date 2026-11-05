@@ -99,7 +99,10 @@ async function call(path: string, init: { method?: string; body?: unknown } = {}
     console.warn("Flash: search isn't enabled for Tribe's API key yet (ask Definitive); using the public key for search.");
     return call(path, init, tries);
   }
-  if (!r.ok) throw new FlashError(`Flash ${path.split("?")[0]}: ${j?.error?.message ?? r.status}`, r.status, j?.error?.code);
+  if (!r.ok) {
+    console.warn(`${new Date().toISOString()} Flash ${method} ${path.split("?")[0]} -> ${r.status} ${j?.error?.code ?? ""}: ${j?.error?.message ?? textBody.slice(0, 200)}`);
+    throw new FlashError(`Flash ${path.split("?")[0]}: ${j?.error?.message ?? r.status}`, r.status, j?.error?.code);
+  }
   return j;
 }
 
@@ -249,6 +252,7 @@ export async function placeOrder(t: Trade, funder: `0x${string}`, signer: Signer
     };
   }
   const r = (await call("/order", { body })) as { orderId: string; attachedBracket?: { status: string } };
+  console.log(`${new Date().toISOString()} Flash order placed ${r.orderId} for ${funder} (${t.side} ${t.orderType}${t.attach ? " + bracket " + (r.attachedBracket?.status ?? "") : ""})`);
   return { orderId: r.orderId, setupTxs: setup, bracket: r.attachedBracket?.status };
 }
 

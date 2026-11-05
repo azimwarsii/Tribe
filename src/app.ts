@@ -99,6 +99,7 @@ export function appRouter(): Router {
       // Inside an action the user's own browser wallet (MetaMask) may be asked to sign; see browsersign.ts.
       res.json((await interactive(uid, () => fn(uid, req, res))) ?? { ok: true });
     } catch (e) {
+      console.error(`${new Date().toISOString()} ${req.method} ${req.path} (user ${uid}) failed: ${(e as Error).message}`);
       res.status(400).json({ error: (e as Error).message });
     }
   };
