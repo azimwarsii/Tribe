@@ -212,14 +212,14 @@ h2{margin:0;font-size:17px;font-weight:600}
 .bcard{padding:20px 20px 18px;gap:16px!important}.bcard #brief{gap:16px!important;flex:1 1 auto}
 /* Deck side panel: runs to the bottom of the screen. Cat's brief takes all the room the portfolio and active trades leave,
    with its last trades and stats sitting at the bottom; on a short screen the brief scrolls inside itself. */
-@media (min-width:900px){.paside:has(.bcard){height:calc(100vh - 100px);overflow:hidden}.paside .bcard{flex:1 1 0;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 transparent}.paside>section:not(.bcard){flex:none}.bcard .blast{margin-top:auto}}
+@media (min-width:900px){.paside:has(.bcard){height:calc(100vh - 140px);overflow:hidden}.split:has(.bcard){padding-bottom:16px}.app.pad:has(.deck),.app:has(.tdetails){padding-bottom:0!important}.split:has(.tdetails){padding-bottom:16px}.paside .bcard{flex:1 1 0;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 transparent}.paside>section:not(.bcard){flex:none}.bcard .blast{margin-top:auto}}
 .bheld{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:14px;background:#1A1A1A;font-size:15px}
 .bcurve{display:flex;flex-direction:column;gap:6px}.bcurve svg{width:100%;height:64px;display:block}.bcurve b{font-size:14px}
 /* Phones: the trader's record on the deck card (the side panel's job on desktop). Shorter phones drop the chart, then the chips. */
 .mrec{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:16px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06)}
 .swcard>*{flex-shrink:0}.swcard>.mrec{flex:0 1 auto;min-height:0;overflow:hidden}
 .mrec .bstats{gap:6px}.mrec .bstats span{padding:7px 2px;border-radius:10px;font-size:11px}.mrec .bstats b{font-size:15px}.mrec .btrade{padding:3px 9px;font-size:13px}
-@media (max-height:760px){.mrec .mlast{display:none}}@media (max-height:700px){.mrec{display:none!important}}
+@media (max-height:900px){.mrec{display:none!important}}
 @media (max-height:820px){.bcurve{display:none}}.bcard h2{font-size:18px!important;gap:10px!important}.bcard h2 .orb{width:24px!important;height:24px!important}
 .av.xs{width:22px;height:22px;border-radius:11px;font-size:9px;flex:none}
 .bhead .av{width:42px;height:42px;border-radius:21px;font-size:13px}.bhead b{font-size:17px}.bhead .xs{font-size:12.5px}
@@ -233,9 +233,13 @@ h2{margin:0;font-size:17px;font-weight:600}
 .aslide{grid-area:1/1;display:flex;flex-direction:column;gap:8px;color:#F5F5F5;opacity:0;visibility:hidden;transform:translateX(14px);transition:opacity .3s,transform .3s,visibility 0s .3s}
 .aslide.on{opacity:1;visibility:visible;transform:none;transition:opacity .3s,transform .3s}
 .acbtn{display:inline-grid;place-items:center;width:24px;height:24px;padding:0;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:transparent;color:#D4D4D4;cursor:pointer}.acbtn:hover{background:#1F1F1F;color:#F5F5F5}
+.pcurve{display:flex;flex-direction:column;gap:8px}.pc-plot{position:relative;height:170px;cursor:crosshair;touch-action:pan-y}.pc-plot svg{display:block;width:100%;height:100%;overflow:visible}.pc-dot{position:absolute;width:9px;height:9px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 4px rgba(52,211,153,.15);pointer-events:none}.pc-zero{position:absolute;right:0;transform:translateY(-120%)}
 .mbars{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px;height:150px;align-items:end;padding:4px 2px 0}.mbar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}.mbar i{display:block;width:70%;max-width:46px;border-radius:8px 8px 3px 3px;min-height:4px}.mbar i.pos{background:linear-gradient(180deg,#6EE7B7,#10B981)}.mbar i.neg{background:linear-gradient(180deg,#FCA5A5,#EF4444)}
 .mrow{border-top:1px solid #1F1F1F}.mrow summary{list-style:none;cursor:pointer;min-height:56px;padding:6px 0}.mrow summary::-webkit-details-marker{display:none}.mrow[open] summary{border-bottom:0}
-@media(min-width:900px){.deck{width:100%;max-width:560px;margin:0 auto}.swmain .swbar,.swmain .swfollow{width:100%;max-width:560px;margin-left:auto;margin-right:auto}}
+@media (min-width:900px){.app:has(.sigcards){padding-bottom:0!important}.split:has(.sigcards){height:calc(100vh - 73px);height:calc(100dvh - 73px);padding-bottom:16px;align-items:stretch;overflow:hidden}
+.sigmain{min-height:0;overflow:hidden}.sigcards{flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;padding-bottom:4px}.sigcards::-webkit-scrollbar{display:none}
+.paside:has(.sigtop){position:static;max-height:none;min-height:0;overflow:hidden}.paside>section.sigtop{flex:1 1 0;min-height:0}.sigtoplist{flex:1 1 0;min-height:0;overflow:hidden}.sigtoplist>[hidden]{display:none}}
+@media(min-width:900px){.swmain{padding-bottom:16px}.deck{width:100%;max-width:560px;margin:0 auto}.swmain .swbar,.swmain .swfollow{width:100%;max-width:560px;margin-left:auto;margin-right:auto}}
 @media(prefers-reduced-motion:reduce){.swcard.arrive,[data-live].flash{animation:none}}
 .reqband{margin:-16px -16px 0;padding:10px 16px;background:rgba(252,211,77,.12);color:#FCD34D;font-size:13px;display:flex;gap:6px;align-items:center}
 .stamp{position:absolute;top:24px;padding:4px 12px;border:3px solid;border-radius:10px;font-weight:800;font-size:22px;letter-spacing:.06em;opacity:0;z-index:5;pointer-events:none;background:rgba(10,10,10,.55)}
@@ -256,13 +260,18 @@ h2{margin:0;font-size:17px;font-weight:600}
 .vchecks i{flex:none;width:20px;height:20px;border-radius:10px;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700;background:#262626;color:#A3A3A3}
 .vchecks .ok i{background:rgba(52,211,153,.15);color:#34D399}.vchecks .bad i{background:rgba(248,113,113,.15);color:#F87171}
 .card.post{scroll-margin-top:90px}.card.post:target{box-shadow:0 0 0 2px rgba(52,211,153,.6),0 0 32px rgba(52,211,153,.15)}
+#copy{scroll-margin-top:90px}#copy:target{box-shadow:0 0 0 2px rgba(52,211,153,.6),0 0 32px rgba(52,211,153,.15)}.card.post[data-href]{cursor:pointer}.card.post[data-href]:hover{border-color:rgba(255,255,255,.14)}
 .chip:has(input:checked){background:#F5F5F5;border-color:#F5F5F5;color:#0A0A0A}
 .sw{width:44px;height:26px;border-radius:13px;border:0;padding:3px;background:#3A3A3A;display:flex;justify-content:flex-start;flex-shrink:0}
 .sw i{width:20px;height:20px;border-radius:10px;background:#fff;display:block}
 .sw[aria-checked=true]{background:var(--ac);justify-content:flex-end}
 .line{display:flex;align-items:center;gap:12px;min-height:52px;border-bottom:1px solid #1F1F1F;font-size:14px;color:var(--tx)}
 .line .ico{width:34px;height:34px;border-radius:10px;background:#1F1F1F;border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.line .t{display:block}.line .s{display:block;font-size:12px;color:var(--mut)}
+.line .t{display:block}.line .s:not(.seg){display:block;font-size:12px;color:var(--mut)}
+.setmain{gap:18px}.setme{gap:12px}.setsec{display:flex;flex-direction:column;gap:8px}.sethd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 4px}.sethd h2{font-size:12px;color:#A3A3A3;font-weight:600;text-transform:uppercase;letter-spacing:.06em}.sethd span{font-size:12px;color:#6B6B6B}
+.setcard{background:linear-gradient(180deg,#171717,#121212);border:1px solid rgba(255,255,255,.06);border-radius:18px;padding:2px 16px}.setcard>.line{padding:12px 0;min-height:62px;flex-wrap:wrap;row-gap:10px}.setcard>.line:last-of-type{border-bottom:0}.setcard>.line .grow{min-width:180px;flex:1 1 220px}.setcard>.line .s{line-height:1.4;margin-top:2px}.setcard>.line>.seg{flex:none;margin-left:auto}.setcard .seg.s button{height:30px;padding:0 13px;font-size:12px}.setcard>form{padding:4px 0 14px}
+.setout{gap:10px}.setcard .s{overflow-wrap:anywhere}
+@media (max-width:640px){.setcard>.line .grow{flex:1 1 0;min-width:0}.setcard>.line>.seg,.setcard>.line>form{flex:1 0 100%;margin-left:46px;max-width:calc(100% - 46px)}.setcard>.line>.seg button{flex:1}.setcard>.line>form .f{flex:1;width:auto!important}}
 .bar{height:4px;border-radius:2px;background:#262626;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
 .bar.r i{background:var(--bad)}
 .nav{position:fixed;left:var(--cx,50%);bottom:24px;transform:translateX(-50%);display:flex;gap:4px;padding:5px;border-radius:30px;background:rgba(36,36,36,.78);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.07);box-shadow:0 12px 32px rgba(0,0,0,.55);z-index:30}
@@ -272,6 +281,11 @@ h2{margin:0;font-size:17px;font-weight:600}
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.62);backdrop-filter:blur(3px);z-index:50;display:none;animation:tr-backdrop 200ms both}
 .sheet{position:fixed;left:var(--cx,50%);bottom:0;width:100%;max-width:430px;transform:translateX(-50%);max-height:88vh;overflow-y:auto;border-radius:28px 28px 0 0;background:linear-gradient(180deg,#1E1E1E,#121212 22%);border-top:1px solid rgba(255,255,255,.1);box-shadow:0 -24px 60px rgba(0,0,0,.6);z-index:51;display:none;padding:10px 20px 28px;animation:tr-sheet 340ms cubic-bezier(.2,.9,.25,1) both}
 .sheet .grab{width:40px;height:4px;border-radius:2px;background:#404040;margin:0 auto 12px}
+.sheet.csheet{flex-direction:column;overflow:hidden;height:min(640px,82vh)}.sheet.csheet.open{display:flex}.csheet .clist{flex:1;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 transparent;margin:0 -4px;padding:0 4px}.csheet form{position:static!important;padding:10px 0 4px!important;background:none!important}
+.cbar{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;text-align:left;color:inherit;font:inherit}.cbar-line{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:opacity .25s,transform .25s}.cbar-line.out{opacity:0;transform:translateY(4px)}@media (prefers-reduced-motion:reduce){.cbar-line{transition:none}}
+.chip.camt{gap:2px;padding:0 4px 0 12px;cursor:text}.chip.camt input{width:72px;height:100%;border:0;background:transparent;color:inherit;font:inherit;outline:none}.chip.camt:focus-within{border-color:#34D399}
+.ordstrip{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:12px;background:#0F0F0F;border:1px solid rgba(255,255,255,.05)}.ordstrip .pill{flex:none}.ordstrip .sm{color:#D4D4D4;line-height:1.4;padding-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media (max-height:800px){.tdetails .grid3>.tile:nth-child(n+4),.tdetails>.row{display:none}}@media (max-height:700px){.tdetails{display:none}}
 .open{display:block}.open.flex{display:flex}
 .toast{position:fixed;left:var(--cx,50%);top:14px;transform:translateX(-50%);width:calc(100% - 32px);max-width:398px;z-index:80;display:none;align-items:center;gap:10px;padding:10px 12px;border-radius:18px;background:rgba(245,245,245,.97);color:#0A0A0A;box-shadow:0 14px 34px rgba(0,0,0,.55);font-size:14px;font-weight:600}
 .toast.show{display:flex;animation:tr-toast 260ms cubic-bezier(.2,.8,.2,1) both}
@@ -352,6 +366,8 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   .side-item:hover{background:#161616;color:#F5F5F5}.side-item.on{background:#242424;color:#fff}
   .side-label,.side-extra{display:none}.side-dot{position:absolute;top:10px;right:10px;width:8px;height:8px;border-radius:4px;background:#F87171}
   .mainc{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch}
+  /* The page fills the room under the top bar, not a whole extra screen (that added a scroll to every page). */
+  .mainc>.app{min-height:0;flex:1 0 auto}
   .topbar{display:flex;align-items:center;gap:12px;padding:14px 28px;position:sticky;top:0;z-index:28;background:rgba(10,10,10,.85);backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,255,255,.05)}
   .topbar form{flex:1;max-width:520px}.topbar kbd,.kbd{font:inherit;font-size:11px;color:#8A8A8A;border:1px solid #2a2a2a;border-radius:6px;padding:1px 6px}
   .app,.app.pad{max-width:820px;width:100%;margin:0 auto;padding-bottom:60px;background-image:none}
@@ -359,6 +375,8 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   .nav{display:none}
   .hd{padding:26px 28px 14px}.hd h1{font-size:22px}.main{padding:0 28px}
   .composer{max-width:720px;bottom:24px!important}.composer.shift{left:calc(var(--cx) + 130px)}
+  /* The chat box lines up with the conversation column (760px) above it. */
+  .chatapp .composer{max-width:792px}
   .sheet{top:50%;bottom:auto;transform:translate(-50%,-50%);width:min(560px,92vw);max-width:none;max-height:86vh;border-radius:24px;border:1px solid rgba(255,255,255,.1);animation:tr-pop 220ms cubic-bezier(.2,.8,.2,1) both}
   .toast{left:auto;right:24px;top:auto;bottom:24px;transform:none;width:360px}.toast.show{animation:tr-fade 200ms both}
   .drawer{display:none}
@@ -367,6 +385,8 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   .tbl td{padding:12px;border-bottom:1px solid #1C1C1C;font-size:14px;vertical-align:middle}.tbl tr:hover td{background:#101010}.tbl .r{text-align:right}
   .pad2{padding:0 28px}
   .catgrid{display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;align-items:start}
+  /* Cat is one chat with no history column: the conversation takes the width, centred at a readable measure. */
+  .catgrid:not(:has(.chat-hist)){grid-template-columns:minmax(0,1fr)}.catgrid:not(:has(.chat-hist))>.msgcol{width:100%;max-width:760px;margin:0 auto}
   .split{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;padding:0 28px 40px;align-items:start}.split>.main{padding:0}
   .paside{display:flex;flex-direction:column;gap:16px;min-width:0}
   .d2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.d3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
@@ -418,6 +438,8 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 button,a{transition:transform 120ms ease,background-color 180ms ease,color 180ms ease,border-color 180ms ease,opacity 180ms ease}
 button:active,a:active{transform:scale(.97)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;transition:none!important}}
+/* Scrolling still works everywhere; the bars just stay out of sight. */
+*{scrollbar-width:none!important}*::-webkit-scrollbar{display:none;width:0;height:0}
 `;
 
 export type NavKey = "feed" | "signals" | "ranks" | "cat" | "guard" | "me";

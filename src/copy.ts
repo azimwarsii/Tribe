@@ -1,7 +1,9 @@
 import type { Trade } from "./flash.js";
-import { type TradeSource, createPending, followersOf, getMeta, getUser, haltOf, recordCopy, recordTrade, spentToday, tradeById } from "./db.js";
-import { decide, RISK_LINE } from "./rules.js";
-import { heldTokens, placeAndTrack } from "./tracker.js";
+import { type TradeSource, copyFreeze, createPending, followersOf, getMeta, getUser, haltOf, recordCopy, recordTrade, spentToday, tradeById } from "./db.js";
+import { decide, protectCopy, RISK_LINE } from "./rules.js";
+import { cancelCopiedProtective, heldTokens, isDry, moveStop, placeAndTrack, stopOf } from "./tracker.js";
+import { usdcBalance } from "./data.js";
+import { isExternal } from "./wallet.js";
 import { getPrice } from "./prices.js";
 import { guardGate, riskOf, type GuardGate } from "./guard.js";
 import { db } from "./db.js";
@@ -18,15 +20,46 @@ export interface MirrorResult { tradeId: number; own: string; executed: string[]
 /** Execute one sized copy for a follower with their own key. Records the outcome. */
 export async function execute(tradeId: number, follower: number, leader: number, trade: Trade): Promise<string> {
   const usd = trade.side === "buy" ? Number(trade.qty) : 0;
+  const skip = (note: string) => {
+    recordCopy({ tradeId, follower, leader, usd, status: "skipped", note });
+    return `failed: ${note}`;
+  };
+  const frozen = copyFreeze();
+  if (frozen) return skip(`Tribe paused all copying: ${frozen}`);
+  // Live: skip a copy the wallet can't pay for instead of sending Flash an order that fails. Unreadable = let Flash decide.
+  if (!isDry() && trade.side === "buy") {
+    const free = await usdcBalance(follower).catch(() => undefined);
+    if (free !== undefined && free + 1e-6 < usd) return skip(`Not enough USDC: $${free.toFixed(2)} in the wallet, this copy needs $${usd.toFixed(2)}`);
+  }
   try {
     const chased = await chaseGuard(tradeId, leader, follower, trade);
     const p = await placeAndTrack(tradeId, follower, leader, "copy", chased.trade);
     recordCopy({ tradeId, follower, leader, usd, status: p.sim ? "dry-run" : "executed", orderId: p.orderId, note: chased.note });
+    if (trade.followStop) await placeFollowStop(tradeId, follower, leader, trade);
     return `${p.sim ? "[sim] " : ""}order ${p.orderId}`;
   } catch (e) {
     const note = (e as Error).message;
     recordCopy({ tradeId, follower, leader, usd, status: "failed", note });
     return `failed: ${note}`;
+  }
+}
+
+/**
+ * The copier's own stop-loss on a copy that came without one, sized to the tokens the entry buys at the current price.
+ * placeAndTrack waits for the entry to fill and trims a protective sell to what is held.
+ */
+async function placeFollowStop(tradeId: number, follower: number, leader: number, entry: Trade) {
+  const px = await getPrice(entry.target).catch(() => 0);
+  if (!(px > 0)) return;
+  const stop: Trade = {
+    chain: entry.chain, target: entry.target, contra: entry.contra, side: "sell", orderType: "stop-loss",
+    qty: String(Number((Number(entry.qty) / px).toPrecision(12))),
+    triggers: [{ notionalPrice: entry.followStop!, triggerType: "lower" }],
+  };
+  try {
+    await placeAndTrack(tradeId, follower, leader, "copy", stop);
+  } catch (e) {
+    console.error(`own stop for ${follower} on trade ${tradeId}:`, (e as Error).message);
   }
 }
 
@@ -117,7 +150,15 @@ export async function mirror(leader: number, trade: Trade, source: TradeSource =
   const gate = followers.length ? await guardGate(leader) : { halted: !!haltOf(leader), stale: false };
   const halted = gate.halted;
   out.guard = gate;
+  const frozen = copyFreeze();
+  // Followers with their own stop size it from the price at fan-out.
+  const mark = trade.side === "buy" && followers.some((f) => Number(f.rules.stopPct) > 0) ? await getPrice(trade.target).catch(() => 0) : 0;
   for (const { follower, rules } of followers) {
+    if (frozen) {
+      recordCopy({ tradeId, follower, leader, usd: 0, status: "skipped", note: `Tribe paused all copying: ${frozen}` });
+      out.skipped.push(`${follower}: all copying paused`);
+      continue;
+    }
     const meta = getMeta(follower);
     const permOk = meta.perm && (!meta.permUntil || meta.permUntil > Date.now());
     const d = decide(trade, rules, {
@@ -145,13 +186,71 @@ export async function mirror(leader: number, trade: Trade, source: TradeSource =
       }
       qty = String(Number(mine.toPrecision(12)));
     }
-    const sized: Trade = rules.copyProtective ? { ...trade, qty } : { ...trade, qty, attach: undefined };
+    const sized: Trade = protectCopy(rules.copyProtective ? { ...trade, qty } : { ...trade, qty, attach: undefined }, rules, mark);
     // CopyGuard silent or unreadable: nothing signs on its own; the follower decides.
-    if (d.action === "ask" || gate.stale) {
+    // Ask instead of auto when CopyGuard is silent or unreadable, or when only the follower can sign (their MetaMask).
+    if (d.action === "ask" || gate.stale || isExternal(follower)) {
       out.pending.push({ pendingId: createPending(tradeId, follower, leader, sized, meta.timerSec * 1000), follower, trade: sized, tradeId });
     } else {
       out.executed.push(`${follower}: ${await execute(tradeId, follower, leader, sized)}`);
     }
   }
+  return out;
+}
+
+/**
+ * The leader moved their stop on a token up to `price`: raise each copier's stop there too, for the tokens they copied
+ * from this leader. Never lowers a stop, and skips copiers who turned off protective orders. Returns how many moved.
+ */
+export async function mirrorStopMove(leader: number, token: string, price: number): Promise<number> {
+  const mark = await getPrice(token).catch(() => 0);
+  if (!(mark > price)) return 0;
+  let moved = 0;
+  for (const { follower, rules } of followersOf(leader)) {
+    const qty = copiedTokens(follower, leader, token);
+    if (!rules.copyProtective || qty <= 1e-12) continue;
+    const cur = stopOf(follower, token);
+    if (cur !== undefined && cur >= price) continue;
+    try {
+      await moveStop(follower, token, price, qty, leader, "copy");
+      moved++;
+    } catch (e) {
+      console.error(`stop move for ${follower} copying ${leader}:`, (e as Error).message);
+    }
+  }
+  return moved;
+}
+
+const closing = new Set<number>();
+
+/**
+ * CopyGuard paused a leader: copiers who opted in (closeOnPause) sell what they copied from them at market, after
+ * cancelling the stops and targets of those copies. Tokens they hold from anyone else are left alone.
+ */
+export async function closeCopiesOf(leader: number): Promise<string[]> {
+  if (closing.has(leader)) return [];
+  closing.add(leader);
+  const out: string[] = [];
+  try {
+    for (const { follower, rules } of followersOf(leader)) {
+      if (!rules.closeOnPause) continue;
+      const tokens = db.prepare("SELECT DISTINCT lower(json_extract(trade, '$.target')) AS t FROM orders WHERE trader = ? AND leader = ? AND role = 'copy' AND status = 'filled'").all(follower, leader) as unknown as { t: string }[];
+      for (const { t } of tokens) {
+        const qty = copiedTokens(follower, leader, t);
+        if (qty <= 1e-12) continue;
+        try {
+          await cancelCopiedProtective(follower, leader, t);
+          const sell: Trade = { chain: "base", target: t, contra: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", side: "sell", qty: String(Number(qty.toPrecision(12))), orderType: "market" };
+          const p = await placeAndTrack(0, follower, leader, "copy", sell);
+          out.push(`${follower}: sold ${qty} (${p.orderId})`);
+        } catch (e) {
+          out.push(`${follower}: failed: ${(e as Error).message}`);
+        }
+      }
+    }
+  } finally {
+    closing.delete(leader);
+  }
+  if (out.length) console.log(`CopyGuard paused ${leader}; closed copies: ${out.join("; ")}`);
   return out;
 }

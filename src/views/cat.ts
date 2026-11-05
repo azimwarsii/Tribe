@@ -1,7 +1,7 @@
 import { awayLine, learnedMemory, ruleLimit } from "../cat.js";
-import { chatById, chatsOf, getMeta, msgsOf, rulesOf } from "../db.js";
-import { esc, glyphBadge, header, icon, notFound, page, sheet, split, sw } from "../ui.js";
-import { face, initials, pct, topTraders, tradeCard } from "../data.js";
+import { chatById, getMeta, mainChatOf, msgsOf, rulesOf } from "../db.js";
+import { esc, glyphBadge, header, icon, page, sheet, split, sw } from "../ui.js";
+import { face, pct, topTraders, tradeCard } from "../data.js";
 import { catCalls, contextOf, latestEntry, researchTrade, type TradeCtx } from "../research.js";
 
 const orb = (size: number, glow = true) =>
@@ -14,13 +14,7 @@ const PERSONAS: [string, string, string][] = [
 ];
 
 const greeting = () => { const h = new Date().getHours(); return h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
-const day = (t: number) => { const d = new Date(t).setHours(0, 0, 0, 0), n = new Date().setHours(0, 0, 0, 0); return d === n ? "Today" : d === n - 86400e3 ? "Yesterday" : new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" }); };
 
-const composer = (bottom: number, action: string) => `<form class="composer shift" style="bottom:${bottom}px" method="get" action="${action}" id="cf"><div class="box"><label class="sr" for="cat-in" style="position:absolute;width:1px;height:1px;overflow:hidden">Message Cat</label>
-<input id="cat-in" name="q" placeholder="Ask Cat anything" autocomplete="off"><input type="hidden" name="new" value="1">
-<div class="row" style="gap:8px;margin-top:4px"><button type="button" class="tg" id="t-think" aria-pressed="true">${icon("think", 14, "currentColor", 2)}Think</button><button type="button" class="tg" id="t-live" aria-pressed="true">${icon("live", 14, "currentColor", 2)}Live</button><span class="grow"></span>
-<a class="ic s" href="/cat/voice" aria-label="Voice mode" style="width:38px;height:38px;border-radius:19px">${icon("mic", 17, "currentColor", 2)}</a><button class="ic s" style="width:38px;height:38px;border-radius:19px;background:#34D399;color:#052E1C;border:0" aria-label="Send">${icon("up", 18, "currentColor", 2.4)}</button></div></div></form>
-<script>(function(){['think','live'].forEach(function(k){var b=document.getElementById('t-'+k),v;try{v=localStorage.getItem('cat_'+k)}catch(e){}if(v==='0')b.setAttribute('aria-pressed','false');b.onclick=function(){var on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',on?'true':'false');try{localStorage.setItem('cat_'+k,on?'1':'0')}catch(e){}}})})()</script>`;
 
 const TONE: Record<string, string> = { "Looks solid": "#34D399", Mixed: "#FCD34D", Risky: "#F87171", "Avoid for now": "#F87171" };
 
@@ -31,32 +25,21 @@ function callsCard(): string {
   return `<section class="tile" aria-label="Cat's track record" style="border-radius:18px;padding:14px"><div class="row sp" style="align-items:baseline"><b class="md">Cat’s calls</b><span class="xs mut">30 days · scored by what the trader did next</span></div><div class="col" style="gap:6px;margin-top:10px">${calls.map((c) => `<div class="row sp sm"><span style="color:${TONE[c.label]};font-weight:600">${esc(c.label)}</span><span class="mut">${c.calls} call${c.calls === 1 ? "" : "s"} · ${c.closed ? `${c.green} of ${c.closed} closed green` : "none closed yet"}</span></div>`).join("")}</div></section>`;
 }
 
-export async function catHomePage(uid: number): Promise<string> {
-  const meta = getMeta(uid);
-  const chats = chatsOf(uid);
-  const groups = new Map<string, typeof chats>();
-  for (const c of chats) groups.set(day(c.updated), [...(groups.get(day(c.updated)) ?? []), c]);
+/** How Cat talks: tone only, limits and Guard never change. Opened from the chat header. */
+const personaSheet = (persona: string) => sheet("persona", `<h2>How should Cat talk?</h2><p class="mut md" style="margin:6px 0 12px">Tone only. Your limits and Guard rules never change.</p><div class="col" role="radiogroup" style="gap:8px">${PERSONAS.map(([n, e, s]) => `<button class="opt${persona === n ? " on" : ""}" role="radio" aria-checked="${persona === n}" data-act="/api/cat/persona" data-body='{"persona":"${n}"}' style="justify-content:flex-start;gap:12px;padding:12px 16px">${glyphBadge(e, 40)}<span><b style="display:block">${n}</b><span class="sm mut" style="line-height:1.4">${s}</span></span></button>`).join("")}</div>`);
+
+/** The top of an empty chat: a greeting, what happened while away, and a few things to ask. Tapping one asks it. */
+async function welcome(uid: number): Promise<string> {
   const top = topTraders(7, 5).find((t) => t.id !== uid);
   const prompts: [string, string, string, string][] = [
     ["TRADE", "#34D399", "bolt", "Buy $50 ETH with a 5% stop and 12% target"],
     ["RESEARCH", "#F5F5F5", "bars", top ? `Is @${top.handle} worth copying?` : "Who's the safest trader this week?"],
+    ["QUOTE", "#7DD3FC", "swap", "What would $50 of ETH get me right now?"],
     ["GUARD", "#F87171", "shield", "Why was @traderx paused?"],
-    ["BUILD", "#FCD34D", "cat", "Turn my best trades into a bot"],
   ];
-  const histCol = `<aside class="chat-hist only-d" aria-label="Chats"><a class="btn sm" href="/cat/chat?new=1" style="background:#34D399;color:#052E1C;border:0;width:100%">New chat</a>${chats.map((c) => `<a href="/cat/chat?id=${c.id}" style="display:flex;flex-direction:column;padding:10px 8px;border-bottom:1px solid #1C1C1C;color:#F5F5F5"><span style="font-size:14px">${esc(c.title)}</span><span class="xs dim">${esc(c.source)} · ${day(c.updated)}</span></a>`).join("") || '<div class="sm mut">No chats yet.</div>'}</aside>`;
-  const body = `<header class="hd" style="justify-content:space-between"><button class="ic only-m" data-open="history" aria-label="Chat history">${icon("menu", 18)}</button><button class="ic only-d" type="button" data-sidetg aria-label="Show menu" aria-pressed="false" title="Show or hide the menu">${icon("menu", 18)}</button>
-<button class="btn sm" data-open="persona" aria-haspopup="dialog" style="background:#1A1A1A;gap:6px">${glyphBadge(meta.catPersona.toLowerCase(), 18)}Cat <span class="mut">· ${esc(meta.catPersona)}</span>${icon("chev", 12, "#8A8A8A", 2)}</button><a class="ic" href="/cat/memory" aria-label="Cat's memory">${icon("mem", 18)}</a></header>
-<main class="main catgrid" style="gap:22px;padding-bottom:230px">${histCol}<div class="col" style="gap:22px"><div class="col" style="align-items:center;text-align:center;gap:14px;padding-top:18px">${orb(96)}<div><h1 class="h1" style="font-size:30px">${greeting()}</h1><p class="mut" style="margin:6px 0 0;font-size:16px">Trade, ask, or build something.</p></div>
+  return `<div id="welcome" class="col" style="gap:18px"><div class="col" style="align-items:center;text-align:center;gap:12px;padding-top:10px">${orb(72)}<div><h1 class="h1" style="font-size:26px">${greeting()}</h1><p class="mut" style="margin:6px 0 0;font-size:15px">Trade, ask, or check anything. It's all one chat.</p></div>
 <a class="pill ok" href="/guard" style="padding:6px 12px;font-size:12px"><span class="live" style="width:6px;height:6px"></span>Since you were away: ${esc(await awayLine(uid))}</a></div>
-${callsCard()}<div class="col" style="gap:10px">${prompts.map(([tag, c, ic, text]) => `<a href="/cat/chat?new=1&q=${encodeURIComponent(text)}" class="tile" style="border-radius:18px;padding:14px;color:#F5F5F5;display:block"><span class="row" style="gap:6px;font-size:11px;font-weight:700;letter-spacing:.08em;color:${c}">${icon(ic, 12, c, 2.2)}${tag}</span><span style="display:block;margin-top:6px;font-size:15px;line-height:1.4">${esc(text)}</span></a>`).join("")}</div></div></main>
-${composer(96, "/cat/chat")}
-<div class="backdrop" id="bd-history" data-close="history"></div>
-<aside class="drawer" id="history" role="dialog" aria-label="Chats"><div class="row sp"><b style="font-size:17px">Chats</b><a class="btn sm" href="/cat/chat?new=1" style="background:#34D399;color:#052E1C;border:0">New chat</a></div>
-<label class="row" style="height:42px;padding:0 14px;border-radius:21px;background:#1A1A1A;border:1px solid rgba(255,255,255,.06);color:#9A9A9A">${icon("search", 15, "currentColor", 2)}<input id="hsearch" placeholder="Search chats" aria-label="Search chats" style="flex:1;min-width:0;border:0;background:transparent;color:#F5F5F5;font-size:14px"></label>
-<div id="hlist">${[...groups].map(([d, items]) => `<div data-day><div class="sm mut" style="margin:10px 0 4px">${d}</div>${items.map((c) => `<a href="/cat/chat?id=${c.id}" data-t="${esc(c.title.toLowerCase())}" style="display:flex;flex-direction:column;padding:10px 4px;border-bottom:1px solid #1C1C1C;color:#F5F5F5"><span style="font-size:14px">${esc(c.title)}</span><span class="xs dim">${esc(c.source)}</span></a>`).join("")}</div>`).join("") || '<div class="sm mut">No chats yet. Ask Cat something.</div>'}</div></aside>
-<script>document.getElementById('hsearch').oninput=function(){var q=this.value.toLowerCase();document.querySelectorAll('#hlist a').forEach(function(a){a.style.display=a.dataset.t.indexOf(q)>-1?'flex':'none'})};if(location.hash==='#persona'){document.querySelector('[data-open=persona]').click()}</script>`;
-  const sheets = sheet("persona", `<h2>How should Cat talk?</h2><p class="mut md" style="margin:6px 0 12px">Tone only. Your limits and Guard rules never change.</p><div class="col" role="radiogroup" style="gap:8px">${PERSONAS.map(([n, e, s]) => `<button class="opt${meta.catPersona === n ? " on" : ""}" role="radio" aria-checked="${meta.catPersona === n}" data-act="/api/cat/persona" data-body='{"persona":"${n}"}' style="justify-content:flex-start;gap:12px;padding:12px 16px">${glyphBadge(e, 40)}<span><b style="display:block">${n}</b><span class="sm mut" style="line-height:1.4">${s}</span></span></button>`).join("")}</div>`);
-  return page({ title: "Ask Cat", nav: "cat", body, sheets, extraClass: "wide", slim: true });
+<div class="grid2" style="gap:8px">${prompts.map(([tag, c, ic, text]) => `<button type="button" class="tile" data-ask="${esc(text)}" style="border-radius:16px;padding:12px;color:#F5F5F5;text-align:left;font:inherit;cursor:pointer"><span class="row" style="gap:6px;font-size:11px;font-weight:700;letter-spacing:.08em;color:${c}">${icon(ic, 12, c, 2.2)}${tag}</span><span style="display:block;margin-top:6px;font-size:14px;line-height:1.4">${esc(text)}</span></button>`).join("")}</div></div>`;
 }
 
 /** The post a research chat is about, pinned above the composer: jump back to it or copy the trader without losing the chat. */
@@ -65,8 +48,8 @@ function contextBar(c: TradeCtx): string {
   const act = c.own ? `<a class="btn sm" href="/u/${esc(c.handle)}">Your trade</a>`
     : c.paused ? ""
     : c.copying ? `<a class="btn sm" href="/traders">Copying</a>`
-    : `<a class="btn sm p" href="/copy/${esc(c.handle)}">${icon("bolt", 13)}Copy with Flash</a>`;
-  return `<div class="ctxbar" role="region" aria-label="Asking about this post">${av}<a class="grow" href="/thread/${c.id}" style="min-width:0;color:#F5F5F5"><span class="xs mut" style="display:block">Asking about · back to post ↗</span><b style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">@${esc(c.handle)} · ${c.bot ? "Bot · " : ""}${esc(c.verb)} ${esc(c.symbol)}${c.sincePct === null ? "" : Math.abs(c.sincePct) < 0.05 ? ' <span class="mut">flat</span>' : ` <span class="${c.sincePct >= 0 ? "up" : "down"}">${pct(c.sincePct)}</span>`}</b></a>${act}</div>`;
+    : `<a class="btn sm p" href="/t/${c.id}#copy">${icon("bolt", 13)}Copy with Flash</a>`;
+  return `<div class="ctxbar" role="region" aria-label="Asking about this post">${av}<a class="grow" href="/t/${c.id}" style="min-width:0;color:#F5F5F5"><span class="xs mut" style="display:block">Asking about · back to post ↗</span><b style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">@${esc(c.handle)} · ${c.bot ? "Bot · " : ""}${esc(c.verb)} ${esc(c.symbol)}${c.sincePct === null ? "" : Math.abs(c.sincePct) < 0.05 ? ' <span class="mut">flat</span>' : ` <span class="${c.sincePct >= 0 ? "up" : "down"}">${pct(c.sincePct)}</span>`}</b></a>${act}<button type="button" class="ic s" id="unpin" aria-label="Stop asking about this post" title="Back to general questions">${icon("close", 14, "currentColor", 2)}</button></div>`;
 }
 
 /** Cat's read on a trader's latest entry, one tap from the full research chat. Shown before you copy. */
@@ -87,18 +70,22 @@ export async function ctxBarHtml(uid: number, trade: number): Promise<string> {
   return c ? contextBar(contextOf(c, uid)) : "";
 }
 
-export async function catChatPage(uid: number, chatId: number | undefined, q: string, trade?: number): Promise<string> {
-  const chat = chatId ? chatById(chatId, uid) : undefined;
-  if (chatId && !chat) return notFound("Chat not found");
+/**
+ * Ask Cat: one continuous chat per user, like a messaging thread. "Ask Cat" on a trade pins that trade above the box
+ * (?trade=), and ?q= asks a question straight away. The tone, Cat's track record and memory live in the header.
+ */
+export async function catChatPage(uid: number, q: string, trade?: number): Promise<string> {
+  const chat = chatById(mainChatOf(uid), uid)!;
   const meta = getMeta(uid);
-  const msgs = chat ? msgsOf(chat.id) : [];
-  const about = (JSON.parse(chat?.state || "{}") as { trade?: number }).trade ?? trade;
+  const msgs = msgsOf(chat.id);
+  const about = trade ?? (JSON.parse(chat.state || "{}") as { trade?: number }).trade;
   const card = about ? await tradeCard(about, uid) : undefined;
   const ctx = card ? contextOf(card, uid) : undefined;
-  const boot = JSON.stringify({ id: chat?.id ?? null, persona: meta.catPersona, msgs, q: q || "", auto: !!q && !chat, trade: ctx?.id ?? null }).replace(/</g, "\\u003c");
-  const body = `<header class="hd"><a class="ic" id="cback" href="${ctx ? `/thread/${ctx.id}` : "/cat"}" aria-label="${ctx ? "Back to the post" : "Back"}">${icon("back", 18, "currentColor", 2)}</a><div class="grow"><h1 id="ct">${esc(chat?.title ?? "New chat")}</h1><div class="sub"><span class="row" style="gap:5px;display:inline-flex">${glyphBadge(meta.catPersona.toLowerCase(), 14)}Cat · ${esc(meta.catPersona)}</span></div></div><button class="ic only-d" type="button" data-sidetg aria-label="Show menu" aria-pressed="false" title="Show or hide the menu">${icon("menu", 18)}</button><a class="ic" href="/cat/voice" aria-label="Voice mode">${icon("mic", 18)}</a></header>
-<main class="main catgrid chatpanes" style="padding-bottom:${ctx ? 220 : 150}px;--cpad:${ctx ? 230 : 160}px"><aside class="chat-hist only-d" aria-label="Chats"><a class="btn sm" href="/cat/chat?new=1" style="background:#34D399;color:#052E1C;border:0;width:100%">New chat</a>${chatsOf(uid).map((h) => `<a href="/cat/chat?id=${h.id}" style="display:flex;flex-direction:column;padding:10px 8px;border-bottom:1px solid #1C1C1C;color:#F5F5F5"><span style="font-size:14px">${esc(h.title)}</span><span class="xs dim">${esc(h.source)} · ${day(h.updated)}</span></a>`).join("")}</aside><div class="col msgcol" style="gap:14px;min-width:0"><div id="msgs" class="col" style="gap:14px"></div><div id="chips" class="chips"></div></div></main>
-<form class="composer shift" style="bottom:16px" id="cf"><div id="ctxwrap">${ctx ? contextBar(ctx) : ""}</div><div class="box"><input id="cat-in" placeholder="Ask Cat anything" autocomplete="off" aria-label="Message Cat"><div class="row" style="gap:8px;margin-top:4px"><button type="button" class="tg" id="t-think" aria-pressed="true">${icon("think", 14, "currentColor", 2)}Think</button><button type="button" class="tg" id="t-live" aria-pressed="true">${icon("live", 14, "currentColor", 2)}Live</button><span class="grow"></span><a class="ic s" href="/cat/voice" aria-label="Voice mode" style="width:38px;height:38px;border-radius:19px">${icon("mic", 17, "currentColor", 2)}</a><button class="ic s" style="width:38px;height:38px;border-radius:19px;background:#34D399;color:#052E1C;border:0" aria-label="Send">${icon("up", 18, "currentColor", 2.4)}</button></div></div></form>
+  const boot = JSON.stringify({ id: chat.id, persona: meta.catPersona, msgs, q: q || "", trade: ctx?.id ?? null }).replace(/</g, "\\u003c");
+  const calls = callsCard();
+  const body = `<header class="hd"><a class="ic" id="cback" href="${ctx ? `/t/${ctx.id}` : "/feed"}" aria-label="${ctx ? "Back to the post" : "Back"}">${icon("back", 18, "currentColor", 2)}</a><button type="button" class="grow" data-open="persona" aria-haspopup="dialog" style="text-align:left;background:none;border:0;color:inherit;font:inherit;padding:0;min-width:0"><h1>Cat</h1><div class="sub"><span class="row" style="gap:5px;display:inline-flex">${glyphBadge(meta.catPersona.toLowerCase(), 14)}${esc(meta.catPersona)} · change tone</span></div></button>${calls ? `<button class="ic" data-open="calls" aria-label="Cat's track record">${icon("target", 18)}</button>` : ""}<a class="ic" href="/cat/memory" aria-label="Cat's memory">${icon("mem", 18)}</a><button class="ic only-d" type="button" data-sidetg aria-label="Show menu" aria-pressed="false" title="Show or hide the menu">${icon("menu", 18)}</button><a class="ic" href="/cat/voice" aria-label="Voice mode">${icon("mic", 18)}</a></header>
+<main class="main catgrid chatpanes" style="padding-bottom:${ctx ? 220 : 150}px;--cpad:${ctx ? 230 : 160}px"><div class="col msgcol" style="gap:14px;min-width:0">${msgs.length || q ? "" : await welcome(uid)}<div id="msgs" class="col" style="gap:14px"></div><div id="chips" class="chips"></div></div></main>
+<form class="composer" style="bottom:16px" id="cf"><div id="ctxwrap">${ctx ? contextBar(ctx) : ""}</div><div class="box"><input id="cat-in" placeholder="Ask Cat anything" autocomplete="off" aria-label="Message Cat"><div class="row" style="gap:8px;margin-top:4px"><button type="button" class="tg" id="t-think" aria-pressed="true">${icon("think", 14, "currentColor", 2)}Think</button><button type="button" class="tg" id="t-live" aria-pressed="true">${icon("live", 14, "currentColor", 2)}Live</button><span class="grow"></span><button type="button" class="ic s" id="dictate" aria-label="Speak your message" aria-pressed="false" style="width:38px;height:38px;border-radius:19px">${icon("mic", 17, "currentColor", 2)}</button><button class="ic s" style="width:38px;height:38px;border-radius:19px;background:#34D399;color:#052E1C;border:0" aria-label="Send">${icon("up", 18, "currentColor", 2.4)}</button></div></div></form>
 <script>(function(){
 var CH=${boot};var msgs=document.getElementById('msgs'),chips=document.getElementById('chips'),inp=document.getElementById('cat-in'),sending=false;
 function pref(k){try{return localStorage.getItem('cat_'+k)!=='0'}catch(e){return true}}
@@ -107,7 +94,7 @@ function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&am
 var IC={bolt:'M13 2L4 14h7l-1 8 9-12h-7z',up:'M12 19V5M6 11l6-6 6 6',copy:'M9 9h11v11H9zM5 15V5h10',refresh:'M20 11a8 8 0 1 0-2 6M20 4v7h-7',thumb:'M7 11v9H4v-9zM7 11l4-8a2 2 0 0 1 2 2v4h6a2 2 0 0 1 2 2l-1 7a2 2 0 0 1-2 2H7',share:'M4 12v7h16v-7M16 7l-4-4-4 4M12 3v12',think:'M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.6 1 1.4 1 2.5h6c0-1.1.3-1.9 1-2.5A6 6 0 0 0 12 3z',chev:'M6 9l6 6 6-6',check:'M5 12l4.5 4.5L19 7'};
 function svg(n,s,st){return '<svg width="'+(s||15)+'" height="'+(s||15)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="'+(st||2)+'" stroke-linecap="round" stroke-linejoin="round"'+(n==='down'?' style="transform:scaleY(-1)"':'')+'><path d="'+(IC[n==='down'?'thumb':n])+'"/></svg>'}
 function userMsg(t){var d=document.createElement('div');d.className='bubble u';d.textContent=t;msgs.appendChild(d)}
-function ladder(c){if(!c.stopPct&&!c.tpPct)return '';var sl=c.stopPct||0,tp=c.tpPct||0,pos=(sl/((sl+tp)||1)*100).toFixed(0)+'%';return '<div role="img" aria-label="Stop at -'+sl+'%, target at +'+tp+'% from entry" style="position:relative;margin:4px 0 22px"><div style="height:6px;border-radius:3px;background:linear-gradient(90deg,rgba(248,113,113,.55),rgba(52,211,153,.55))"></div><span style="position:absolute;left:'+pos+';top:-4px;width:2px;height:14px;background:#F5F5F5"></span><span class="xs down" style="position:absolute;left:0;top:12px">Stop −'+sl+'%</span><span class="xs mut" style="position:absolute;left:'+pos+';top:12px;transform:translateX(-50%)">Entry</span><span class="xs up" style="position:absolute;right:0;top:12px">Target +'+tp+'%</span></div>'}
+function ladder(c){if(!c.stopPct&&!c.tpPct)return '';var sl=c.stopPct||0,tp=c.tpPct||0,pos=!tp?'80%':!sl?'20%':(sl/(sl+tp)*100).toFixed(0)+'%';return '<div role="img" aria-label="'+(sl?'Stop at -'+sl+'%':'No stop')+', '+(tp?'target at +'+tp+'%':'no target')+' from entry" style="position:relative;margin:4px 0 22px"><div style="height:6px;border-radius:3px;background:linear-gradient(90deg,rgba(248,113,113,.55),rgba(52,211,153,.55))"></div><span style="position:absolute;left:'+pos+';top:-4px;width:2px;height:14px;background:#F5F5F5"></span>'+(sl?'<span class="xs down" style="position:absolute;left:0;top:12px">Stop −'+sl+'%</span>':'')+'<span class="xs mut" style="position:absolute;left:'+pos+';top:12px;transform:translateX(-50%)">Entry</span>'+(tp?'<span class="xs up" style="position:absolute;right:0;top:12px">Target +'+tp+'%</span>':'')+'</div>'}
 function card(m){var d=m.data||{},c=d.card;if(!c)return '';var h='<section class="card" style="padding:14px;gap:10px;display:flex;flex-direction:column"><div class="row sp"><span class="row" style="gap:10px"><span class="av">Ξ</span><span><b style="display:block">'+esc(c.title)+'</b><span class="sm mut">Flash · '+esc(c.kind)+'</span></span></span><b>$'+Number(c.usd).toFixed(2)+'</b></div>'+ladder(c)+'<div class="grid3"><div class="tile"><div class="k">Max gain</div><div class="v up">'+(c.maxGain!=null?'+$'+c.maxGain.toFixed(2):'open')+'</div></div><div class="tile"><div class="k">Max loss</div><div class="v down">'+(c.maxLoss!=null?'−$'+c.maxLoss.toFixed(2):'no stop')+'</div></div><div class="tile"><div class="k">Fee</div><div class="v">$'+c.fee.toFixed(2)+'</div></div></div>';
 if(d.signed)h+='<div role="status" class="up md" style="font-weight:600;display:flex;gap:6px;align-items:center">'+svg('check',16,3)+'Landed · '+esc(d.receipt||'placed')+'</div>';else if(d.proposalId)h+='<div class="grid2"><button class="btn" data-x="edit">Edit</button><button class="btn p" data-x="sign" data-p="'+d.proposalId+'" data-m="'+m.id+'">Confirm &amp; sign</button></div>';return h+'</section>'}
 function verdict(v){if(!v)return '';var col={ok:'#34D399',warn:'#FCD34D',bad:'#F87171'}[v.tone];return '<section class="card" style="padding:14px;gap:10px;display:flex;flex-direction:column;border-color:'+col+'55"><div class="row sp"><span class="xs mut" style="letter-spacing:.08em;font-weight:700">CAT’S READ</span><span class="pill" style="color:'+col+';border-color:'+col+'66;background:'+col+'14">'+esc(v.label)+'</span></div><ul class="vchecks">'+v.checks.map(function(c){var k=c.ok===true?'ok':c.ok===false?'bad':'na';return '<li class="'+k+'"><i aria-hidden="true">'+(k==='ok'?svg('check',11,3.2):k==='bad'?'!':'–')+'</i>'+esc(c.t)+'</li>'}).join('')+'</ul></section>'}
@@ -127,20 +114,45 @@ else if(x==='regen'){var q=lastUser();if(q)send(q)}
 else if(x==='up'||x==='down'){var v=x==='up'?1:-1;if(m.vote===v)v=0;m.vote=v;fetch('/api/cat/vote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({msg:m.id,vote:v})});box.querySelector('[data-x=up]').style.color=v===1?'#34D399':'';box.querySelector('[data-x=down]').style.color=v===-1?'#F87171':''}
 else if(x==='edit'){inp.value='make it $';inp.focus()}
 else if(x==='sign'){b.disabled=true;fetch('/api/cat/confirm',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.p})}).then(function(r){return r.json()}).then(function(r){if(r.ok){b.closest('.grid2').outerHTML='<div role="status" class="up md" style="font-weight:600;display:flex;gap:6px;align-items:center">'+svg('check',16,3)+'Landed onchain</div>';var a=document.createElement('a');a.href='/strategy/new';a.className='chip';a.textContent='Run this as a bot others can copy';chips.appendChild(a)}else b.disabled=false;var n=document.createElement('div');n.className='bubble b';n.textContent=r.reply;msgs.appendChild(n);n.scrollIntoView({block:'end'})})}})}
-function pin(id){CH.trade=id;document.getElementById('cback').href='/thread/'+id;fetch('/cat/ctxbar/'+id).then(function(x){return x.text()}).then(function(h){document.getElementById('ctxwrap').innerHTML=h;var mm=document.querySelector('main');mm.style.paddingBottom='220px';mm.style.setProperty('--cpad','230px')})}
+function pin(id){CH.trade=id;document.getElementById('cback').href='/t/'+id;fetch('/cat/ctxbar/'+id).then(function(x){return x.text()}).then(function(h){document.getElementById('ctxwrap').innerHTML=h;var mm=document.querySelector('main');mm.style.paddingBottom='220px';mm.style.setProperty('--cpad','230px')})}
 // Desktop: the conversation is its own scroll pane; phones scroll the page.
 function bottom(){var c=document.querySelector('.msgcol');if(c)c.scrollTop=c.scrollHeight;window.scrollTo(0,document.body.scrollHeight)}
 function lastUser(){for(var i=CH.msgs.length-1;i>=0;i--)if(CH.msgs[i].role==='user')return CH.msgs[i].text}
 function showChips(f){chips.innerHTML='';f.forEach(function(c){var b=document.createElement(c.href?'a':'button');var ic=c.icon,l=c.label;if(/^⚡/.test(l)){ic='bolt';l=l.replace(/^⚡ ?/,'')}b.className='chip'+(ic?' flashchip':'');b.innerHTML=(ic?svg(ic,13,2.2):'')+esc(l);if(c.href)b.href=c.href;else b.onclick=function(){send(c.text)};chips.appendChild(b)})}
-function send(t){if(sending||!t.trim())return;sending=true;chips.innerHTML='';userMsg(t);CH.msgs.push({role:'user',text:t});var th=document.createElement('div');th.className='row';th.innerHTML='<span class="orb" style="width:26px;height:26px"><i></i></span><span class="sm mut">Thinking…</span>';msgs.appendChild(th);th.scrollIntoView({block:'end'});
+function send(t){if(sending||!t.trim())return;sending=true;var wl=document.getElementById('welcome');if(wl)wl.remove();chips.innerHTML='';userMsg(t);CH.msgs.push({role:'user',text:t});var th=document.createElement('div');th.className='row';th.innerHTML='<span class="orb" style="width:26px;height:26px"><i></i></span><span class="sm mut">Thinking…</span>';msgs.appendChild(th);th.scrollIntoView({block:'end'});
 fetch('/api/cat/ask',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:t,chat:CH.id,live:pref('live'),trade:CH.trade})}).then(function(r){return r.json()}).then(function(r){th.remove();sending=false;if(r.error){tribe.toast(r.error);return}
-if(!CH.id){CH.id=r.chatId;try{history.replaceState(null,'','/cat/chat?id='+r.chatId)}catch(e){};document.getElementById('ct').textContent=t.slice(0,60)}
+
 var m={id:r.msgId,role:'cat',text:r.reply,vote:0,data:{card:r.card,proposalId:r.proposalId,steps:r.steps,sources:r.sources,follow:r.follow,verdict:r.verdict}};CH.msgs.push(m);catMsg(m,true,true);if(r.ctx&&r.ctx.id!==CH.trade)pin(r.ctx.id)}).catch(function(){th.remove();sending=false;tribe.toast('Network error')})}
 CH.msgs.forEach(function(m,i){if(m.role==='user')userMsg(m.text);else catMsg(m,false,i===CH.msgs.length-1)});
 document.getElementById('cf').onsubmit=function(e){e.preventDefault();var t=inp.value.trim();inp.value='';send(t)};
-if(CH.auto&&CH.q)send(CH.q);else if(CH.q&&!CH.id){send(CH.q)}
+if(CH.q){try{history.replaceState(null,'','/cat'+(CH.trade?'?trade='+CH.trade:''))}catch(e){}send(CH.q)}
+document.querySelectorAll('[data-ask]').forEach(function(b){b.onclick=function(){send(b.dataset.ask)}});
+document.addEventListener('click',function(e){if(!e.target.closest('#unpin'))return;fetch('/api/cat/unpin',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});CH.trade=null;document.getElementById('ctxwrap').innerHTML='';document.getElementById('cback').href='/feed';var mm=document.querySelector('main');mm.style.paddingBottom='150px';mm.style.setProperty('--cpad','160px');try{history.replaceState(null,'','/cat')}catch(e){}});
+// The mic: record (up to a minute), turn it into a small 16 kHz WAV, transcribe on the server, send it as the message.
+// Server-side so it works in every browser, including Brave, which has no built-in speech recognition.
+var dic=document.getElementById('dictate'),mr=null,chunks=[],stream=null,starting=false;
+function dset(on,busy){dic.setAttribute('aria-pressed',on?'true':'false');dic.style.background=on?'#F87171':'';dic.style.color=on?'#2A0A0A':'';dic.disabled=!!busy;inp.placeholder=on?'Listening… tap the mic to send':busy?'Transcribing…':'Ask Cat anything'}
+function toWav(au){var rate=16000,src=au.getChannelData(0),ratio=au.sampleRate/rate,n=Math.floor(src.length/ratio),buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+ function str(o,t){for(var i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))}
+ str(0,'RIFF');v.setUint32(4,36+n*2,true);str(8,'WAVE');str(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);str(36,'data');v.setUint32(40,n*2,true);
+ for(var i=0;i<n;i++){var x=Math.max(-1,Math.min(1,src[Math.floor(i*ratio)]));v.setInt16(44+i*2,x<0?x*0x8000:x*0x7FFF,true)}
+ var b=new Uint8Array(buf),bin='';for(var k=0;k<b.length;k+=0x8000)bin+=String.fromCharCode.apply(null,b.subarray(k,k+0x8000));return btoa(bin)}
+dic.onclick=async function(){
+ if(mr&&mr.state==='recording'){mr.stop();return}
+ if(starting)return; // still waiting for the microphone: a second tap mustn't start another recording
+ if(!navigator.mediaDevices||!window.MediaRecorder){tribe.toast("This browser can't record audio. Type instead.");return}
+ starting=true;try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){tribe.toast('Allow the microphone for this site to talk to Cat.');return}finally{starting=false}
+ chunks=[];mr=new MediaRecorder(stream);mr.ondataavailable=function(e){if(e.data.size)chunks.push(e.data)};
+ mr.onstop=async function(){stream.getTracks().forEach(function(t){t.stop()});dset(false,true);
+  try{var ab=await new Blob(chunks).arrayBuffer();var ac=new (window.AudioContext||window.webkitAudioContext)();var au=await ac.decodeAudioData(ab);ac.close();
+   if(au.duration<0.4){tribe.toast('That was too short. Hold on a little longer.');return}
+   var r=await fetch('/api/cat/transcribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({audio:toWav(au)})});var j=await r.json();
+   if(j.error)throw new Error(j.error);if(!j.text){tribe.toast("Didn't catch that. Try again.");return}send(j.text)}
+  catch(e){tribe.toast((e&&e.message)||'Voice failed. Try again.')}finally{dset(false,false)}};
+ mr.start();dset(true,false);setTimeout(function(){if(mr&&mr.state==='recording')mr.stop()},60000)};
 bottom()})()</script>`;
-  return page({ title: chat?.title ?? "New chat", body, extraClass: "wide chatapp", slim: true });
+  const sheets = personaSheet(meta.catPersona) + (calls ? sheet("calls", calls) : "");
+  return page({ title: "Ask Cat", body, sheets, extraClass: "wide chatapp", slim: true });
 }
 
 export function catVoicePage(uid: number): string {

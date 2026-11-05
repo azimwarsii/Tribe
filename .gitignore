@@ -49,3 +49,6 @@ test-results/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Built browser bundle (npm run web:build)
+public/signin.js

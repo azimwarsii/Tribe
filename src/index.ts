@@ -3,10 +3,10 @@ import { Bot, InlineKeyboard } from "grammy";
 import express from "express";
 import { privateKeyToAccount } from "viem/accounts";
 import {
-  claimPending, db, followersOf, getFollowRules, getMeta, getUser, haltLeader, haltOf, recentTrades, resumeLeader, saveSeasonBoard, setFollow, setHandle, setMeta, userByHandle,
+  claimPending, db, followersOf, getFollowRules, getMeta, getUser, haltLeader, haltListeners, haltOf, recentTrades, resumeLeader, saveSeasonBoard, setFollow, setHandle, setMeta, userByHandle,
   type SeasonBoardRow,
 } from "./db.js";
-import { execute, mirror, type PendingNotice } from "./copy.js";
+import { closeCopiesOf, execute, mirror, type PendingNotice } from "./copy.js";
 import { parseTrade, TOKENS } from "./parse.js";
 import type { FollowRules } from "./rules.js";
 import { makeLoginToken, verify } from "./auth.js";
@@ -21,6 +21,14 @@ import { researchTrade, verdictText } from "./research.js";
 import { latestChat } from "./db.js";
 import { enableDemoPrices } from "./prices.js";
 import { seedDemoSignals } from "./signals.js";
+import { assertSafeConfig } from "./preflight.js";
+import { rateLimit } from "./ratelimit.js";
+import { privyRouter } from "./privy-api.js";
+import { walletRouter } from "./wallet-api.js";
+
+assertSafeConfig();
+// Copiers who opted in sell what they copied from a trader as soon as CopyGuard pauses them.
+haltListeners.push((leader) => void closeCopiesOf(leader).catch((e) => console.error(`close copies of ${leader}:`, (e as Error).message)));
 
 const bot = process.env.TELEGRAM_BOT_TOKEN ? new Bot(process.env.TELEGRAM_BOT_TOKEN) : undefined;
 const baseUrl = () => process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`;
@@ -98,7 +106,8 @@ if (bot) {
 
   bot.command("web", (c) => {
     getUser(c.from!.id);
-    return c.reply(`Sign in (valid 15 min): ${baseUrl()}/login?t=${makeLoginToken(c.from!.id)}`);
+    // Sign-in is wallet-only: the bot points to it rather than handing out a link that would skip the wallet.
+    return c.reply(`Sign in with your wallet at ${baseUrl()}/signin`);
   });
 
   bot.command("handle", (c) => (setHandle(getUser(c.from!.id).id, c.match.trim()) ? c.reply("Handle updated.") : c.reply("3-20 letters, numbers or _, and not taken.")));
@@ -143,7 +152,7 @@ if (bot) {
       getUser(c.from!.id);
       const res = await mirror(c.from!.id, t, "user");
       await notifyPending(res.pending, c.from!.id);
-      return c.reply(`Trade #${res.tradeId} (${res.own}): ${res.executed.length} copied, ${res.pending.length} awaiting approval, ${res.skipped.length} skipped\nShare: ${baseUrl()}/s/${res.tradeId}`);
+      return c.reply(`Trade #${res.tradeId} (${res.own}): ${res.executed.length} copied, ${res.pending.length} awaiting approval, ${res.skipped.length} skipped\nShare: ${baseUrl()}/t/${res.tradeId}`);
     } catch (e) {
       return c.reply((e as Error).message);
     }
@@ -161,7 +170,7 @@ if (bot) {
     const read = r.verdict ? `\n\n${verdictText(r.verdict)}` : "";
     // A research answer links back to the post and to copying it in the app.
     const kb = r.proposalId ? new InlineKeyboard().text("Confirm & sign", `cat:${r.proposalId}`)
-      : r.ctx && linkable() ? new InlineKeyboard().url("Open the post", `${baseUrl()}/thread/${r.ctx.id}`).url(r.ctx.copying ? "Manage copy" : "Copy with Flash", `${baseUrl()}${r.ctx.copying ? "/traders" : `/copy/${r.ctx.handle}`}`) : undefined;
+      : r.ctx && linkable() ? new InlineKeyboard().url("Open the post", `${baseUrl()}/t/${r.ctx.id}`).url(r.ctx.copying ? "Manage copy" : "Copy with Flash", `${baseUrl()}${r.ctx.copying ? "/traders" : `/copy/${r.ctx.handle}`}`) : undefined;
     return c.reply(r.reply + extra + read, kb ? { reply_markup: kb } : undefined);
   });
 
@@ -181,9 +190,19 @@ if (bot) {
 }
 
 const app = express();
+if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY) || true);
 // CRE endpoints (src/cre-api.ts). express.json is applied per route there, so the web router keeps its own body parsing.
 app.use(creRouter({ pending: notifyPending, halt: notifyHalt }));
+// Per IP and minute: Ask Cat calls a paid model; sign-in links are guessable only by brute force; the rest is headroom
+// for the deck's polling (about 16 requests a minute per open tab).
+app.use("/api/cat", rateLimit(20, 60_000));
+app.use(["/signin", "/login", "/demo"], rateLimit(20, 60_000));
+app.use("/api", rateLimit(300, 60_000));
 app.get("/api/recent", (_q, r) => r.json(recentTrades()));
+// Privy wallets: the Connect wallet page and its API (src/privy-api.ts), and the page's browser bundle (web/).
+app.use("/static", express.static(new URL("../public", import.meta.url).pathname, { maxAge: "1h" }));
+app.use(privyRouter());
+app.use(walletRouter());
 app.use(appRouter());
 
 startTracker();

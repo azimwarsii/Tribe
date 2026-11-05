@@ -12,6 +12,8 @@ export interface FollowRules {
   paused: boolean; // paused by the follower
   guardOverride: boolean; // follower chose to resume against Guard's advice
   budgetUsd?: number; // most Tribe will ever put into copying this trader (open cost)
+  stopPct?: number; // my own stop, % below entry: used when the leader has none, or when it is safer than theirs
+  closeOnPause?: boolean; // sell what I copied from them when CopyGuard pauses them
 }
 
 export type Decision =
@@ -53,7 +55,8 @@ export function decide(trade: Trade, rules: FollowRules, ctx: DecideCtx): Decisi
   if (rules.tokens.length && !rules.tokens.includes(trade.target.toLowerCase())) return { action: "skip", reason: "token not allowed" };
   if (rules.orderTypes.length && !rules.orderTypes.includes(trade.orderType)) return { action: "skip", reason: "order type not allowed" };
   if (!rules.copyProtective && PROTECTIVE.has(trade.orderType)) return { action: "skip", reason: "protective orders disabled" };
-  if (rules.requireStop && trade.side === "buy" && !trade.hasStop) return { action: "skip", reason: "no stop-loss, your filter" };
+  // A follower with their own stop always ends up with a stopped copy (protectCopy), so the filter is met.
+  if (rules.requireStop && trade.side === "buy" && !trade.hasStop && !(Number(rules.stopPct) > 0)) return { action: "skip", reason: "no stop-loss, your filter" };
 
   const qtyNum = Number(trade.qty) * rules.ratio;
   if (!Number.isFinite(qtyNum) || qtyNum <= 0) return { action: "skip", reason: "invalid size" };
@@ -72,4 +75,17 @@ export function decide(trade: Trade, rules: FollowRules, ctx: DecideCtx): Decisi
   // Auto needs the signing permission; without it the follower is asked instead.
   const action = rules.mode === "auto" && ctx.autoPermission === false ? "ask" : rules.mode;
   return { action, qty: String(qty), usd };
+}
+
+/**
+ * The follower's own stop on a copied entry, `stopPct` below the current price. A copy with the leader's bracket
+ * keeps whichever stop is safer (the higher one). A copy with no stop gets the follower's as a stop-loss placed once
+ * the entry fills (`followStop`). Followers who turned off protective orders get neither.
+ */
+export function protectCopy(trade: Trade, rules: FollowRules, mark: number): Trade {
+  const pct = Number(rules.stopPct);
+  if (trade.side !== "buy" || !rules.copyProtective || !(pct > 0 && pct < 90) || !(mark > 0)) return trade;
+  const mine = mark * (1 - pct / 100);
+  if (trade.attach) return Number(trade.attach.sl) >= mine ? trade : { ...trade, attach: { ...trade.attach, sl: mine.toFixed(2) }, hasStop: true };
+  return { ...trade, followStop: mine.toFixed(2), hasStop: true };
 }

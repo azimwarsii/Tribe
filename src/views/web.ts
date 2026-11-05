@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { allHalts, db, followingOf, getMeta, pendingFor, userById } from "../db.js";
 import { face, copyPnlByLeader, initials, money, monthlyHistory, ORDER_LABEL, openPositions, pct, portfolio, ago, topTraders, type MonthRow } from "../data.js";
 import { sourceTag } from "./feed.js";
@@ -10,21 +11,54 @@ const BOT = () => process.env.BOT_USERNAME ?? "TribeTradeBot";
 // ---------- Portfolio (desktop-first, stacks on mobile) ----------
 
 /**
+ * Running realised result, trade by trade: a line from zero that steps with every closed trade, so a quiet month and
+ * a busy one read honestly. Hover (or touch) shows the total at that point. Others see it in % instead of dollars.
+ */
+function pnlCurve(months: MonthRow[], dollars: boolean): string {
+  const trades = months.flatMap((m) => m.trades).sort((a, b) => a.at - b.at);
+  if (!trades.length) return "";
+  let run = 0;
+  const pts = [{ at: trades[0].at, v: 0 }, ...trades.map((t) => ({ at: t.at, v: (run += dollars ? t.pnlUsd : t.pct) }))];
+  const W = 600, H = 170, pad = 8;
+  const lo = Math.min(0, ...pts.map((p) => p.v)), hi = Math.max(0, ...pts.map((p) => p.v));
+  const span = hi - lo || 1;
+  const x = (i: number) => (i / (pts.length - 1)) * W;
+  const y = (v: number) => pad + (1 - (v - lo) / span) * (H - pad * 2);
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  const zero = y(0).toFixed(1);
+  const up = run >= 0;
+  const col = up ? "#34D399" : "#F87171";
+  const fmt = (v: number) => (dollars ? `${v >= 0 ? "+" : "−"}${money(Math.abs(v))}` : pct(v));
+  const day = (t: number) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const data = esc(JSON.stringify(pts.map((p) => [day(p.at), fmt(p.v)])));
+  return `<div class="pcurve" data-pts="${data}"><div class="row sp xs mut"><span>${trades.length} closed trade${trades.length === 1 ? "" : "s"}</span><span class="pc-read"><b class="${up ? "up" : "down"}">${fmt(run)}</b> by ${day(trades[trades.length - 1].at)}</span></div>
+<div class="pc-plot"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Realised result over time, now ${fmt(run)}"><defs><linearGradient id="pcg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+<line x1="0" x2="${W}" y1="${zero}" y2="${zero}" stroke="#3A3A3A" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/><path d="${line}L${W},${zero}L0,${zero}Z" fill="url(#pcg)"/><path d="${line}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><line class="pc-x" x1="0" x2="0" y1="0" y2="${H}" stroke="#666" vector-effect="non-scaling-stroke" visibility="hidden"/></svg>
+<span class="pc-zero xs mut" style="top:${((Number(zero) / H) * 100).toFixed(1)}%">0</span><i class="pc-dot" style="background:${col};left:100%;top:${((y(run) / H) * 100).toFixed(1)}%"></i></div>
+<div class="row sp xs mut"><span>${day(pts[0].at)}</span><span>${day(pts[pts.length - 1].at)}</span></div></div>
+<script>(function(){var el=document.currentScript.previousElementSibling,pts=JSON.parse(el.dataset.pts),plot=el.querySelector('.pc-plot'),xl=el.querySelector('.pc-x'),dot=el.querySelector('.pc-dot'),rd=el.querySelector('.pc-read'),rest=rd.innerHTML,svg=plot.querySelector('svg'),path=svg.querySelectorAll('path')[1];
+var ys=(path.getAttribute('d').match(/[ML][^ML]+/g)||[]).map(function(s){return parseFloat(s.slice(1).split(',')[1])});
+function at(e){var r=plot.getBoundingClientRect(),cx=((e.touches?e.touches[0].clientX:e.clientX)-r.left)/r.width,i=Math.max(0,Math.min(pts.length-1,Math.round(cx*(pts.length-1))));
+ var px=i/(pts.length-1);xl.setAttribute('x1',px*${W});xl.setAttribute('x2',px*${W});xl.setAttribute('visibility','visible');dot.style.left=px*100+'%';dot.style.top=ys[i]/${H}*100+'%';
+ var v=pts[i][1];rd.innerHTML='<b class="'+(v.charAt(0)==='−'?'down':'up')+'">'+v+'</b> on '+pts[i][0]}
+function off(){xl.setAttribute('visibility','hidden');dot.style.left='100%';dot.style.top=ys[ys.length-1]/${H}*100+'%';rd.innerHTML=rest}
+plot.addEventListener('mousemove',at);plot.addEventListener('touchmove',at,{passive:true});plot.addEventListener('mouseleave',off);plot.addEventListener('touchend',off)})()</script>`;
+}
+
+/**
  * Past trades live here (and on each trader's profile portfolio), not in the feed: realised results month by month,
  * as a bar chart and an expandable list per month. `dollars` is false when someone else is looking: returns in % only.
  */
 export function madeByMonth(months: MonthRow[], dollars: boolean): string {
   if (!months.length) return `<section class="card"><h2>What ${dollars ? "you've" : "they've"} made</h2><div class="sm mut" style="padding-top:8px">No closed trades yet. Results show up here month by month.</div></section>`;
-  const shown = months.slice(0, 6).reverse();
   const val = (m: MonthRow) => (dollars ? m.pnlUsd : m.pct);
-  const max = Math.max(1e-9, ...shown.map((m) => Math.abs(val(m))));
   const total = months.reduce((a, m) => a + m.pnlUsd, 0);
   const fmt = (m: MonthRow) => (dollars ? `${m.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(m.pnlUsd))}` : pct(m.pct));
-  const bars = shown.map((m) => `<div class="mbar" title="${esc(m.label)}: ${fmt(m)}"><span class="xs ${signCls(val(m))}">${fmt(m)}</span><i class="${val(m) >= 0 ? "pos" : "neg"}" style="height:${Math.max(4, (Math.abs(val(m)) / max) * 100).toFixed(0)}%"></i><span class="xs mut">${esc(m.label.slice(0, 3))}</span></div>`).join("");
+  const curve = pnlCurve(months, dollars);
   const list = months.map((m, i) => `<details class="mrow"${i === 0 ? " open" : ""}><summary class="row sp"><span><b class="md">${esc(m.label)}</b><span class="xs mut" style="display:block">${m.closed} closed · ${m.wins} green${dollars ? ` · ${money(m.investedUsd)} put in` : ""}</span></span><span style="text-align:right"><b class="${signCls(val(m))}">${fmt(m)}</b>${dollars ? `<span class="xs mut" style="display:block">${pct(m.pct)}</span>` : ""}</span></summary>
 ${m.trades.map((t) => `<div class="row sp sm" style="min-height:40px;border-top:1px solid #1C1C1C"><span class="row" style="gap:8px">${sourceTag(t.source)}<span>${esc(t.symbol)}${t.from ? ` <span class="mut">copied from @${esc(t.from)}</span>` : ""}</span></span><span class="row" style="gap:10px"><span class="xs mut">${new Date(t.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span><b class="${signCls(t.pnlUsd)}">${dollars ? `${t.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(t.pnlUsd))}` : pct(t.pct)}</b></span></div>`).join("") || '<div class="sm mut" style="padding:8px 0">Entries only this month, nothing closed.</div>'}</details>`).join("");
   return `<section class="card col" style="gap:12px" aria-label="Results by month"><div class="row sp"><h2>What ${dollars ? "you've" : "they've"} made</h2><span class="sm ${signCls(total)}">${dollars ? `${total >= 0 ? "+" : "−"}${money(Math.abs(total))} realised` : ""}</span></div>
-<div class="mbars" role="img" aria-label="Realised result per month">${bars}</div><div class="col" style="gap:0">${list}</div></section>`;
+${curve}<div class="col" style="gap:0">${list}</div></section>`;
 }
 
 export async function portfolioPage(uid: number): Promise<string> {
@@ -82,7 +116,7 @@ export function landingPage(): string {
 <header class="lh"><span style="font-size:26px;font-weight:700;letter-spacing:-.05em">tribe<span style="color:#34D399">.</span></span><nav aria-label="Site"><a href="#how">How it works</a><a href="#guard">Guard</a><a href="#creators">Creators</a></nav><span style="flex:1"></span><a href="/signin" style="color:#F5F5F5;font-size:14px">Sign in</a><a class="btn sm w" href="/onboarding" style="height:42px;border-radius:21px">Get started</a></header>
 <section class="hero"><div><span class="pill ok" style="padding:6px 12px;font-size:13px;border-radius:16px"><span class="live" style="width:6px;height:6px"></span>${topHandle ? `${top!.n} copies of @${esc(topHandle)} this week` : "Copy trading with a safety net"}</span>
 <h1>Copy great traders.<br><span class="dim">With a safety net onchain.</span></h1><p style="margin:22px 0 0;font-size:19px;color:#B5B5B5;line-height:1.55;max-width:540px">Every trade copies with its stop and target. A Chainlink-powered Guard pauses risky traders before you copy them. Your wallet stays yours.</p>
-<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:32px"><a class="btn p big" href="/onboarding" style="width:auto;padding:0 24px">${icon("bolt", 14)}Start with email</a><a class="btn big" href="/onboarding" style="width:auto;padding:0 22px">Google</a><a class="btn big" href="/onboarding" style="width:auto;padding:0 22px">Connect wallet</a></div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:32px"><a class="btn p big" href="/signin" style="width:auto;padding:0 24px">${icon("wallet", 14)}Connect wallet</a></div>
 <div class="sm dim" style="margin-top:14px">Non-custodial wallets by Privy · Flash orders · Chainlink CRE</div></div>
 <div class="mock" aria-hidden="true"><div class="card" style="left:30px;top:20px;width:min(400px,86%);padding:20px"><div class="row" style="gap:10px"><span class="av w">NO</span><b class="grow">@nightowl</b><b class="up" style="font-size:22px">+8.4%</b></div><div style="font-size:26px;font-weight:600;margin-top:14px">ETH long</div><div class="row" style="gap:6px;margin-top:10px"><span class="pill flash">FLASH BRACKET</span><span class="pill bad">SL −5%</span><span class="pill ok">TP +12%</span></div><div class="btn p" style="margin-top:18px">${icon("bolt", 14)}Copy with Flash</div></div>
 <div class="card" style="right:10px;top:230px;width:min(330px,80%);padding:18px;background:linear-gradient(180deg,#241818,#151313);border-color:rgba(248,113,113,.4)"><div class="row sp"><b>@traderx</b><span class="pill bad">Paused by Guard</span></div><div style="position:relative;height:6px;border-radius:3px;background:#262626;margin-top:14px"><div style="width:91%;height:6px;border-radius:3px;background:#F87171"></div><span style="position:absolute;left:65%;top:-4px;width:2px;height:14px;background:#F5F5F5"></span></div><div class="sm" style="color:#C4C4C4;margin-top:10px">Your $15 copy was blocked. Proof onchain ↗</div></div>
@@ -91,15 +125,25 @@ export function landingPage(): string {
 <section id="how" class="lsec"><h2>How copying works</h2><ol class="steps" style="padding:0">${step("01", "Pick a trader", "Real onchain results, Guard record and copy slippage.")}${step("02", "Set your limits", "Budget, size per trade, stops required.")}${step("03", "They trade", "Guard checks them, then your filters.")}${step("04", "You copy", "Approve in a tap, or let it run. Stops come along.")}</ol></section>
 <section id="creators" class="cta"><div style="flex:1"><h2 style="margin:0;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em">Good trader? Get paid when people copy you.</h2><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.55">Publish your trades or a bot you build with Cat. Every copy earns you a share of the Flash fee.</p></div><a class="btn w big" href="/onboarding" style="width:auto;padding:0 26px">Become a creator</a></section>
 <footer style="padding:26px 24px;border-top:1px solid #1A1A1A;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font-size:13px;color:#8A8A8A"><span style="max-width:760px">Copy trading is risky. Past results don't predict future ones. Guard reduces but can't remove losses. Not financial advice.</span><span>Terms · Privacy · Risk disclosure</span></footer>
-<script>try{if(innerWidth<900&&!sessionStorage.getItem('seen')){sessionStorage.setItem('seen','1');location.replace('/splash')}}catch(e){}</script>`;
+`;
   return page({ title: "Copy great traders", body, focus: true, extraClass: "landing" });
 }
 
+/** Changes whenever the bundle is rebuilt, so browsers never run a stale cached copy. */
+function bundleVersion(file: string): string {
+  try {
+    return Math.round(statSync(new URL(`../../public/${file}`, import.meta.url)).mtimeMs).toString(36);
+  } catch {
+    return "0";
+  }
+}
+
 export function signinPage(demo: boolean): string {
-  const body = `${header("Sign in", "Tribe", "/")}<main class="main"><div class="card col"><h2>Open Tribe from Telegram</h2><p class="mut md" style="margin:0;line-height:1.5">Send <b>/web</b> to the Tribe bot. It replies with a sign-in link that is valid for 15 minutes.</p><a class="btn p" href="https://t.me/${esc(BOT())}">Open @${esc(BOT())}</a></div>
-<div class="card col"><h2>New here?</h2><p class="mut md" style="margin:0">Create an account in about a minute.</p><a class="btn" href="/onboarding">Get started</a></div>
-${demo ? `<div class="card col"><h2>Demo</h2><p class="mut md" style="margin:0">Continue as the seeded demo viewer.</p><a class="btn w" href="/demo">Continue as demo viewer</a></div>` : ""}
-<p class="note">Email, Google and wallet sign-in arrive with Privy. Until then accounts are local to this server.</p></main>`;
+  const ready = !!process.env.PRIVY_APP_ID;
+  const body = `${header("Sign in", "Tribe", "/")}<main class="main"><div class="card col" style="gap:10px"><h2>Welcome to Tribe</h2><p class="mut md" style="margin:0;line-height:1.5">Sign in with your wallet. New here? You'll pick a username next.</p>
+${ready ? `<div id="signin-root"><p class="mut">Loading…</p></div><script>window.TRIBE=${JSON.stringify({ appId: process.env.PRIVY_APP_ID }).replace(/</g, "\\u003c")}</script><script src="/static/signin.js?v=${bundleVersion("signin.js")}" defer></script>` : `<div class="sm down">Sign-in isn't set up on this server yet: add PRIVY_APP_ID and PRIVY_APP_SECRET to .env.</div>`}</div>
+${demo ? `<div class="card col"><h2>Demo</h2><p class="mut md" style="margin:0">Continue as the seeded demo viewer.</p><a class="btn" href="/demo">Continue as demo viewer</a></div>` : ""}
+<p class="note">Your money stays in your own wallet. Tribe never holds your key.</p></main>`;
   return page({ title: "Sign in", body, focus: true });
 }
 

@@ -31,7 +31,12 @@ export function copiedBy(c: TradeCard): string {
 export const sourceTag = (source: TradeCard["source"]) =>
   source === "user" ? `<span class="srctag" title="Placed by hand">${icon("hand", 11, "currentColor", 2)}Manual</span>` : `<span class="srctag bot" title="${source === "bot" ? "Placed by their bot (Chainlink CRE strategy)" : "Proposed by their AI agent, confirmed by them"}">${icon("bot", 11, "currentColor", 2)}Bot</span>`;
 
-export function tradeCardHtml(c: TradeCard, viewer: number | undefined, hot = false): string {
+/** The Flash order the trader placed, in plain words, under a "Flash <type>" tag. Wraps to two lines at most. */
+export const orderStrip = (c: TradeCard) =>
+  `<div class="ordstrip"><span class="pill flash">${icon("bolt", 11)}${esc(c.orderLabel)}</span><span class="sm">${esc(c.detail)}</span></div>`;
+
+/** A trade card. `onPage` is the trade's own page: its Copy button always copies this trade (the panel below it). */
+export function tradeCardHtml(c: TradeCard, viewer: number | undefined, hot = false, onPage = false): string {
   const paused = c.guard === "paused";
   const closing = c.trade.side === "sell" && c.realisedPct !== null;
   const flat = closing && Math.abs(c.realisedPct!) < 0.05;
@@ -39,29 +44,29 @@ export function tradeCardHtml(c: TradeCard, viewer: number | undefined, hot = fa
     : c.trade.orderType === "bracket" ? "Set a bracket on" : c.trade.orderType === "stop-loss" ? "Set a stop on" : c.trade.orderType === "take-profit" ? "Set a target on"
     : closing ? (flat ? "Closed flat on" : c.realisedPct! > 0 ? "Took profit on" : "Cut a loss on") : "Closing";
   const twap = c.trade.orderType === "twap";
-  const copying = c.viewerCopying;
+  const copying = c.viewerCopying && !onPage;
   const own = viewer === c.leader;
   const big = closing ? (flat ? null : { v: c.realisedPct!, label: "realised" }) : c.sincePct !== null ? { v: c.sincePct, label: "since entry" } : null;
-  return `<article class="card post${paused ? " bad" : ""}${hot ? " hot" : ""}${closing && !flat && c.realisedPct! > 0 ? " win" : ""}" id="t${c.id}">
+  return `<article class="card post${paused ? " bad" : ""}${hot ? " hot" : ""}${closing && !flat && c.realisedPct! > 0 ? " win" : ""}" id="t${c.id}" data-href="/t/${c.id}">
 ${hot ? `<span class="ribbon">${icon("flame", 12, "currentColor", 2.2)}Hot today</span>` : ""}
 <div class="row"><a href="/u/${esc(c.handle)}" class="lvl" aria-label="@${esc(c.handle)}, level ${c.level}"><span class="av ${paused ? "" : "w"}" style="${paused ? "color:#F87171" : ""}">${face(c.handle)}</span><b>${c.level}</b></a>
 <div class="grow" style="min-width:0"><div class="row" style="gap:6px"><a href="/u/${esc(c.handle)}" style="color:#F5F5F5;font-size:14px;font-weight:600">@${esc(c.handle)}</a>${c.streak >= 2 ? `<span class="streak" title="${c.streak} green days in a row">${icon("flame", 11, "currentColor", 2.2)}${c.streak}d</span>` : ""}</div><div class="sm mut">${sourceTag(c.source)} ${ago(c.at)} · ${paused ? "no new copies" : c.tx ? `<a href="${txUrl(c.tx)}" target="_blank" rel="noopener">filled onchain ↗</a>` : "filled onchain"}</div></div>
 <span class="pill ${paused ? "bad" : "ok"}">${icon("shield", 11, "currentColor", 2)}${paused ? "Paused by Guard" : "Guard passed"}</span></div>
 ${c.source !== "user" ? `<div class="col" style="gap:6px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.25)"><span class="pill ok">${icon("bot", 12, "currentColor", 2)}${c.source === "bot" ? `@${esc(c.handle)}'s bot · runs on Chainlink CRE` : `@${esc(c.handle)}'s AI agent · confirmed by them`}</span>${c.note ? `<span class="md" style="color:#D1FAE5;line-height:1.45">${esc(c.note)}</span>` : ""}</div>` : c.note ? `<div class="md" style="color:#D4D4D4;line-height:1.45">${esc(c.note)}</div>` : ""}
-<div class="row sp" style="align-items:flex-end"><div><div class="mut" style="font-size:13px">${verb}</div><div style="font-size:22px;font-weight:600;letter-spacing:-.01em">${esc(c.symbol)}</div></div>
+<div class="row sp" style="align-items:flex-end"><a href="/t/${c.id}" style="color:inherit"><div class="mut" style="font-size:13px">${verb}</div><div style="font-size:22px;font-weight:600;letter-spacing:-.01em">${esc(c.symbol)}</div></a>
 ${big ? `<div style="text-align:right"><div class="${signCls(big.v)}" style="font-size:${closing ? 26 : 22}px;font-weight:600">${pct(big.v)}</div><div class="xs mut">${big.label}</div></div>` : ""}</div>
 ${ladder(c)}
-<div class="row" style="padding:9px 10px;border-radius:12px;background:#0F0F0F;border:1px solid rgba(255,255,255,.05)"><span class="pill flash">${icon("bolt", 11)}${esc(c.orderLabel)}</span><span class="grow sm" style="color:#D4D4D4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.detail)}</span></div>
+${orderStrip(c)}
 ${twap ? `<div><div class="row sp sm mut"><span>TWAP</span><span style="color:#F5F5F5">${c.trade.twapBucketCount ?? "?"} slices</span></div><div class="bar" style="margin-top:6px"><i style="width:100%"></i></div></div>` : ""}
 ${paused ? `<div class="grid3"><div class="tile"><div class="k">Risk score</div><div class="v down">${c.risk}</div></div><div class="tile"><div class="k">Copies</div><div class="v">${c.copiers}</div></div><div class="tile"><div class="k">Status</div><div class="v down">Paused</div></div></div>` : ""}
 <div class="row">
 ${reactBar(c.id, viewer)}
-<a class="chip" href="/thread/${c.id}" aria-label="${c.comments} comments">${icon("chat", 14, "currentColor", 2)}${c.comments}</a>
+${onPage ? `<button type="button" class="chip" data-open="comments" aria-label="${c.comments} comments">${icon("chat", 14, "currentColor", 2)}${c.comments}</button>` : `<a class="chip" href="/t/${c.id}#comments" aria-label="${c.comments} comments">${icon("chat", 14, "currentColor", 2)}${c.comments}</a>`}
 <a class="chip askcat" href="/cat/chat?new=1&trade=${c.id}&q=${encodeURIComponent(c.trade.side === "buy" ? "Is this a good trade?" : "Show their track record")}" aria-label="Ask Cat about this trade"><span class="orb" aria-hidden="true"><i></i></span>Ask Cat</a>
 ${own && !c.copiers ? '<span class="grow"></span>' : copiedBy(c)}</div>
-<div style="display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px">
-${own ? `<a class="btn" href="/u/${esc(c.handle)}">Your trade</a>` : paused ? `<a class="btn" href="/cat/chat?new=1&q=${encodeURIComponent("why was @" + c.handle + " paused?")}">${icon("cat", 15, "currentColor", 1.9)}Ask Cat why</a>` : copying ? `<a class="btn" href="/traders">Copying · manage</a>` : `<a class="btn p" href="/copy/${esc(c.handle)}">${icon("bolt", 14)}Copy with Flash</a>`}
-<a class="btn" style="padding:0" href="/s/${c.id}" aria-label="Share">${icon("share", 16, "currentColor", 2)}</a></div></article>`;
+${onPage ? "" : `<div style="display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px">
+${own ? `<a class="btn" href="/u/${esc(c.handle)}">Your trade</a>` : paused ? `<a class="btn" href="/cat/chat?new=1&q=${encodeURIComponent("why was @" + c.handle + " paused?")}">${icon("cat", 15, "currentColor", 1.9)}Ask Cat why</a>` : copying ? `<a class="btn" href="/traders">Copying · manage</a>` : c.trade.side === "buy" ? `<a class="btn p" href="/t/${c.id}#copy">${icon("bolt", 14)}Copy with Flash</a>` : `<button class="btn" data-act="/api/watch" data-body='{"leader":"${esc(c.handle)}"}'>Follow @${esc(c.handle)}</button>`}
+<a class="btn" style="padding:0" href="/t/${c.id}#share" aria-label="Share">${icon("share", 16, "currentColor", 2)}</a></div>`}</article>`;
 }
 
 // ---------- Social and game layer ----------

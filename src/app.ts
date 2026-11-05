@@ -1,36 +1,44 @@
 import express, { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
+import { getAddress } from "viem";
 import { catAsk, catConfirm } from "./cat.js";
 import { handleEntry } from "./research.js";
-import { consumeLogin, currentUser, makeLoginToken, makeSession } from "./auth.js";
-import { copyOne, execute, mirror, type PendingNotice } from "./copy.js";
+import { clearSignupTicket, consumeLogin, createSession, currentSession, currentUser, endSession, isAgent, makeLoginToken, revealOnce, revokeSession, revokeSessions, signupTicketOf, startSession } from "./auth.js";
+import { linkWallet, userByWallet } from "./wallet-api.js";
+import { userByPrivy } from "./privy-api.js";
+import { copyOne, execute, mirror, mirrorStopMove, type PendingNotice } from "./copy.js";
 import { activeHtml, briefHtml, deckCards, deckLive, deckPage, deckTab } from "./views/deck.js";
 import { publicSignalPage, signalCommentHtml, signalsPage, signalTab } from "./views/signals.js";
 import { addSignalComment, postSignal, setSignalReaction, signalById, signalComments, signalExists } from "./signals.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
 import {
-  addComment, addLedger, addRule, deleteRule, voteMsg, wipeCat, createSquad, joinSquad, leaveSquad, squadOf, claimQuest, addStrategy, claimPending, commentsOf, createWebUser, db, DEFAULT_RULES, getFollowRules, getMeta, getUser, ledgerOf, recordTrade, setFollow, setHandle, setMeta,
+  addComment, addLedger, addRule, chatById, deleteRule, mainChatOf, setChatState, voteMsg, wipeCat, createSquad, joinSquad, leaveSquad, squadOf, claimQuest, addStrategy, claimPending, commentsOf, createWebUser, db, DEFAULT_RULES, getFollowRules, getMeta, getUser, ledgerOf, recordTrade, setFollow, setHandle, setMeta,
   setStrategyPublic, setReaction, tradeById, unfollow, userByHandle, userById, type Meta, allHalts, followingOf, haltOf, handleOk, isWatching, setWatch, recordSwipe,
 } from "./db.js";
 import { openPositions, portfolio, profile, symOf, topTraders, tradeCard } from "./data.js";
 import { lastOracleCheck } from "./guard.js";
-import { placeAndTrack, isDry, heldTokens, cancelProtective } from "./tracker.js";
-import { updateTrigger, type Trade } from "./flash.js";
+import { placeAndTrack, isDry, heldTokens, cancelProtective, moveStop } from "./tracker.js";
+import type { Trade } from "./flash.js";
 import { RISK_LINE } from "./rules.js";
 import { creatorEarnings, activityCsv, activityPage, alertsPage, creatorPage, fundsPage, mePage, newStrategyPage, seasonPage, settingsPage, transferPage } from "./views/me.js";
 import { onboardingPage, introPage, splashPage } from "./views/auth.js";
 import { guardPage, ranksPage } from "./views/social.js";
-import { catChatPage, catHomePage, catMemoryPage, catVoicePage, ctxBarHtml } from "./views/cat.js";
+import { catChatPage, catMemoryPage, catVoicePage, ctxBarHtml } from "./views/cat.js";
 import { svgToPng, storySvg, copyPage, myTradersPage, ogSvg, positionsPage, profilePage, publicPage, requestsPage, sharePage, simulateCopy, threadPage, commentHtml } from "./views/trader.js";
 import { esc, icon, notFound, page, SIDE_JS } from "./ui.js";
 import { finalize } from "./views/chrome.js";
+import { tradePage } from "./views/tradepage.js";
+import { transcribe } from "./transcribe.js";
 import { botPage, profileEditPage } from "./views/profile.js";
 import { landingPage, portfolioPage, signinPage, topPage, topSvg } from "./views/web.js";
 import { badgesPage, levelUpPage, progressPage, squadPage } from "./views/game.js";
 import { questsOf, traderStats } from "./stats.js";
 import { BEATS, runBeat } from "./director.js";
 import { getPrice } from "./prices.js";
+
+/** Accounts without a wallet: only for the test suite (ALLOW_PLAIN_SIGNUP=1). The seeded demo viewer uses /demo. */
+const plainSignupAllowed = () => process.env.ALLOW_PLAIN_SIGNUP === "1";
 
 const BOT = () => process.env.BOT_USERNAME ?? "TribeTradeBot";
 
@@ -62,10 +70,10 @@ export function appRouter(): Router {
   };
   const me = (req: Request) => currentUser(req);
 
-  /** Page route that needs a session; otherwise sends the visitor to the splash. */
+  /** Page route that needs a session; otherwise sends the visitor to sign-in. */
   const authed = (fn: (uid: number, req: Request, res: Response) => Promise<string> | string) => async (req: Request, res: Response) => {
     const uid = me(req);
-    if (uid === undefined) return res.redirect("/splash");
+    if (uid === undefined) return res.redirect("/signin");
     try {
       html(res, await fn(uid, req, res));
     } catch (e) {
@@ -76,7 +84,7 @@ export function appRouter(): Router {
   /** JSON action that needs a session. */
   const act = (fn: (uid: number, req: Request, res: Response) => Promise<unknown> | unknown) => async (req: Request, res: Response) => {
     const uid = me(req);
-    if (uid === undefined) return res.status(401).json({ error: "Sign in first", redirect: "/splash" });
+    if (uid === undefined) return res.status(401).json({ error: "Sign in first", redirect: "/signin" });
     try {
       res.json((await fn(uid, req, res)) ?? { ok: true });
     } catch (e) {
@@ -88,17 +96,33 @@ export function appRouter(): Router {
   r.get("/", (req, res) => (me(req) === undefined ? html(res, landingPage()) : res.redirect("/feed")));
   r.get("/signin", (_q, res) => html(res, signinPage(process.env.DEMO === "true")));
   r.get("/portfolio", authed((uid) => portfolioPage(uid)));
-  r.get("/splash", (req, res) => (me(req) !== undefined ? res.redirect("/feed") : html(res, splashPage())));
-  r.get("/intro", (_q, res) => html(res, introPage()));
-  r.get("/onboarding", (req, res) => html(res, onboardingPage(process.env.DEMO === "true" || isDry(), req.query.retake === "1", String(req.query.follow ?? ""))));
-  r.get("/login", (req, res) => (consumeLogin(String(req.query.t ?? ""), res) !== undefined ? res.redirect("/feed") : html(res, notFound("Link expired. Send /web to the bot for a new one."), 400)));
+  // New accounts see the splash and the intro right after sign-up, then land on `next` (the feed, or the trader they
+  // came to copy). Signed out, the intro ends at sign-in.
+  const nextOf = (req: Request) => {
+    const n = String(req.query.next ?? "");
+    return n.startsWith("/") && !n.startsWith("//") ? n : "/feed";
+  };
+  r.get("/splash", (req, res) => html(res, splashPage(nextOf(req))));
+  r.get("/intro", (req, res) => html(res, introPage(me(req) !== undefined ? nextOf(req) : "/signin")));
+  r.get("/onboarding", (req, res) => {
+    // Sign-up only: signed-in users are done, and a new account starts by signing in with a wallet.
+    if (me(req) !== undefined) return res.redirect("/feed");
+    const t = signupTicketOf(req);
+    if (!t && !plainSignupAllowed()) return res.redirect("/signin");
+    html(res, onboardingPage(t?.wallet && getAddress(t.wallet), String(req.query.follow ?? "")));
+  });
+  // Old Telegram sign-in links: sign-in is wallet-only now (demo mode keeps them for the seeded Telegram users).
+  r.get("/login", (req, res) => {
+    if (process.env.DEMO !== "true") return res.redirect("/signin");
+    consumeLogin(String(req.query.t ?? ""), res, req) !== undefined ? res.redirect("/feed") : html(res, notFound("This sign-in link has expired or was already used."), 400);
+  });
 
   // Demo shortcut: sign in as the seeded viewer.
   if (process.env.DEMO === "true") {
-    r.get("/demo", (_q, res) => {
+    r.get("/demo", (req, res) => {
       const u = userByHandle("you");
       if (!u) return res.status(404).send("Run npm run seed first");
-      res.setHeader("Set-Cookie", `tribe=${makeSession(u.id)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}`);
+      startSession(res, u.id, req);
       res.redirect("/feed");
     });
   }
@@ -138,8 +162,10 @@ export function appRouter(): Router {
   r.get("/positions", authed((uid, req) => positionsPage(uid, String(req.query.tab ?? "open"))));
   r.get("/traders", authed((uid) => myTradersPage(uid)));
   r.get("/guard", authed((uid) => guardPage(uid)));
-  r.get("/cat", authed((uid) => catHomePage(uid)));
-  r.get("/cat/chat", authed((uid, req) => catChatPage(uid, req.query.id ? Number(req.query.id) : undefined, String(req.query.q ?? ""), req.query.trade ? Number(req.query.trade) : undefined)));
+  // Cat is one continuous chat; /cat and /cat/chat both open it (?trade= pins a trade, ?q= asks something).
+  const catChat = authed((uid, req) => catChatPage(uid, String(req.query.q ?? ""), req.query.trade ? Number(req.query.trade) : undefined));
+  r.get("/cat", catChat);
+  r.get("/cat/chat", catChat);
   r.get("/profile/edit", authed((uid) => profileEditPage(uid)));
   r.get("/bot", authed((uid) => botPage(uid)));
   r.get("/cat/ctxbar/:id", authed((uid, req) => ctxBarHtml(uid, Number(req.params.id))));
@@ -154,19 +180,25 @@ export function appRouter(): Router {
   r.get("/squads", authed((uid, req) => squadPage(uid, "find", String(req.query.q ?? ""))));
   r.get("/levelup", authed((uid) => levelUpPage(uid)));
   r.get("/me", authed((uid) => mePage(uid)));
-  r.get("/settings", authed((uid) => settingsPage(uid)));
+  r.get("/settings", authed((uid, req) => settingsPage(uid, currentSession(req)?.id)));
   r.get("/funds", authed((uid, req) => fundsPage(uid, String(req.query.tab ?? "add"))));
   r.get("/transfer", authed((uid, req) => transferPage(uid, String(req.query.dir ?? "add"), String(req.query.m ?? ""))));
   r.get("/activity", authed((uid, req) => activityPage(uid, String(req.query.tab ?? "All"))));
   r.get("/activity.csv", (req, res) => {
     const uid = me(req);
-    if (uid === undefined) return res.redirect("/splash");
+    if (uid === undefined) return res.redirect("/signin");
     res.type("text/csv").attachment("activity.csv").send(activityCsv(uid, String(req.query.tab ?? "All")));
   });
   r.get("/alerts", authed((uid) => alertsPage(uid, uid < 1e10 ? null : `https://t.me/${BOT()}?start=link_${makeLoginToken(uid)}`, BOT())));
   r.get("/creator", authed((uid) => creatorPage(uid)));
   r.get("/strategy/new", authed((uid) => newStrategyPage(uid)));
-  r.get("/thread/:id", authed((uid, req) => threadPage(uid, Number(req.params.id))));
+  // Every trade has one page, open to anyone: /t/<id>. The older thread and share links forward to it.
+  r.get("/t/:id", async (req, res) => {
+    const id = Number(req.params.id);
+    if (!(await tradeCard(id))) return html(res, notFound("Trade not found"), 404);
+    html(res, await tradePage(id, me(req)));
+  });
+  r.get("/thread/:id", (req, res) => res.redirect(301, `/t/${Number(req.params.id)}#comments`));
   r.get("/share/:who", authed((uid, req) => sharePage(uid, req.params.who)));
   r.get("/top", (req, res) => html(res, topPage(me(req) !== undefined)));
   r.get("/og/top.png", (_q, res) => res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(topSvg())));
@@ -176,12 +208,7 @@ export function appRouter(): Router {
     if (!sig) return html(res, notFound("Signal not found"), 404);
     html(res, await publicSignalPage(sig, me(req)));
   });
-  r.get("/s/:id", async (req, res) => {
-    const t = await tradeCard(Number(req.params.id));
-    if (!t) return html(res, notFound("Trade not found"), 404);
-    const uid = me(req);
-    html(res, uid === undefined ? await publicPage(t.handle, t.id) : await sharePage(uid, t.handle, t.id));
-  });
+  r.get("/s/:id", (req, res) => res.redirect(301, `/t/${Number(req.params.id)}`));
   r.get("/og/u/:handle.svg", async (req, res) => {
     const s = await ogSvg(req.params.handle);
     s ? res.type("image/svg+xml").send(s) : res.sendStatus(404);
@@ -283,15 +310,28 @@ export function appRouter(): Router {
 
   r.post("/api/signup", json, (req, res) => {
     const b = req.body as { handle?: string; avatar?: number; persona?: string; follow?: string };
-    const persona = PERSONA[String(b.persona)] ? String(b.persona) : "Hodler";
-    const u = createWebUser(String(b.handle ?? ""), Number(b.avatar) || 0, persona);
-    if (!u) return res.status(400).json({ error: "That handle is taken or invalid." });
-    const p = PERSONA[persona];
+    // New accounts: a wallet signed in through Privy (the sign-up ticket carries it), and the username is picked here.
+    // Only the test suite creates plain accounts with a practice wallet.
+    const t = signupTicketOf(req);
+    if (!plainSignupAllowed()) {
+      if (!t) return res.status(400).json({ error: "Sign in with your wallet first.", redirect: "/signin" });
+      if (!t.wallet) return res.status(400).json({ error: "Connect your wallet first." });
+      if (userByPrivy(t.privy) !== undefined) return res.status(400).json({ error: "You already have an account. Sign in instead.", redirect: "/signin" });
+      if (userByWallet(t.wallet) !== undefined) return res.status(400).json({ error: "That wallet already belongs to another account. Connect a different one." });
+    }
+    // No risk quiz: balanced starting limits, changed any time in Settings or per trader.
+    const persona = PERSONA[String(b.persona)] ? String(b.persona) : undefined;
+    const u = createWebUser(String(b.handle ?? ""), Number(b.avatar) || 0, persona ?? null);
+    if (!u) return res.status(400).json({ error: "That username is taken or invalid." });
+    const p = PERSONA[persona ?? "Hodler"];
     setMeta(u.id, { defaults: { mode: "ask", max: p.max, cap: p.cap, stop: p.stop, chase: 1 }, strict: p.strict, permUntil: Date.now() + 30 * 86400e3, simBalance: isDry() ? 1000 : 0 });
     if (isDry()) addLedger(u.id, "deposit", 1000, "Demo credit (simulated USDC)");
-    res.setHeader("Set-Cookie", `tribe=${makeSession(u.id)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}`);
+    if (t) db.prepare("UPDATE users SET privy_user_id = ? WHERE id = ?").run(t.privy, u.id);
+    if (t?.wallet) linkWallet(u.id, t.wallet);
+    const session = startSession(res, u.id, req);
+    if (t) res.setHeader("Set-Cookie", [session, clearSignupTicket]);
     const f = b.follow && userByHandle(b.follow) ? `/copy/${userByHandle(b.follow)!.handle}` : "/feed";
-    res.json({ redirect: f });
+    res.json({ redirect: `/splash?next=${encodeURIComponent(f)}` }); // first time: splash and intro, then the app
   });
 
   r.post("/api/persona", json, act((uid, req) => {
@@ -302,15 +342,43 @@ export function appRouter(): Router {
     return { redirect: "/me", toast: `You're a ${persona}. Defaults updated.` };
   }));
 
-  r.post("/api/signout", json, (_q, res) => res.setHeader("Set-Cookie", "tribe=; Path=/; Max-Age=0").json({ redirect: "/splash" }));
-  r.post("/api/delete-account", json, act((uid, _req, res) => {
+  r.post("/api/signout", json, (req, res) => {
+    endSession(req, res);
+    res.json({ redirect: "/signin?out=1" }); // the sign-in page also ends the Privy wallet session
+  });
+
+  // ---- Signed-in devices and AI agent tokens (Settings). An agent token can't mint, list or revoke access. ----
+  const ownerOnly = (fn: (uid: number, req: Request, res: Response) => unknown) =>
+    act((uid, req, res) => {
+      if (isAgent(req)) throw new Error("Agent tokens can't manage account access. Use the app.");
+      return fn(uid, req, res);
+    });
+  r.post("/api/sessions/revoke", json, ownerOnly((uid, req) => {
+    if (!revokeSession(uid, String(req.body?.id))) throw new Error("That device is already signed out");
+    return { reload: true, toast: "Signed out that device" };
+  }));
+  r.post("/api/sessions/revoke-others", json, ownerOnly((uid, req) => {
+    const n = revokeSessions(uid, { kind: "web", except: currentSession(req)!.id });
+    return { reload: true, toast: n ? `Signed out ${n} other device${n === 1 ? "" : "s"}` : "No other devices were signed in" };
+  }));
+  r.post("/api/agent-tokens", json, ownerOnly((uid, req) => {
+    const name = String(req.body?.name ?? "").trim().slice(0, 40) || "My agent";
+    revealOnce(uid, createSession(uid, "agent", { name, req }));
+    return { reload: true, toast: "Token created. Copy it now: it's shown only once." };
+  }));
+  r.post("/api/agent-tokens/revoke", json, ownerOnly((uid, req) => {
+    if (!revokeSession(uid, String(req.body?.id))) throw new Error("That token is already revoked");
+    return { reload: true, toast: "Token revoked. Agents using it are signed out." };
+  }));
+  r.post("/api/delete-account", json, ownerOnly((uid, _req, res) => {
     for (const sql of ["DELETE FROM follows WHERE follower = ? OR leader = ?", "DELETE FROM pending_copies WHERE follower = ?", "DELETE FROM strategies WHERE owner = ?"]) {
       const n = (sql.match(/\?/g) ?? []).length;
       db.prepare(sql).run(...Array(n).fill(uid));
     }
     db.prepare("UPDATE users SET handle = ? WHERE id = ?").run(`deleted_${uid}`, uid);
+    revokeSessions(uid); // every browser and agent token
     res.setHeader("Set-Cookie", "tribe=; Path=/; Max-Age=0");
-    return { redirect: "/splash" };
+    return { redirect: "/signin" };
   }));
   r.post("/api/handle", express.urlencoded({ extended: false }), json, act((uid, req) => {
     const why = handleOk(String(req.body.handle ?? ""), uid);
@@ -352,9 +420,13 @@ export function appRouter(): Router {
     const lu = userByHandle(String(b.leader ?? ""));
     if (!lu || lu.id === uid) throw new Error("Trader not found");
     getUser(uid);
-    const mode = b.mode === "auto" ? "auto" : "ask";
+    // MetaMask users approve every copy themselves: Tribe can't sign for their wallet, so there's no auto mode.
+    const mode = b.mode === "auto" && getUser(uid).wallet_kind !== "external" ? "auto" : "ask";
     setFollow(uid, lu.id, {
       mode, ratio: num(b.ratio, 1), budgetUsd: num(b.budget, 250), maxUsdPerTrade: num(b.max, 25), dailyCapUsd: num(b.cap, 100), requireStop: String(b.stop) === "1" || b.stop === true, paused: false,
+      // Callers that don't send these (the MCP tool) keep what the follower set.
+      ...(b.stopPct !== undefined ? { stopPct: Math.min(50, Math.max(0, num(b.stopPct, 0))) || undefined } : {}),
+      ...(b.close !== undefined ? { closeOnPause: String(b.close) === "1" || b.close === true } : {}),
     });
     if (mode === "auto") setMeta(uid, { perm: true, permUntil: Date.now() + 30 * 86400e3 });
     return { redirect: `/copy/${lu.handle}?done=1` };
@@ -384,7 +456,8 @@ export function appRouter(): Router {
     if (!c) return { redirect: "/requests", toast: "That request already expired or was handled" };
     const back = typeof req.body.back === "string" && req.body.back.startsWith("/") ? req.body.back : undefined;
     if (action !== "approve") return { redirect: back ?? "/requests?result=skipped" };
-    if (always) setFollow(uid, c.leader, { mode: "auto" });
+    // "Always copy" switches to auto, which only works where Tribe can sign: never for the user's own wallet.
+    if (always && getUser(uid).wallet_kind !== "external") setFollow(uid, c.leader, { mode: "auto" });
     const out = await execute(c.tradeId, uid, c.leader, c.trade);
     if (back && !out.startsWith("failed")) return { redirect: back, toast: "Copied" };
     if (out.startsWith("failed")) return { redirect: `/requests?result=${/free balance/i.test(out) ? "insufficient" : "failed"}&msg=${encodeURIComponent(out.replace("failed: ", ""))}` };
@@ -410,28 +483,10 @@ export function appRouter(): Router {
     if (!p || p.qty <= 0) throw new Error("No open position");
     const price = (p.cost / p.qty) * (1 - pct / 100);
     if (price >= (await getPrice(token))) throw new Error("That stop is above the current price, so it would fire at once. Pick a lower one.");
-    const open = db.prepare("SELECT id, order_id, trade, sim FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss') ORDER BY id DESC LIMIT 1").get(uid, token) as { id: number; order_id: string; trade: string; sim: number } | undefined;
-    if (open && !open.sim) {
-      const t = JSON.parse(open.trade) as Trade;
-      if (t.orderType === "stop-loss") {
-        await updateTrigger(open.order_id, getUser(uid).pk, "lower", price.toFixed(2));
-        t.triggers = [{ notionalPrice: price.toFixed(2), triggerType: "lower" }];
-        db.prepare("UPDATE orders SET trade = ? WHERE id = ?").run(JSON.stringify(t), open.id);
-      } else {
-        // Flash can't update a bracket: cancel it and place a new one with the same target and the new stop.
-        await cancelProtective(uid, token);
-        t.triggers = (t.triggers ?? []).filter((x) => x.triggerType !== "lower").concat({ notionalPrice: price.toFixed(2), triggerType: "lower" });
-        await placeAndTrack(0, uid, uid, "own", { ...t, qty: String(p.qty) });
-      }
-    } else if (open) {
-      const t = JSON.parse(open.trade) as Trade;
-      t.triggers = (t.triggers ?? []).filter((x) => x.triggerType !== "lower").concat({ notionalPrice: price.toFixed(2), triggerType: "lower" });
-      db.prepare("UPDATE orders SET trade = ? WHERE id = ?").run(JSON.stringify(t), open.id);
-    } else {
-      const t: Trade = { chain: "base", target: token, contra: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", side: "sell", qty: String(p.qty), orderType: "stop-loss", triggers: [{ notionalPrice: price.toFixed(2), triggerType: "lower" }] };
-      await placeAndTrack(0, uid, uid, "own", t);
-    }
-    return { reload: true, toast: `Stop moved to −${pct}%` };
+    await moveStop(uid, token, price, p.qty);
+    // Copiers' stops on this token follow it up, never down.
+    const raised = await mirrorStopMove(uid, token, price);
+    return { reload: true, toast: `Stop moved to −${pct}%${raised ? ` · raised for ${raised} copier${raised === 1 ? "" : "s"}` : ""}` };
   }));
 
   // ---- Social ----
@@ -519,6 +574,20 @@ export function appRouter(): Router {
   r.post("/api/cat/ask", json, act((uid, req) => catAsk(uid, String(req.body?.text ?? ""), { chatId: req.body?.chat ? Number(req.body.chat) : undefined, source: "App", live: req.body?.live !== false, trade: req.body?.trade ? Number(req.body.trade) : req.body?.handle ? handleEntry(String(req.body.handle)) : undefined })));
   // A Bearer token means the user's AI agent (the MCP server) confirmed it: the trade is theirs, tagged Bot.
   r.post("/api/cat/confirm", json, act((uid, req) => catConfirm(uid, String(req.body?.id), (p, l) => notifier?.(p, l), req.headers.authorization?.startsWith("Bearer ") ? "agent" : "user")));
+  // The chat's mic: a short WAV recorded in the browser, transcribed on the server (works in every browser).
+  r.post("/api/cat/transcribe", express.json({ limit: "6mb" }), act(async (_uid, req) => {
+    const audio = String(req.body?.audio ?? "");
+    if (!audio || audio.length > 6_000_000) throw new Error("That recording is empty or too long. Keep it under a minute.");
+    return { text: await transcribe(audio) };
+  }));
+  // Back to general questions: the chat stops being about the pinned trade.
+  r.post("/api/cat/unpin", json, act((uid) => {
+    const id = mainChatOf(uid);
+    const state = JSON.parse(chatById(id, uid)?.state || "{}") as { trade?: number };
+    delete state.trade;
+    setChatState(id, state);
+    return { ok: true };
+  }));
   r.post("/api/cat/vote", json, act((uid, req) => { voteMsg(Number(req.body.msg), uid, Math.max(-1, Math.min(1, Number(req.body.vote) || 0))); }));
   r.post("/api/cat/persona", json, act((uid, req) => {
     if (!["Sharp", "Chill", "Degen"].includes(String(req.body.persona))) throw new Error("Unknown personality");

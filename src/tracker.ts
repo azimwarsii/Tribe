@@ -1,6 +1,7 @@
 import { db, getMeta, getUser, setMeta } from "./db.js";
-import { cancelOrder, cancelOrders, closeReasonText, getOrder, placeOrder, type FlashOrderInfo, type Trade } from "./flash.js";
+import { cancelOrder, cancelOrders, closeReasonText, getOrder, placeOrder, updateTrigger, type FlashOrderInfo, type Trade } from "./flash.js";
 import { getPrice } from "./prices.js";
+import { signerOf } from "./wallet.js";
 import { totalPnlPct } from "./stats.js";
 
 export const isDry = () => process.env.DRY_RUN !== "false";
@@ -31,7 +32,7 @@ const ENTRY = new Set(["market", "twap", "limit"]);
 async function placeLive(trader: number, trade: Trade) {
   const u = getUser(trader);
   const slip = parseFloat(getMeta(trader).slip) / 100; // "0.5%" -> 0.005
-  return placeOrder(trade, u.address, u.pk, Number.isFinite(slip) ? String(slip) : undefined, { tight: getMeta(trader).tightApprovals });
+  return placeOrder(trade, u.address, signerOf(trader), Number.isFinite(slip) ? String(slip) : undefined, { tight: getMeta(trader).tightApprovals });
 }
 
 /** The bracket an attached take-profit / stop-loss becomes once its entry has filled `tokens`. */
@@ -214,7 +215,7 @@ export async function cancelFollowerCopies(tradeId: number) {
   for (const [follower, list] of byFollower) {
     const live = list.filter((r) => !r.sim && r.order_id && r.order_id !== "waiting").map((r) => r.order_id!);
     try {
-      if (live.length) await cancelOrders(live, getUser(follower).pk);
+      if (live.length) await cancelOrders(live, signerOf(follower));
     } catch (e) {
       console.error(`cancel copies of trade ${tradeId} for ${follower}:`, (e as Error).message);
       continue; // leave them open; the next sweep retries
@@ -229,10 +230,57 @@ export async function cancelProtective(trader: number, token: string) {
   const open = db.prepare("SELECT id, order_id, sim FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit')").all(trader, token) as unknown as { id: number; order_id: string; sim: number }[];
   const live = open.filter((o) => !o.sim).map((o) => o.order_id);
   // One signature for all of them (Flash batch cancel); a single order uses the plain cancel.
-  if (live.length === 1) await cancelOrder(live[0], getUser(trader).pk);
-  else if (live.length > 1) await cancelOrders(live, getUser(trader).pk);
+  if (live.length === 1) await cancelOrder(live[0], signerOf(trader));
+  else if (live.length > 1) await cancelOrders(live, signerOf(trader));
   for (const o of open) db.prepare("UPDATE orders SET status = 'closed', close_reason = 'CANCELLED_BY_USER' WHERE id = ?").run(o.id);
   return open.length;
+}
+
+const PROTECTIVE_SQL = "json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit')";
+
+/** Cancel the protective orders (open or waiting for their entry) that came from copying one leader on a token. */
+export async function cancelCopiedProtective(follower: number, leader: number, token: string) {
+  const rows = db.prepare(`SELECT id, order_id, sim FROM orders WHERE trader = ? AND leader = ? AND role = 'copy' AND status IN ('open','waiting') AND lower(json_extract(trade, '$.target')) = lower(?) AND ${PROTECTIVE_SQL}`).all(follower, leader, token) as unknown as { id: number; order_id: string | null; sim: number }[];
+  const live = rows.filter((r) => !r.sim && r.order_id && r.order_id !== "waiting").map((r) => r.order_id!);
+  if (live.length === 1) await cancelOrder(live[0], signerOf(follower));
+  else if (live.length > 1) await cancelOrders(live, signerOf(follower));
+  for (const r of rows) db.prepare("UPDATE orders SET status = 'closed', close_reason = 'CANCELLED_BY_USER' WHERE id = ?").run(r.id);
+  return rows.length;
+}
+
+/** A trader's current stop price on a token: the lower trigger of their newest open or waiting bracket or stop-loss. */
+export function stopOf(trader: number, token: string): number | undefined {
+  const o = db.prepare("SELECT trade FROM orders WHERE trader = ? AND status IN ('open','waiting') AND lower(json_extract(trade, '$.target')) = lower(?) AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss') ORDER BY id DESC LIMIT 1").get(trader, token) as { trade: string } | undefined;
+  const lower = o && (JSON.parse(o.trade) as Trade).triggers?.find((x) => x.triggerType === "lower");
+  return lower ? Number(lower.notionalPrice) : undefined;
+}
+
+/**
+ * Move a trader's stop on a token to `price` for `qty` tokens: a gasless Flash update for a stop-loss, a cancel and
+ * re-place for a bracket (Flash can't update one), or a new stop-loss when there is none.
+ */
+export async function moveStop(trader: number, token: string, price: number, qty: number, leader = trader, role: "own" | "copy" = "own") {
+  const at = price.toFixed(2);
+  const open = db.prepare("SELECT id, order_id, trade, sim FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss') ORDER BY id DESC LIMIT 1").get(trader, token) as { id: number; order_id: string; trade: string; sim: number } | undefined;
+  if (open && !open.sim) {
+    const t = JSON.parse(open.trade) as Trade;
+    if (t.orderType === "stop-loss") {
+      await updateTrigger(open.order_id, signerOf(trader), "lower", at);
+      t.triggers = [{ notionalPrice: at, triggerType: "lower" }];
+      db.prepare("UPDATE orders SET trade = ? WHERE id = ?").run(JSON.stringify(t), open.id);
+    } else {
+      await cancelProtective(trader, token);
+      t.triggers = (t.triggers ?? []).filter((x) => x.triggerType !== "lower").concat({ notionalPrice: at, triggerType: "lower" });
+      await placeAndTrack(0, trader, leader, role, { ...t, qty: String(qty) });
+    }
+  } else if (open) {
+    const t = JSON.parse(open.trade) as Trade;
+    t.triggers = (t.triggers ?? []).filter((x) => x.triggerType !== "lower").concat({ notionalPrice: at, triggerType: "lower" });
+    db.prepare("UPDATE orders SET trade = ? WHERE id = ?").run(JSON.stringify(t), open.id);
+  } else {
+    const t: Trade = { chain: "base", target: token, contra: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", side: "sell", qty: String(qty), orderType: "stop-loss", triggers: [{ notionalPrice: at, triggerType: "lower" }] };
+    await placeAndTrack(0, trader, leader, role, t);
+  }
 }
 
 /** Record each trader's PnL% so drawdown can be computed for the leaderboard and CopyGuard. */

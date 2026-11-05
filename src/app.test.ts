@@ -238,3 +238,94 @@ test("chase limit: a copy after the price ran away becomes a 30-minute limit at 
   assert.ok(tracker.heldTokens(fol, WETH) > 0, "the limit filled once the price came back");
   price = 2000;
 });
+
+test("own stop: a copy without a stop gets the follower's; a leader's bracket keeps the safer stop", async () => {
+  price = 2000;
+  const [lead, eight, none, three] = [301, 302, 303, 304];
+  for (const id of [lead, eight, none, three]) { db.getUser(id); db.setMeta(id, { simBalance: 1000, perm: true }); }
+  db.setFollow(eight, lead, { mode: "auto", stopPct: 8 });
+  db.setFollow(none, lead, { mode: "auto" });
+  db.setFollow(three, lead, { mode: "auto", stopPct: 3 });
+  const stops = (trader: number, type: string) => db.db.prepare("SELECT trade, status FROM orders WHERE trader = ? AND json_extract(trade,'$.orderType') = ?").all(trader, type) as { trade: string; status: string }[];
+  await copy.mirror(lead, parse.parseTrade(["buy", "ETH", "100"]));
+  const [own] = stops(eight, "stop-loss");
+  assert.equal(own.status, "open");
+  assert.deepEqual(JSON.parse(own.trade).triggers, [{ notionalPrice: "1840.00", triggerType: "lower" }]);
+  assert.equal(Number(JSON.parse(own.trade).qty).toFixed(6), (50 / 2000).toFixed(6)); // the $50 copy, not more
+  assert.equal(stops(none, "stop-loss").length, 0);
+  await copy.mirror(lead, parse.parseTrade(["long", "ETH", "100", "2300", "1900"]));
+  const sl = (trader: number) => JSON.parse(stops(trader, "bracket")[0].trade).triggers.map((x: { notionalPrice: string }) => x.notionalPrice);
+  assert.deepEqual(sl(eight), ["2300", "1900"]); // the leader's 5% stop is safer than 8%
+  assert.deepEqual(sl(three), ["2300", "1940.00"]); // 3% is safer than the leader's
+  // The follower's own stop fires on a drop and sells only that copy.
+  price = 1830;
+  await tracker.pollOrders();
+  assert.equal(stops(eight, "stop-loss")[0].status, "filled");
+  price = 2000;
+});
+
+test("a leader raising their stop raises copiers' stops, never lowers them", async () => {
+  price = 2000;
+  const [lead, fol] = [311, 312];
+  for (const id of [lead, fol]) { db.getUser(id); db.setMeta(id, { simBalance: 1000, perm: true }); }
+  db.setFollow(fol, lead, { mode: "auto" });
+  await copy.mirror(lead, parse.parseTrade(["long", "ETH", "100", "2300", "1900"]));
+  await tracker.moveStop(lead, WETH, 1950, tracker.heldTokens(lead, WETH));
+  assert.equal(await copy.mirrorStopMove(lead, WETH, 1950), 1);
+  assert.equal(tracker.stopOf(fol, WETH), 1950);
+  assert.equal(await copy.mirrorStopMove(lead, WETH, 1920), 0); // lower than theirs: left alone
+  assert.equal(tracker.stopOf(fol, WETH), 1950);
+  assert.equal(await copy.mirrorStopMove(lead, WETH, 2050), 0); // above the price: would fire at once
+});
+
+test("a CopyGuard pause sells what opted-in copiers copied from that trader, and nothing else", async () => {
+  price = 2000;
+  const [lead, other, optIn, optOut] = [321, 324, 322, 323];
+  for (const id of [lead, other, optIn, optOut]) { db.getUser(id); db.setMeta(id, { simBalance: 1000, perm: true }); }
+  db.setFollow(optIn, lead, { mode: "auto", closeOnPause: true });
+  db.setFollow(optOut, lead, { mode: "auto" });
+  db.setFollow(optIn, other, { mode: "auto" });
+  await copy.mirror(other, parse.parseTrade(["buy", "ETH", "40"]));
+  await copy.mirror(lead, parse.parseTrade(["long", "ETH", "100", "2300", "1900"]));
+  const fired: number[] = [];
+  db.haltListeners.push((l) => fired.push(l));
+  db.haltLeader(lead, "test pause");
+  db.haltLeader(lead, "seen again"); // only the first transition fires
+  db.haltListeners.pop();
+  assert.deepEqual(fired, [lead]);
+  const out = await copy.closeCopiesOf(lead);
+  assert.equal(out.length, 1);
+  assert.ok(copy.copiedTokens(optIn, lead, WETH) < 1e-12);
+  assert.ok(Math.abs(tracker.heldTokens(optIn, WETH) - 40 / 2000) < 1e-9, "the copy from the other trader stays");
+  const bracket = db.db.prepare("SELECT status FROM orders WHERE trader = ? AND leader = ? AND json_extract(trade,'$.orderType') = 'bracket'").get(optIn, lead) as { status: string };
+  assert.equal(bracket.status, "closed");
+  assert.ok(Math.abs(tracker.heldTokens(optOut, WETH) - 50 / 2000) < 1e-9, "a copier who did not opt in keeps theirs");
+  db.resumeLeader(lead);
+});
+
+test("the operator's freeze stops every copy, leaders still trade, and lifting it resumes copying", async () => {
+  price = 2000;
+  const [lead, fol] = [331, 332];
+  for (const id of [lead, fol]) { db.getUser(id); db.setMeta(id, { simBalance: 1000, perm: true }); }
+  db.setFollow(fol, lead, { mode: "auto" });
+  db.setCopyFreeze("Flash outage");
+  const r = await copy.mirror(lead, parse.parseTrade(["buy", "ETH", "20"]));
+  assert.ok(!r.own.startsWith("failed"), "the leader's own trade still goes through");
+  assert.deepEqual([r.executed.length, r.skipped.length], [0, 1]);
+  assert.match(await copy.execute(r.tradeId, fol, lead, { ...parse.parseTrade(["buy", "ETH", "20"]) }), /^failed: Tribe paused all copying: Flash outage/);
+  assert.equal(tracker.heldTokens(fol, WETH), 0);
+  db.setCopyFreeze(undefined);
+  assert.equal(db.copyFreeze(), undefined);
+  assert.equal((await copy.mirror(lead, parse.parseTrade(["buy", "ETH", "20"]))).executed.length, 1);
+});
+
+test("a Telegram sign-in link works once and is never a session by itself", () => {
+  const t = auth.makeLoginToken(8);
+  const cookies: string[] = [];
+  const res = { setHeader: (_k: string, v: string) => cookies.push(v) } as never;
+  assert.equal(auth.consumeLogin(t, res), 8);
+  assert.equal(auth.consumeLogin(t, res), undefined, "second use is refused");
+  assert.equal(auth.sessionOf(t), undefined, "a link token is not a session token");
+  const session = /tribe=([^;]+)/.exec(cookies[0])![1];
+  assert.equal(auth.sessionOf(session)?.user, 8);
+});

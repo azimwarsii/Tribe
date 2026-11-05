@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { decide, type FollowRules } from "./rules.js";
+import { decide, protectCopy, type FollowRules } from "./rules.js";
 import type { Trade } from "./flash.js";
 
 const WETH = "0x4200000000000000000000000000000000000006";
@@ -64,4 +64,18 @@ test("per-trader budget", () => {
   assert.equal(decide(buy, r, { ...ctx, budgetUsed: 60 }).action, "ask");
   const d = decide(buy, r, { ...ctx, budgetUsed: 80 });
   assert.equal(d.action, "skip");
+});
+test("own stop: added to a copy without one, replaces the leader's only when safer", () => {
+  const mine = { ...rules, stopPct: 8 };
+  assert.equal(protectCopy(buy, mine, 2000).followStop, "1840.00");
+  assert.equal(protectCopy(buy, rules, 2000).followStop, undefined); // no own stop set
+  const bracket: Trade = { ...buy, attach: { tp: "2300", sl: "1900" } };
+  assert.equal(protectCopy(bracket, mine, 2000).attach?.sl, "1900"); // theirs (5%) is safer than 8%
+  assert.equal(protectCopy(bracket, { ...rules, stopPct: 3 }, 2000).attach?.sl, "1940.00");
+  assert.equal(protectCopy(bracket, { ...mine, copyProtective: false }, 2000), bracket); // protective orders off
+  assert.equal(protectCopy({ ...buy, side: "sell" }, mine, 2000).followStop, undefined);
+});
+test("stop-required filter is met by the follower's own stop", () => {
+  assert.equal(decide(buy, { ...rules, requireStop: true }, ctx).action, "skip");
+  assert.equal(decide(buy, { ...rules, requireStop: true, stopPct: 8 }, ctx).action, "ask");
 });

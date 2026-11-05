@@ -42,6 +42,32 @@ export interface TradeCard {
 }
 
 /** Token amounts for people: 0.0039972 -> "0.0040". */
+/** A price as people read it: $2,790.60. */
+const usdFmt = (p: string | number) => `$${Number(p).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * The Flash order a trade placed, in plain words: what kind, how much, at what price or trigger, and the attached
+ * take-profit / stop-loss. One phrase per part, e.g. ["Market buy $200 now", "Take-profit $2,790.60", "Stop-loss $2,367.03"].
+ */
+export function orderSteps(t: Trade): string[] {
+  const sym = symOf(t.target);
+  const amount = t.side === "buy" ? `$${Number(t.qty).toLocaleString("en-US", { maximumFractionDigits: 2 })}` : `${qtyFmt(t.qty)} ${sym}`;
+  const trig = (k: "upper" | "lower") => t.triggers?.find((x) => x.triggerType === k)?.notionalPrice;
+  const until = t.expireTime ? `Good until ${new Date(t.expireTime).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : "";
+  const legs = t.attach ? [`Take-profit ${usdFmt(t.attach.tp)}`, `Stop-loss ${usdFmt(t.attach.sl)}`] : [];
+  const verb = t.side === "buy" ? "buy" : "sell";
+  const main =
+    t.orderType === "market" ? `Market ${verb} ${amount} now`
+    : t.orderType === "limit" ? `Limit ${verb} ${amount} at ${usdFmt(t.limitNotionalPrice ?? 0)} or ${t.side === "buy" ? "lower" : "higher"}`
+    : t.orderType === "stop" ? `Breakout ${verb} ${amount} once ${sym} rises to ${usdFmt(trig("upper") ?? trig("lower") ?? 0)}`
+    : t.orderType === "twap" ? `TWAP ${verb} ${amount} in ${t.twapBucketCount ?? "several"} slices over ${Math.round((t.durationSeconds ?? 0) / 60)} min`
+    : t.orderType === "stop-loss" ? `Sells ${amount} if it falls to ${usdFmt(trig("lower") ?? 0)}`
+    : t.orderType === "take-profit" ? `Sells ${amount} if it rises to ${usdFmt(trig("upper") ?? 0)}`
+    : t.orderType === "bracket" ? `Sells ${amount} at ${usdFmt(trig("upper") ?? 0)} or ${usdFmt(trig("lower") ?? 0)}, whichever comes first`
+    : `${verb} ${amount}`;
+  return [main, ...legs, until].filter(Boolean);
+}
+
 export const qtyFmt = (q: string | number) => {
   const n = Number(q);
   return !Number.isFinite(n) ? String(q) : n >= 100 ? n.toFixed(0) : n >= 1 ? n.toFixed(2) : n.toPrecision(2);
@@ -62,12 +88,7 @@ export async function tradeCard(id: number, viewer?: number): Promise<TradeCard 
   const lo = trig.find((x) => x.triggerType === "lower")?.notionalPrice ?? trade.attach?.sl;
   const sym = symOf(trade.target);
   const legs = `${lo ? ` · Stop $${lo}` : ""}${up ? ` · Target $${up}` : ""}`;
-  const detail =
-    trade.orderType === "market" ? `${trade.side === "buy" ? "Entry" : "Exit"} ${trade.side === "buy" ? "$" + trade.qty : qtyFmt(trade.qty) + " " + sym}${trade.attach ? legs : ""}`
-    : trade.orderType === "twap" ? `$${trade.qty} over ${Math.round((trade.durationSeconds ?? 0) / 60)} min · ${trade.twapBucketCount ?? "?"} slices`
-    : trade.orderType === "limit" ? `$${trade.qty} at limit $${trade.limitNotionalPrice}`
-    : trig.length ? `${qtyFmt(trade.qty)} ${sym}${lo ? ` · Stop $${lo}` : ""}${up ? ` · Target $${up}` : ""}`
-    : `${qtyFmt(trade.qty)} ${sym}`;
+  const detail = orderSteps(trade).join(" · ");
   const reactions = reactionCounts(id).reduce((a, r) => a + r.n, 0);
   const sold = trade.side === "sell" && own?.status === "filled" && own.usd && own.pnl !== null ? own : undefined;
   const copierHandles = (db.prepare("SELECT u.handle FROM copies c JOIN users u ON u.id = c.follower WHERE c.trade_id = ? AND c.status IN ('executed','dry-run') ORDER BY c.id LIMIT 3").all(id) as unknown as { handle: string }[]).map((r) => r.handle);
@@ -117,15 +138,16 @@ export async function feed(viewer: number | undefined, f: FeedFilter, limit = 30
 
 const symbolsHeld = (u: number) => positionsOf(u).filter((p) => p.qty > 1e-12);
 
+/** USDC on Base in the user's wallet. Throws when the chain can't be read, so callers can tell "empty" from "unknown". */
+export async function usdcBalance(user: number): Promise<number> {
+  const client = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC) });
+  const raw = await client.readContract({ address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", abi: erc20Abi, functionName: "balanceOf", args: [getUser(user).address] });
+  return Number(raw) / 1e6;
+}
+
 export async function freeBalance(user: number): Promise<number> {
   if (isDry()) return getMeta(user).simBalance;
-  try {
-    const client = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC) });
-    const raw = await client.readContract({ address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", abi: erc20Abi, functionName: "balanceOf", args: [getUser(user).address] });
-    return Number(raw) / 1e6;
-  } catch {
-    return 0;
-  }
+  return usdcBalance(user).catch(() => 0);
 }
 
 export async function portfolio(user: number) {

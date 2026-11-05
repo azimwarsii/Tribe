@@ -1,6 +1,7 @@
 process.env.DB_PATH = ":memory:";
 process.env.DRY_RUN = "true";
 process.env.SESSION_SECRET = "test";
+process.env.ALLOW_PLAIN_SIGNUP = "1"; // most tests sign up without a wallet; the wallet path has its own test
 
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
@@ -18,6 +19,7 @@ const { creRouter } = await import("./cre-api.js");
 const halts: [number, boolean][] = [];
 const app = express();
 app.use(creRouter({ halt: (leader, halted) => void halts.push([leader, halted]) }));
+app.use((await import("./wallet-api.js")).walletRouter());
 app.use(appRouter());
 const server = app.listen(0);
 const base = `http://localhost:${(server.address() as AddressInfo).port}`;
@@ -44,7 +46,7 @@ test("risk score", () => {
 
 test("pages need a session, public pages do not", async () => {
   const c = client();
-  assert.equal((await c("/feed")).loc, "/splash");
+  assert.equal((await c("/feed")).loc, "/signin");
   assert.equal((await c("/intro")).status, 200);
   assert.equal((await c("/api/pause-all", {})).status, 401);
 });
@@ -192,8 +194,8 @@ test("CRE endpoints: snapshot, verdicts, agent signal, season board", async () =
 test("agents use the API with a bearer token (the MCP server's path)", async () => {
   const c = client();
   await c("/api/signup", { handle: "agentuser", persona: "Sniper" });
-  const { makeSession } = await import("./auth.js");
-  const token = makeSession(db.userByHandle("agentuser")!.id);
+  const { createSession } = await import("./auth.js");
+  const token = createSession(db.userByHandle("agentuser")!.id, "agent");
   const get = (path: string, t = token) => fetch(base + path, { headers: { authorization: `Bearer ${t}` } });
   const me = await (await get("/api/v1/me")).json();
   assert.equal(me.handle, "agentuser");
@@ -213,7 +215,7 @@ test("desktop split pages bring their own aside instead of the rail", async () =
     assert.doesNotMatch(r.text, /class="rail"/, path);
   }
   assert.equal((await c("/activity.csv")).status, 200);
-  assert.equal((await client()("/activity.csv")).loc, "/splash");
+  assert.equal((await client()("/activity.csv")).loc, "/signin");
   // logged-out share page has the join and share aside
   const pub = await client()("/u/splitter");
   assert.match(pub.text, /Share this trader/);
@@ -284,8 +286,11 @@ test("Cat: persona tone, follow-ups, rules, memory and history", async () => {
   assert.equal(db.msgsOf(big.json.chatId).find((m) => m.id === big.json.msgId)!.data!.signed, true);
   assert.equal((await c("/api/cat/vote", { msg: big.json.msgId, vote: 1 })).status, 200);
   for (const p of ["/cat", `/cat/chat?id=${big.json.chatId}`, "/cat/chat?new=1&q=hello", "/cat/voice", "/cat/memory"]) assert.equal((await c(p)).status, 200, p);
-  assert.match((await c("/cat")).text, /Chats/);
-  assert.equal((await c("/cat/chat?id=999999")).status, 200); // not found page, not a crash
+  // One continuous chat: every message so far is on the one page, with no chat list.
+  const thread = (await c("/cat")).text;
+  assert.ok(!thread.includes("New chat") && !thread.includes("Search chats"), "no chat history or new-chat button");
+  assert.equal(new Set([chill.json.chatId, tight.json.chatId, big.json.chatId]).size, 1, "every message lands in the same chat");
+  assert.equal((await c("/cat/chat?id=999999")).status, 200); // old chat links just open the one chat
 
   // Forget one learned memory, then everything.
   assert.match((await c("/cat/memory")).text, /Prefers/);
@@ -312,7 +317,7 @@ test("Ask Cat about a feed post: verdict, history, worst case, and the way back"
   assert.ok(v.json.verdict && ["Looks solid", "Mixed", "Risky"].includes(v.json.verdict.label));
   assert.ok(v.json.verdict.checks.some((x: { t: string }) => /Has a stop/.test(x.t)));
   assert.equal(v.json.ctx.handle, "postlead");
-  assert.ok(v.json.follow.some((f: { href?: string }) => f.href === `/thread/${trade}`));
+  assert.ok(v.json.follow.some((f: { href?: string }) => f.href === `/t/${trade}`));
 
   // Follow-ups in the same chat stay about the post without resending it.
   const h = await me("/api/cat/ask", { text: "Show their track record", chat: v.json.chatId });
@@ -324,9 +329,12 @@ test("Ask Cat about a feed post: verdict, history, worst case, and the way back"
 
   // The chat page pins the post with a way back and a Copy with Flash button.
   const page = await me(`/cat/chat?id=${v.json.chatId}`);
-  assert.ok(page.text.includes(`href="/thread/${trade}"`), "the pinned post links back to it");
-  assert.match(page.text, /href="\/copy\/postlead"/);
-  assert.match(await (await fetch(`${base}/cat/ctxbar/${trade}`)).text(), /^$|splash/); // needs a session
+  assert.ok(page.text.includes(`href="/t/${trade}"`), "the pinned post links back to it");
+  assert.ok(page.text.includes(`href="/t/${trade}#copy"`), "Copy with Flash opens this trade's copy panel");
+  assert.ok(page.text.includes('id="unpin"'), "the pinned post can be unpinned");
+  await me("/api/cat/unpin", {});
+  assert.ok(!(await me("/cat")).text.includes('class="ctxbar"'), "unpinned: back to general questions");
+  assert.match(await (await fetch(`${base}/cat/ctxbar/${trade}`)).text(), /^$|<title>Sign in · Tribe<\/title>/); // needs a session: signed out lands on sign-in
 
   // Asked by name from anywhere (Cat home, Telegram, MCP): research their latest entry.
   const named = await me("/api/cat/ask", { text: "Is @postlead worth copying?" });
@@ -375,7 +383,7 @@ test("web chrome: shell for signed-in pages, landing and sign-in when logged out
   assert.match(landing.text, /Copy great traders/);
   assert.doesNotMatch(landing.text, /class="side"/);
   assert.equal((await anon("/signin")).status, 200);
-  assert.equal((await anon("/portfolio")).loc, "/splash");
+  assert.equal((await anon("/portfolio")).loc, "/signin");
 
   const c = client();
   await c("/api/signup", { handle: "webuser", persona: "Sniper" });
@@ -439,8 +447,8 @@ test("profiles: unique usernames, photos, free follows, portfolio, and Manual vs
   const m = await a("/api/cat/ask", { text: "buy $20 ETH with 5% stop and 10% take profit" });
   const mc = await a("/api/cat/confirm", { id: m.json.proposalId });
   assert.equal(mc.json.ok, true, JSON.stringify([m.json, mc.json]));
-  const { makeSession } = await import("./auth.js");
-  const auth = { "content-type": "application/json", authorization: `Bearer ${makeSession(uid)}` };
+  const { createSession } = await import("./auth.js");
+  const auth = { "content-type": "application/json", authorization: `Bearer ${createSession(uid, "agent")}` };
   const p = await (await fetch(`${base}/api/cat/ask`, { method: "POST", headers: auth, body: JSON.stringify({ text: "buy $15 ETH with 4% stop" }) })).json();
   await fetch(`${base}/api/cat/confirm`, { method: "POST", headers: auth, body: JSON.stringify({ id: p.proposalId }) });
   const sources = (db.db.prepare("SELECT source FROM trades WHERE leader = ? ORDER BY id").all(uid) as { source: string }[]).map((r) => r.source);
@@ -486,7 +494,7 @@ test("reactions: one per person, picked from the bar, replaced or removed", asyn
   const fanId = db.userByHandle("reactfan")!.id;
 
   // The feed card carries the bar with all six badges in its picker.
-  const feedHtml = (await fan(`/thread/${trade}`)).text; // reactions live on the trade's page
+  const feedHtml = (await fan(`/t/${trade}`)).text; // reactions live on the trade's page
   assert.ok(feedHtml.includes(`data-react="${trade}"`));
   for (const k of ["fire", "rocket", "diamond", "bull", "bear", "bulb"]) assert.ok(feedHtml.includes(`data-rx="${k}"`), k);
 
@@ -501,8 +509,8 @@ test("reactions: one per person, picked from the bar, replaced or removed", asyn
   assert.equal(db.reactionCounts(trade).reduce((a, r) => a + r.n, 0), 1);
   assert.equal((await fan("/api/react", { trade, emoji: "🙃" })).status, 400);
   assert.equal((await fan("/api/react", { trade: 999999, emoji: "fire" })).status, 400);
-  // The thread page shows the bar and the breakdown; the script that drives the picker ships in /app.js.
-  assert.match((await fan(`/thread/${trade}`)).text, /Fire<\/span><b>1<\/b>/);
+  // The trade page shows the reaction picker on its card (no badge breakdown); the script that drives it ships in /app.js.
+  assert.match((await fan(`/t/${trade}`)).text, /data-mine="[a-z]*"/);
   assert.match(await (await fetch(`${base}/app.js`)).text(), /data-rx/);
 });
 
@@ -551,7 +559,7 @@ test("discover deck: one trade at a time, requests first, swipe to skip or copy 
   // The copy shows up in your active trades, and Cat's brief on the trader reads from their fills.
   const act1 = (await me("/api/deck/active")).json.html as string;
   assert.match(act1, /from @decklead/);
-  assert.ok(act1.includes(`class="aslide on" href="/thread/${t2}"`), "one live entry per slide, linking to the trade");
+  assert.ok(act1.includes(`class="aslide on" href="/t/${t2}"`), "one live entry per slide, linking to the trade");
   const bj = (await me("/api/deck/brief?h=decklead")).json;
   const brief = bj.html as string;
   assert.match(brief, /@decklead/);
@@ -677,4 +685,142 @@ test("leaderboard: back in the nav next to Signals, with search and new traders"
   assert.match(found, /@freshface/);
   assert.match(found, /matching “fresh”/);
   assert.match((await viewer("/ranks?q=nobodyhere")).text, /Nobody called “nobodyhere” has traded yet/);
+});
+
+test("sessions: sign-out ends the session server-side, other devices can be signed out, agents can't manage access", async () => {
+  const { createSession, sessionsOf } = await import("./auth.js");
+  const laptop = client();
+  await laptop("/api/signup", { handle: "sessionuser", persona: "Sniper" });
+  const uid = db.userByHandle("sessionuser")!.id;
+  // A second browser, signed in through its own session, and the cookie it holds.
+  const phoneCookie = `tribe=${createSession(uid, "web")}`;
+  const asPhone = (path: string) => fetch(base + path, { redirect: "manual", headers: { cookie: phoneCookie } });
+  assert.equal((await asPhone("/api/v1/me")).status, 200);
+  assert.equal(sessionsOf(uid, "web").length, 2);
+  // From the laptop: sign out every other device. The phone's cookie stops working at once.
+  assert.match((await laptop("/api/sessions/revoke-others", {})).json.toast, /Signed out 1 other device/);
+  assert.equal((await asPhone("/api/v1/me")).status, 401);
+  assert.equal((await laptop("/api/v1/me")).status, 200);
+  // An agent token can read and trade, but not mint tokens, sign out devices or delete the account.
+  const bearer = { "content-type": "application/json", authorization: `Bearer ${createSession(uid, "agent", { name: "Test agent" })}` };
+  const asAgent = (path: string) => fetch(base + path, { method: "POST", headers: bearer, body: "{}" });
+  for (const path of ["/api/agent-tokens", "/api/sessions/revoke-others", "/api/delete-account"]) {
+    assert.match(((await (await asAgent(path)).json()) as { error: string }).error, /Agent tokens can't/, path);
+  }
+  // Settings shows the device and the agent; revoking the agent token signs the agent out.
+  const agentId = sessionsOf(uid, "agent")[0].id;
+  assert.match((await laptop("/settings")).text, /this device[\s\S]*Test agent/);
+  await laptop("/api/agent-tokens/revoke", { id: agentId });
+  assert.equal((await fetch(base + "/api/v1/me", { headers: bearer })).status, 401);
+  // Signing out ends the laptop's session too: replaying its old cookie no longer works.
+  const before = await laptop("/api/v1/me");
+  assert.equal(before.status, 200);
+  await laptop("/api/signout", {});
+  assert.equal((await laptop("/api/v1/me")).status, 401);
+});
+
+test("a new agent token is shown once, then only its name is listed", async () => {
+  const c = client();
+  await c("/api/signup", { handle: "tokenuser", persona: "Sniper" });
+  await c("/api/agent-tokens", { name: "Claude Desktop" });
+  const first = (await c("/settings")).text;
+  assert.match(first, /Copy your new token now/);
+  assert.match(first, /s\.[0-9a-f]{36}\.[0-9a-f]{32}/);
+  const again = (await c("/settings")).text;
+  assert.doesNotMatch(again, /s\.[0-9a-f]{36}\.[0-9a-f]{32}/);
+  assert.match(again, /Claude Desktop/);
+});
+
+test("sign-up: a wallet signs in through Privy, then picks a username; Tribe never gets a key", async () => {
+  const { signupTicketCookie } = await import("./auth.js");
+  const wallet = "0x8aAB6863d537e47D75f2fF7Ddbbb7C5b076c4Eb8" as const;
+  // A browser with a real cookie jar (sign-up sets more than one cookie).
+  const jar = new Map<string, string>();
+  const call = async (path: string, body?: unknown) => {
+    const r = await fetch(base + path, { method: body === undefined ? "GET" : "POST", redirect: "manual", headers: { "content-type": "application/json", cookie: [...jar].map(([k, v]) => `${k}=${v}`).join("; ") }, body: body === undefined ? undefined : JSON.stringify(body) });
+    for (const c of r.headers.getSetCookie()) { const [kv] = c.split(";"); const i = kv.indexOf("="); const v = kv.slice(i + 1); if (v) jar.set(kv.slice(0, i), v); else jar.delete(kv.slice(0, i)); }
+    return { status: r.status, json: (r.headers.get("content-type") ?? "").includes("json") ? await r.json() : undefined };
+  };
+  // /api/privy/session sets this after Privy verified the wallet's signature (a new wallet, so no account yet).
+  const ticket = (t: { privy: string; wallet?: `0x${string}` }) => jar.set("tribe_signup", signupTicketCookie(t).split(";")[0].slice("tribe_signup=".length));
+
+  delete process.env.ALLOW_PLAIN_SIGNUP;
+  try {
+    assert.equal((await fetch(base + "/onboarding", { redirect: "manual" })).headers.get("location"), "/signin");
+    assert.match((await call("/api/signup", { handle: "nowallet" })).json.error, /Sign in with/);
+    ticket({ privy: "did:privy:no-wallet" });
+    assert.match((await call("/api/signup", { handle: "nowallet" })).json.error, /Connect your wallet first/);
+    ticket({ privy: "did:privy:wallet-user", wallet });
+    assert.match(await (await fetch(base + "/onboarding", { headers: { cookie: `tribe_signup=${jar.get("tribe_signup")}` } })).text(), /Wallet connected · <span[^>]*>0x8aAB…4Eb8/);
+    assert.equal((await call("/api/v1/me")).status, 401, "no account or session until a username is picked");
+    // First time: splash, then the intro, then the feed.
+    const first = (await call("/api/signup", { handle: "walletuser", avatar: 2 })).json.redirect;
+    assert.equal(first, "/splash?next=%2Ffeed");
+    const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+    assert.match(await (await fetch(base + first, { headers: { cookie } })).text(), /data-auto="\/intro\?next=%2Ffeed"/);
+    assert.match(await (await fetch(base + "/intro?next=%2Ffeed", { headers: { cookie } })).text(), /id="start" href="\/feed">Get started/);
+    // The same wallet can't start a second account.
+    jar.clear();
+    ticket({ privy: "did:privy:someone-else", wallet });
+    assert.match((await call("/api/signup", { handle: "walletuser2" })).json.error, /already belongs to another account/);
+  } finally {
+    process.env.ALLOW_PLAIN_SIGNUP = "1";
+  }
+  const u = db.userByHandle("walletuser")!;
+  assert.deepEqual([u.address, u.wallet_kind, u.pk, u.privy_user_id, u.persona], [wallet, "external", "", "did:privy:wallet-user", null]);
+});
+
+test("MetaMask followers are always asked: Tribe can't sign for them, so auto rules become requests", async () => {
+  const { mirror } = await import("./copy.js");
+  const { parseTrade } = await import("./parse.js");
+  const { linkWallet } = await import("./wallet-api.js");
+  const lead = 7001, fol = 7002;
+  for (const id of [lead, fol]) { db.getUser(id); db.setMeta(id, { simBalance: 1000, perm: true }); }
+  db.setFollow(fol, lead, { mode: "auto" });
+  linkWallet(fol, "0x00000000000000000000000000000000000c0ffe");
+  assert.equal(db.getFollowRules(fol, lead)!.mode, "ask", "linking switches existing follows to ask-first");
+  db.setFollow(fol, lead, { mode: "auto" }); // even if a rule says auto again
+  const r = await mirror(lead, parseTrade(["buy", "ETH", "20"]));
+  assert.deepEqual([r.executed.length, r.pending.length], [0, 1]);
+});
+
+test("every trade has a public page: details, copy, share, comments; old links forward to it", async () => {
+  const c = client();
+  await c("/api/signup", { handle: "tradepageuser", persona: "Sniper" });
+  const lead = db.userByHandle("tradepageuser")!.id;
+  const { mirror } = await import("./copy.js");
+  const { parseTrade } = await import("./parse.js");
+  const { tradeId } = await mirror(lead, parseTrade(["long", "ETH", "40", "2800", "2300"]));
+  await c("/api/comment", { trade: tradeId, text: "Tight stop on this one" });
+  // Signed out: the page opens for anyone, with the trade, its details, sharing and comments, and invites sign-in.
+  const anon = await (await fetch(`${base}/t/${tradeId}`)).text();
+  for (const s of ['aria-label="Trade details"', "2300", "2800", 'aria-label="Share this trade"', `/t/${tradeId}`, "x.com/intent/post", "t.me/share", "wa.me", "Tight stop on this one", "Sign in to copy", "Sign in to react and comment", 'property="og:image"']) {
+    assert.ok(anon.includes(s), `signed-out page shows ${s}`);
+  }
+  // Signed in as someone else: one-tap copy amounts and the comment box.
+  const fan = client();
+  await fan("/api/signup", { handle: "tradepagefan", persona: "Sniper" });
+  const seen = (await fan(`/t/${tradeId}`)).text;
+  // Amounts open a confirm sheet (amount, worst and best case, the Flash order) instead of copying on one tap.
+  assert.ok(seen.includes('data-copyamt="25"') && !seen.includes('data-act="/api/copy-trade"'), "no one-tap copy");
+  assert.ok(seen.includes('id="copyconfirm"') && seen.includes("Confirm &amp; sign"), "the confirm sheet is there");
+  assert.ok(seen.includes("Market buy $40 now · Take-profit $2,800.00 · Stop-loss $2,300.00"), "the Flash order in plain words");
+  assert.ok(seen.includes('Market buy <b id="tc-amtlbl"></b> now'), "the confirm sheet shows the follower's own amount, not the trader's");
+  assert.ok(seen.includes('action="/api/comment"'));
+  assert.ok(seen.indexOf('id="copy"') < seen.indexOf('aria-label="Trade details"'), "the copy panel sits right under the card");
+  const { tradeCard: tc } = await import("./data.js");
+  const { tradeCardHtml: cardHtml } = await import("./views/feed.js");
+  assert.ok(cardHtml((await tc(tradeId))!, undefined).includes(`href="/t/${tradeId}#copy"`), "elsewhere, a card's Copy with Flash opens this trade's copy panel");
+  assert.ok(!seen.includes("Copy all of"), "no option to copy all of a trader's trades");
+  assert.match(seen, /data-act="\/api\/watch" data-body='\{"leader":"tradepageuser"\}'>Follow</);
+  await fan("/api/watch", { leader: "tradepageuser" });
+  assert.match((await fan(`/t/${tradeId}`)).text, /data-body='\{"leader":"tradepageuser"\}'>[^<]*<svg[\s\S]*?<\/svg>Following</);
+  assert.ok(!seen.includes(`data-href="/t/${tradeId}"`), "the card on its own page doesn't link to itself");
+  // The feed card opens it, and the old links forward to it.
+  const { tradeCard } = await import("./data.js");
+  const { tradeCardHtml } = await import("./views/feed.js");
+  assert.ok(tradeCardHtml((await tradeCard(tradeId))!, undefined).includes(`data-href="/t/${tradeId}"`), "a feed card opens the trade page");
+  assert.equal((await fetch(`${base}/thread/${tradeId}`, { redirect: "manual" })).headers.get("location"), `/t/${tradeId}#comments`);
+  assert.equal((await fetch(`${base}/s/${tradeId}`, { redirect: "manual" })).headers.get("location"), `/t/${tradeId}`);
+  assert.equal((await fetch(`${base}/t/999999`)).status, 404);
 });

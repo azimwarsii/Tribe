@@ -1,5 +1,5 @@
 import { createPublicClient, createWalletClient, http, keccak256, parseTransaction, type Hex } from "viem";
-import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { privateKeyToAccount, type LocalAccount } from "viem/accounts";
 import { base } from "viem/chains";
 
 /**
@@ -29,6 +29,8 @@ export interface Trade {
   /** Take-profit / stop-loss attached to a market, limit or TWAP entry (USD prices). Placed with the entry as one Flash order. */
   attach?: { tp: string; sl: string };
   hasStop?: boolean; // entry that ships with a stop-loss (set by Ask Cat and bracket flows)
+  /** Tribe only, never sent to Flash: a copier's own stop-loss price, placed as a stop-loss once this entry fills. */
+  followStop?: string;
   /** Good-til-time for limit, trigger and bracket orders (ISO-8601). Quote-only in Flash: never echoed on submit. */
   expireTime?: string;
 }
@@ -122,7 +124,14 @@ export interface Quote {
 
 export const quote = (t: Trade, funder: string, slippage?: string, auth: AuthOpts = {}): Promise<Quote> => call("/quote", { body: quoteBody(t, funder, slippage, auth) });
 
-const signTyped = (account: PrivateKeyAccount, json: string) => {
+/**
+ * Who signs for a funder: a viem account (a Privy wallet with Tribe as its policy-limited signer, see src/privy.ts)
+ * or, for demo wallets and scripts, a raw private key.
+ */
+export type Signer = LocalAccount | `0x${string}`;
+const asAccount = (s: Signer): LocalAccount => (typeof s === "string" ? privateKeyToAccount(s) : s);
+
+const signTyped = (account: LocalAccount, json: string) => {
   const { domain, types, primaryType, message } = JSON.parse(json);
   return account.signTypedData({ domain, types, primaryType, message });
 };
@@ -130,7 +139,7 @@ const signTyped = (account: PrivateKeyAccount, json: string) => {
 const publicClient = () => createPublicClient({ chain: base, transport: http(RPC()) });
 
 /** Send a plain transaction (approval for the attached bracket's exit, or a wrap) from the funder and wait for it. */
-async function sendTx(account: PrivateKeyAccount, tx: { to: string; data: string; value?: string }) {
+async function sendTx(account: LocalAccount, tx: { to: string; data: string; value?: string }) {
   const wallet = createWalletClient({ account, chain: base, transport: http(RPC()) });
   const hash = await wallet.sendTransaction({ to: tx.to as Hex, data: tx.data as Hex, value: tx.value ? BigInt(tx.value) : 0n });
   await publicClient().waitForTransactionReceipt({ hash, timeout: 60_000 });
@@ -138,7 +147,7 @@ async function sendTx(account: PrivateKeyAccount, tx: { to: string; data: string
 }
 
 /** Sign each pre-trade setup transaction (usually the token approval) and let Flash broadcast it, no RPC needed. */
-async function runSetup(account: PrivateKeyAccount, setupTxs: string[]) {
+async function runSetup(account: LocalAccount, setupTxs: string[]) {
   const hashes: string[] = [];
   for (const raw of setupTxs) {
     const signed = await account.signTransaction(parseTransaction(raw as Hex) as any);
@@ -161,9 +170,9 @@ export function submitEcho(t: Trade, funder: string, slippage?: string, auth: Au
 
 export interface Placed { orderId: string; setupTxs: string[]; bracket?: string }
 
-/** quote -> setup (approvals) -> EIP-712 sign -> order. Signing uses the trader's own key (non-custodial). */
-export async function placeOrder(t: Trade, funder: `0x${string}`, pk: `0x${string}`, slippage?: string, auth: AuthOpts = {}): Promise<Placed> {
-  const account = privateKeyToAccount(pk);
+/** quote -> setup (approvals) -> EIP-712 sign -> order. Signed by the funder's own wallet (non-custodial). */
+export async function placeOrder(t: Trade, funder: `0x${string}`, signer: Signer, slippage?: string, auth: AuthOpts = {}): Promise<Placed> {
+  const account = asAccount(signer);
   let q = await quote(t, funder, slippage, auth);
   const setup: string[] = [];
   // Approvals and wraps change onchain state, so quote again afterwards for fresh signing material.
@@ -224,9 +233,9 @@ export async function getOrder(orderId: string, funder: string): Promise<FlashOr
 }
 
 /** Cancel a resting order. Gasless: the funder signs a plaintext message (EIP-191). */
-export async function cancelOrder(orderId: string, pk: `0x${string}`) {
+export async function cancelOrder(orderId: string, signer: Signer) {
   const cancelMessage = `Definitive Flash v1 — Cancel Order\nOrder: ${orderId}`;
-  const userSignature = await privateKeyToAccount(pk).signMessage({ message: cancelMessage });
+  const userSignature = await asAccount(signer).signMessage({ message: cancelMessage });
   return call(`/orders/${orderId}/cancel`, { body: { cancelMessage, userSignature } });
 }
 
@@ -235,13 +244,13 @@ export const batchCancelMessage = (orderIds: string[]) => `Definitive Flash v1 �
 
 export interface BatchCancelResult { orderId: string; ok: boolean; errorCode?: string }
 /** Cancel up to 25 of one funder's orders with a single signature (POST /orders/cancel). Larger sets go in chunks. */
-export async function cancelOrders(orderIds: string[], pk: `0x${string}`): Promise<BatchCancelResult[]> {
+export async function cancelOrders(orderIds: string[], signer: Signer): Promise<BatchCancelResult[]> {
   const ids = [...new Set(orderIds.map((id) => id.toLowerCase()))];
   const out: BatchCancelResult[] = [];
   for (let i = 0; i < ids.length; i += 25) {
     const chunk = ids.slice(i, i + 25);
     const cancelMessage = batchCancelMessage(chunk);
-    const userSignature = await privateKeyToAccount(pk).signMessage({ message: cancelMessage });
+    const userSignature = await asAccount(signer).signMessage({ message: cancelMessage });
     const r = (await call("/orders/cancel", { body: { orderIds: chunk, cancelMessage, userSignature } })) as { results: BatchCancelResult[] };
     out.push(...(r.results ?? []));
   }
@@ -270,9 +279,9 @@ export const CLOSE_REASONS: Record<string, string> = {
 export const closeReasonText = (r: string | null | undefined) => (r ? CLOSE_REASONS[r] ?? r.replace(/^REASON_/, "").toLowerCase().replace(/_/g, " ") : null);
 
 /** Move the trigger of a resting stop-loss / take-profit / stop. Brackets can't be updated (cancel and re-place instead). */
-export async function updateTrigger(orderId: string, pk: `0x${string}`, triggerType: "lower" | "upper", notionalPrice: string) {
+export async function updateTrigger(orderId: string, signer: Signer, triggerType: "lower" | "upper", notionalPrice: string) {
   const updateMessage = ["Definitive Flash — Update Order", `Order: ${orderId}`, `Issued At: ${new Date().toISOString()}`, `Trigger ${triggerType === "lower" ? "Lower" : "Upper"} Notional Price: ${notionalPrice}`].join("\n");
-  const userSignature = await privateKeyToAccount(pk).signMessage({ message: updateMessage });
+  const userSignature = await asAccount(signer).signMessage({ message: updateMessage });
   return call(`/orders/${orderId}`, { method: "PATCH", body: { trigger: { notionalPrice, triggerType }, updateMessage, userSignature } });
 }
 

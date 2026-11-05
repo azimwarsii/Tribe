@@ -27,24 +27,48 @@ export function parseIntent(text: string): Intent | undefined {
   return i;
 }
 
-/** Optional LLM parse (set ANTHROPIC_API_KEY). Returns undefined on any failure so callers fall back. */
-async function llmIntent(text: string): Promise<Intent | undefined> {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return undefined;
-  try {
-    const r = await fetch("https://api.anthropic.com/v1/messages", {
+const INTENT_PROMPT =
+  'Convert the trading request to JSON only: {"side":"buy|sell","usd":number|null,"qty":number|null,"token":"ETH","stopPct":number|null,"tpPct":number|null}. Reply {"none":true} if it is not a trade request.';
+
+/**
+ * The model's raw JSON reply for a trade request. Any OpenAI-compatible API when OPENAI_COMPAT_API_KEY is set
+ * (OpenRouter, OpenAI, a local server), else Anthropic when ANTHROPIC_API_KEY is set, else none.
+ */
+async function llmReply(text: string): Promise<string | undefined> {
+  if (process.env.OPENAI_COMPAT_API_KEY) {
+    const r = await fetch(`${(process.env.OPENAI_COMPAT_URL ?? "https://api.openai.com/v1").replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      headers: { authorization: `Bearer ${process.env.OPENAI_COMPAT_API_KEY}`, "content-type": "application/json", "x-title": "Tribe" },
       body: JSON.stringify({
-        model: process.env.ASK_MODEL ?? "claude-sonnet-5-5",
-        max_tokens: 200,
-        system:
-          'Convert the trading request to JSON only: {"side":"buy|sell","usd":number|null,"qty":number|null,"token":"ETH","stopPct":number|null,"tpPct":number|null}. Reply {"none":true} if it is not a trade request.',
-        messages: [{ role: "user", content: text }],
+        model: process.env.OPENAI_COMPAT_MODEL ?? "openai/gpt-oss-20b",
+        // Reasoning models spend part of the budget thinking; 600 leaves room for the short JSON answer.
+        max_tokens: 600,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: INTENT_PROMPT }, { role: "user", content: text }],
       }),
     });
     const j: any = await r.json();
-    const o = JSON.parse(String(j.content?.[0]?.text ?? "").match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    return j.choices?.[0]?.message?.content;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: process.env.ASK_MODEL ?? "claude-sonnet-5-5", max_tokens: 200, system: INTENT_PROMPT, messages: [{ role: "user", content: text }] }),
+    });
+    const j: any = await r.json();
+    return j.content?.[0]?.text;
+  }
+  return undefined;
+}
+
+/** Optional LLM parse (an AI key in .env). Returns undefined on any failure so callers fall back to the rules. */
+async function llmIntent(text: string): Promise<Intent | undefined> {
+  try {
+    const reply = await llmReply(text);
+    if (!reply) return undefined;
+    const o = JSON.parse(String(reply).match(/\{[\s\S]*\}/)?.[0] ?? "{}");
     if (o.none || !["buy", "sell"].includes(o.side) || !TOKENS[String(o.token ?? "ETH").toUpperCase()]) return undefined;
     return { side: o.side, usd: o.usd ?? undefined, qty: o.qty ?? undefined, token: String(o.token ?? "ETH").toUpperCase(), stopPct: o.stopPct ?? undefined, tpPct: o.tpPct ?? undefined };
   } catch {
@@ -52,7 +76,7 @@ async function llmIntent(text: string): Promise<Intent | undefined> {
   }
 }
 
-/** Parse a trade request with Claude when a key is set, else rules. */
+/** Parse a trade request with the AI model when a key is set, else rules. */
 export const resolveIntent = async (text: string) => (await llmIntent(text)) ?? parseIntent(text);
 
 export async function buildProposal(i: Intent): Promise<Proposal> {

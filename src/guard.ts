@@ -117,19 +117,22 @@ export function watchCopyGuard(onChange: (leader: number, halted: boolean, reaso
     try {
       const head = await client.getBlockNumber();
       from ??= head - 500n;
-      if (head < from) return;
-      const logs = await client.getLogs({ address, events: [HALTED, RESUMED], fromBlock: from, toBlock: head });
-      for (const l of logs) {
-        const leader = Number(l.args.leader);
-        if (l.eventName === "LeaderHalted") {
-          haltLeader(leader, (l.args as { reason?: string }).reason ?? "halted", l.transactionHash ?? undefined);
-          onChange(leader, true, (l.args as { reason?: string }).reason);
-        } else {
-          resumeLeader(leader, l.transactionHash ?? undefined);
-          onChange(leader, false);
+      // Public RPCs (sepolia.base.org) cap eth_getLogs at a 200-block range, so read in chunks.
+      for (let start: bigint = from; start <= head; start = from) {
+        const to: bigint = start + 199n < head ? start + 199n : head;
+        const logs = await client.getLogs({ address, events: [HALTED, RESUMED], fromBlock: start, toBlock: to });
+        for (const l of logs) {
+          const leader = Number(l.args.leader);
+          if (l.eventName === "LeaderHalted") {
+            haltLeader(leader, (l.args as { reason?: string }).reason ?? "halted", l.transactionHash ?? undefined);
+            onChange(leader, true, (l.args as { reason?: string }).reason);
+          } else {
+            resumeLeader(leader, l.transactionHash ?? undefined);
+            onChange(leader, false);
+          }
         }
+        from = to + 1n;
       }
-      from = head + 1n;
     } catch (e) {
       console.error("guard watcher:", (e as Error).message);
     }

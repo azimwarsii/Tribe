@@ -3,7 +3,7 @@ import { activeTrades, ago, face, feed, initials, money, pct, portfolio, socialG
 import { FRESH_MS } from "../copy.js";
 import { researchTrade, traderBrief, type Brief } from "../research.js";
 import { esc, icon, page, sheet, signCls, split } from "../ui.js";
-import { ladder, sourceTag } from "./feed.js";
+import { ladder, sourceTag, orderStrip } from "./feed.js";
 
 /**
  * The feed: one live trade at a time. Swipe right to copy it (a confirm sheet shows size and worst case first), left to skip,
@@ -39,6 +39,7 @@ ${soc ? socialLine(soc) : ""}
 <div class="row"><a href="/u/${esc(c.handle)}" class="lvl"><span class="av w">${face(c.handle)}</span><b>${c.level}</b></a><div class="grow" style="min-width:0"><a href="/u/${esc(c.handle)}" style="color:#F5F5F5;font-weight:600">@${esc(c.handle)}</a><div class="sm mut">${sourceTag(c.source)} ${c.persona ? esc(c.persona) + " · " : ""}${c.streak >= 2 ? `${c.streak}-day streak` : "Base"}</div></div><span class="pill ok">${icon("shield", 11, "currentColor", 2)}Guard passed</span></div>
 <div class="row sp" style="align-items:flex-end"><div><div class="mut" style="font-size:14px">${esc(verbOf(c))}</div><div style="font-size:34px;font-weight:700;letter-spacing:-.02em">${esc(c.symbol)}</div></div>
 <div style="text-align:right" data-live="since">${sinceHtml(c.sincePct)}</div></div>
+${orderStrip(c)}
 ${c.note ? `<p class="md" style="margin:0;line-height:1.45;color:${c.source === "user" ? "#D4D4D4" : "#D1FAE5"}">${c.source !== "user" ? `${icon("bot", 13, "currentColor", 2)} ` : ""}“${esc(c.note)}”</p>` : ""}
 ${ladder(c)}
 ${needStop ? `<div class="sm warn row" style="gap:6px">${icon("shield", 13, "currentColor", 2)}No stop-loss: your rules won't copy this one</div>` : ""}
@@ -178,7 +179,7 @@ export async function activeHtml(viewer: number): Promise<string> {
       ? `<b class="${flat ? "mut" : signCls(t.pnlPct!)}">${flat ? "flat" : pct(t.pnlPct!)}</b><span class="xs ${flat ? "mut" : signCls(t.pnlUsd!)}">${!flat && t.pnlUsd! >= 0 ? "+" : ""}${money(t.pnlUsd!)}</span>`
       : `<b>${t.limit !== null ? usd0(t.limit) : "—"}</b><span class="xs mut">waiting</span>`;
     const line2 = t.kind === "held" ? `${money(t.usd)} in · ${usd0(t.entry!)} → ${usd0(t.mark!)}` : `${money(t.usd)} to fill${t.limit !== null ? ` at or under ${usd0(t.limit)}` : ""}`;
-    return `<a class="aslide${i ? "" : " on"}" href="/thread/${t.tradeId}" aria-label="${esc(t.symbol)} trade ${i + 1} of ${list.length}"><div class="row" style="gap:8px"><span class="av xs">${face(t.from === "you" ? getUser(viewer).handle : t.from)}</span><span class="grow" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b class="sm">${esc(t.symbol)}</b> <span class="xs mut">${who}</span></span><span class="row" style="gap:6px;align-items:baseline">${right}</span></div><div class="row sp xs mut"><span>${line2}</span><span>${stop}</span></div></a>`;
+    return `<a class="aslide${i ? "" : " on"}" href="/t/${t.tradeId}" aria-label="${esc(t.symbol)} trade ${i + 1} of ${list.length}"><div class="row" style="gap:8px"><span class="av xs">${face(t.from === "you" ? getUser(viewer).handle : t.from)}</span><span class="grow" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b class="sm">${esc(t.symbol)}</b> <span class="xs mut">${who}</span></span><span class="row" style="gap:6px;align-items:baseline">${right}</span></div><div class="row sp xs mut"><span>${line2}</span><span>${stop}</span></div></a>`;
   };
   const nav = list.length > 1 ? `<span class="xs mut" data-acar-pos>1 of ${list.length}</span><button type="button" class="acbtn" data-acar-go="-1" aria-label="Previous trade">${icon("chevl", 13, "currentColor", 2.4)}</button><button type="button" class="acbtn" data-acar-go="1" aria-label="Next trade">${icon("chev", 13, "currentColor", 2.4)}</button>` : "";
   return `<div class="acar" data-acar role="region" aria-roledescription="carousel" aria-label="Your active trades">${top(nav)}<div class="aslides">${list.map(slide).join("")}</div></div>`;
@@ -220,6 +221,7 @@ export async function deckPage(viewer: number, tab: DeckTab = "for-you"): Promis
 <div class="sheet" id="swconfirm" role="dialog" aria-label="Copy this trade"><div class="grab"></div>
 <h2 id="swc-t">Copy this trade</h2><p class="sm mut" style="margin:4px 0 12px" id="swc-s"></p>
 <div class="chips" id="swc-amt" role="radiogroup" aria-label="Amount"></div>
+<div class="row" style="gap:10px;margin-top:8px"><label class="chip camt"><span>$</span><input id="swc-custom" type="number" inputmode="decimal" min="1" step="any" placeholder="Custom" aria-label="Custom amount in dollars"></label><span class="xs down" id="swc-err" role="alert" hidden></span></div>
 <div class="grid2" style="margin-top:12px"><div class="tile"><div class="k">If the stop hits</div><div class="v down" id="swc-loss"></div></div><div class="tile"><div class="k">If the target hits</div><div class="v up" id="swc-gain"></div></div></div>
 <p class="xs mut" style="margin:10px 0 0" id="swc-n"></p>
 <div class="grid2" style="margin-top:14px"><button class="btn" data-close="swconfirm">Not now</button><button class="btn p" id="swc-go">${icon("bolt", 14)}Confirm &amp; sign</button></div></div>
@@ -282,7 +284,11 @@ function openConfirm(c){var max=Number(c.dataset.max),usd=Math.min(Number(c.data
  amt=opts.indexOf(usd)>-1?usd:opts[opts.length-1];
  document.getElementById('swc-t').textContent='Copy @'+c.dataset.handle+'\\u2019s '+c.dataset.symbol+' trade';
  document.getElementById('swc-s').textContent='Pick how much. Your max per trade is '+fmt(max)+'.';
- var box=document.getElementById('swc-amt');box.innerHTML='';opts.forEach(function(v){var b=document.createElement('button');b.type='button';b.className='chip'+(v===amt?' on':'');b.setAttribute('role','radio');b.textContent=fmt(v);b.onclick=function(){amt=v;box.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('on',x===b)});risk()};box.appendChild(b)});
+ var box=document.getElementById('swc-amt');box.innerHTML='';opts.forEach(function(v){var b=document.createElement('button');b.type='button';b.className='chip'+(v===amt?' on':'');b.setAttribute('role','radio');b.textContent=fmt(v);b.onclick=function(){amt=v;document.getElementById('swc-custom').value='';document.getElementById('swc-err').hidden=true;box.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('on',x===b)});risk()};box.appendChild(b)});
+ var cu=document.getElementById('swc-custom');cu.value='';cu.max=max;document.getElementById('swc-err').hidden=true;
+ // A typed amount: $1 up to the max per trade (the server checks the same), to the cent.
+ cu.oninput=function(){var v=Math.round(parseFloat(cu.value)*100)/100,e=document.getElementById('swc-err'),ok=v>=1&&v<=max;e.hidden=ok||!cu.value;e.textContent=v>max?'Your max per trade is '+fmt(max)+'.':'At least $1.';
+  if(ok){amt=v;box.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on')});risk()}else document.getElementById('swc-go').disabled=true};
  risk();document.getElementById('swconfirm').classList.add('open');document.getElementById('bd-swconfirm').classList.add('open')}
 function risk(){var sl=parseFloat(cur.dataset.sl),tp=parseFloat(cur.dataset.tp),block=!!cur.dataset.needstop,go=document.getElementById('swc-go');go.disabled=block;
  document.getElementById('swc-n').textContent=block?'This trade has no stop-loss, and your rules only copy trades with one. Change that in Settings, or skip it.':'One Flash order from your wallet'+(isNaN(sl)?', with no stop-loss.':', with the stop'+(isNaN(tp)?'':' and target')+' attached.')+' CopyGuard checks the trader again right before it\\u2019s placed.';document.getElementById('swc-loss').textContent=isNaN(sl)?'No stop':'\\u2212'+fmt(amt*sl/100);document.getElementById('swc-gain').textContent=isNaN(tp)?'No target':'+'+fmt(amt*tp/100)}
@@ -297,7 +303,7 @@ var sx,sy,dx=0,dy=0,drag=null;
 deck.addEventListener('pointerdown',function(e){var c=top();if(!c||!c.contains(e.target)||e.target.closest('a,button'))return;drag=c;sx=e.clientX;sy=e.clientY;dx=dy=0;c.style.transition='none';c.setPointerCapture(e.pointerId)});
 deck.addEventListener('pointermove',function(e){if(!drag)return;dx=e.clientX-sx;dy=e.clientY-sy;drag.style.transform='translate('+dx+'px,'+Math.min(dy,40)+'px) rotate('+(dx/18)+'deg)';
  var s=function(k,o){var el=drag.querySelector('.stamp.'+k);if(el)el.style.opacity=Math.max(0,Math.min(1,o))};s('copy',dx/110);s('skip',-dx/110);s('ask',-dy/110-Math.abs(dx)/200)});
-function end(){if(!drag)return;var c=drag;drag=null;if(dx>110)decide('right');else if(dx<-110)decide('left');else if(dy<-110&&Math.abs(dx)<80)decide('up');else reset(c)}
+function end(){if(!drag)return;var c=drag;drag=null;if(dx>110)decide('right');else if(dx<-110)decide('left');else if(dy<-110&&Math.abs(dx)<80)decide('up');else{reset(c);if(Math.abs(dx)<6&&Math.abs(dy)<6&&c.dataset.trade)location.href='/t/'+c.dataset.trade}}
 deck.addEventListener('pointerup',end);deck.addEventListener('pointercancel',end);
 // Live numbers on the cards you can see, and new trades as they're placed.
 function ids(){return cards().map(function(c){return c.dataset.trade})}

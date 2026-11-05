@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { ask, buildProposal, resolveIntent, type Card, type Intent, type Proposal } from "./ask.js";
 import { mirror, type PendingNotice } from "./copy.js";
-import { addCatRead, addMsg, allHalts, chatById, createChat, db, getMeta, guardEvents, patchMsgData, rulesOf, setChatState, spentToday, userByHandle, userById, followingOf, msgsOf } from "./db.js";
+import { flashAnswer, wantsFlash } from "./catflash.js";
+import { addCatRead, addMsg, allHalts, chatById, db, getMeta, mainChatOf, guardEvents, patchMsgData, rulesOf, setChatState, spentToday, userByHandle, userById, followingOf, msgsOf } from "./db.js";
 import { ago, ORDER_LABEL, money, portfolio, pct } from "./data.js";
 import { traderStats } from "./stats.js";
 import type { Trade } from "./flash.js";
@@ -78,15 +79,16 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
   const source = opts.source ?? "App";
   const meta = getMeta(uid);
   const clean = text.trim().slice(0, 300);
-  const fresh = !(opts.chatId && chatById(opts.chatId, uid));
-  const chatId = fresh ? createChat(uid, clean, source) : opts.chatId!;
+  // One continuous chat per user, in the app and in Telegram alike.
+  const chatId = mainChatOf(uid);
   const chat = chatById(chatId, uid)!;
   const state = JSON.parse(chat.state || "{}") as { intent?: Intent; trade?: number };
   // A chat opened from a feed post stays about that post until the user asks for a concrete order.
   const order = /\b(buy|sell|long)\b[^?]*\d/i.test(clean) || !!(state.intent && applyFollowUp(state.intent, clean));
   // Or one named in the question ("is @nightowl worth copying?"); a new name switches the subject.
   const named = order ? undefined : subjectTrade(clean);
-  const about = named ?? (state.trade ? undefined : opts.trade);
+  // "Ask Cat" on a trade switches the subject to it; later messages stay on it until the user unpins it.
+  const about = named ?? (opts.trade && opts.trade !== state.trade ? opts.trade : undefined);
   if (about && about !== state.trade) { state.trade = about; setChatState(chatId, state); }
   addMsg(chatId, "user", clean);
 
@@ -94,14 +96,21 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
   let data: CatData = {};
   const rules = meta.catMemory ? rulesOf(uid) : [];
 
-  const research = state.trade && !order && !/\bcompar/i.test(clean) ? await researchTrade(uid, state.trade, clean) : undefined;
-  const intent = research ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
+  // Guard questions ("why was @x paused?") get Guard's answer even while a trade is pinned in the chat.
+  const guardQ = /\b(paus|halt|guard)/i.test(clean);
+  const research = state.trade && !order && !guardQ && !/\bcompar/i.test(clean) ? await researchTrade(uid, state.trade, clean) : undefined;
+  // Live Flash questions (a quote, balances, order status) go to Flash MCP first, so "what would $50 of ETH get me?"
+  // gets a quote rather than becoming a buy. If it can't answer, Cat carries on as usual.
+  const flash = !research && !order && !guardQ && opts.live !== false && wantsFlash(clean) ? await flashAnswer(uid, clean).catch(() => undefined) : undefined;
+  const intent = research || flash ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
   if (research) {
     reply = research.reply;
     data = { steps: research.steps, sources: research.sources, follow: research.follow, verdict: research.verdict, ctx: research.ctx };
     // Cat's call on an entry, priced now, so its track record can be scored honestly later.
     if (research.verdict && research.ctx.buy && research.ctx.mark) addCatRead({ trade: research.ctx.id, user: uid, label: research.verdict.label, token: research.ctx.token, price: research.ctx.mark });
-    if (fresh) db.prepare("UPDATE cat_chats SET title = ? WHERE id = ?").run(`@${research.ctx.handle} ${research.ctx.symbol}: ${clean}`.slice(0, 60), chatId);
+  } else if (flash) {
+    reply = flash.reply;
+    data = { steps: flash.steps, sources: flash.sources };
   } else if (/\bcompar/i.test(clean)) {
     const c = await compareText(uid);
     reply = c.reply;

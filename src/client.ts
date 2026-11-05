@@ -14,6 +14,11 @@ function done(res){
 function collect(sel){var o={};$$('input[name],textarea[name],select[name]',$(sel)||document).forEach(function(i){if(i.type==='checkbox'){o[i.name]=i.checked}else o[i.name]=i.value});return o}
 function setVal(scope,name,val){var i=$('input[name="'+name+'"]',scope);if(i)i.value=val;$$('[data-bind="'+name+'"]',scope).forEach(function(b){b.textContent=(b.getAttribute('data-pre')||'')+val+(b.getAttribute('data-suf')||'')})}
 function sheet(id,open){var s=document.getElementById(id),b=document.getElementById('bd-'+id);if(!s)return;[s,b].forEach(function(x){if(x)x.classList[open?'add':'remove']('open')})}
+// A card with data-href opens its page when clicked anywhere that isn't its own link, button or field.
+document.addEventListener('click',function(e){
+  var card=e.target.closest('[data-href]');if(!card||e.defaultPrevented||e.target.closest('a,button,input,select,textarea,label,form,[data-act],[role=button]'))return;
+  if(window.getSelection&&String(window.getSelection()).length)return;
+  if(e.metaKey||e.ctrlKey)window.open(card.dataset.href,'_blank');else location.href=card.dataset.href});
 document.addEventListener('click',function(e){
   var el=e.target.closest('[data-open],[data-close],[data-pick],[data-step],[data-goto],[data-act],[data-copy],[data-toggle]');if(!el)return;
   if(el.dataset.open){sheet(el.dataset.open,true);return}

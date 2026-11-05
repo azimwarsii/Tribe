@@ -122,13 +122,14 @@ async function desk(viewer: number) {
 }
 
 async function aside(viewer: number) {
-  const earn = creatorEarnings(viewer);
-  const top = topCallers(5);
+  const top = topCallers(30);
   return `${await desk(viewer)}
-<section class="flat col" style="gap:10px"><h2 style="font-size:15px">How callers earn</h2>
-<ol class="steps"><li><b>Post a call</b><span>Entry, target, stop and why. Cat and everyone see how it plays out.</span></li><li><b>Hits win followers</b><span>Your record shows on every call: calls hit, streak, badges.</span></li><li><b>Followers copy you with Flash</b><span>You earn ${earn.shareBps}% of the Flash fees on every copy of your trades.</span></li></ol></section>
-<section class="flat col" style="gap:8px"><div class="row sp"><h2 style="font-size:15px">Top callers</h2><a class="xs" href="/ranks">Leaderboard ›</a></div>
-${top.length ? top.map((c, i) => `<a class="caller" href="/u/${esc(c.handle)}"><span class="rank">${i + 1}</span><span class="av sm">${face(c.handle)}</span><span class="grow"><b class="sm">@${esc(c.handle)}</b><span class="xs mut" style="display:block">${c.hits}/${c.closed} calls hit</span></span><b class="${(c.hitRate ?? 0) >= 50 ? "up" : "mut"}">${c.hitRate}%</b></a>`).join("") : `<span class="sm mut">No scored calls yet.</span>`}</section>`;
+<section class="flat col sigtop" style="gap:8px"><div class="row sp"><h2 style="font-size:15px">Leaderboard</h2><a class="xs" href="/ranks">See all ›</a></div>
+<div class="col sigtoplist" style="gap:8px">${top.length ? top.map((c, i) => `<a class="caller" href="/u/${esc(c.handle)}"><span class="rank">${i + 1}</span><span class="av sm">${face(c.handle)}</span><span class="grow"><b class="sm">@${esc(c.handle)}</b><span class="xs mut" style="display:block">${c.hits}/${c.closed} calls hit</span></span><b class="${(c.hitRate ?? 0) >= 50 ? "up" : "mut"}">${c.hitRate}%</b></a>`).join("") : `<span class="sm mut">No scored calls yet.</span>`}</div></section>
+<script>(function(){var l=document.querySelector('.sigtoplist');if(!l)return;
+// Show as many callers as fit the column's height, never a half-cut row.
+function fit(){var rows=l.children,h=l.getBoundingClientRect().bottom;if(!l.offsetHeight)return;for(var i=0;i<rows.length;i++)rows[i].hidden=false;for(var i=0;i<rows.length;i++)if(rows[i].getBoundingClientRect().bottom>h+1)rows[i].hidden=true}
+fit();addEventListener('resize',fit)})()</script>`;
 }
 
 export async function signalsPage(viewer: number, tab: SignalTab = "live"): Promise<string> {
@@ -137,11 +138,11 @@ export async function signalsPage(viewer: number, tab: SignalTab = "live"): Prom
   const empty = tab === "mine" ? `<div class="card col" style="align-items:center;text-align:center;gap:10px;padding:28px"><span class="orb" aria-hidden="true" style="width:48px;height:48px"><i></i></span><b>No calls yet</b><span class="sm mut" style="max-width:300px">Post your first signal. When it hits, people follow you, and when they copy you with Flash you earn.</span><button class="btn p" data-open="post-signal">Post a signal</button></div>`
     : `<div class="card sm mut" style="text-align:center;padding:24px">No live calls right now. Post one.</div>`;
   const tabs = `<nav class="dtabs" aria-label="Signals">${([["live", "Live calls"], ["mine", "Mine"]] as const).map(([k, l]) => `<a href="/signals${k === "live" ? "" : `?tab=${k}`}"${k === tab ? ' class="on" aria-current="page"' : ""}>${l}</a>`).join("")}</nav>`;
-  const body = split(`<main class="main"><header class="hd" style="padding:8px 0 0;justify-content:space-between"><div><h1 class="row" style="font-size:22px;gap:8px">${icon("rise", 20, "currentColor", 2.2)}Signals</h1><div class="sub">Calls from traders, scored by what the price did next</div></div>
+  const body = split(`<main class="main sigmain"><header class="hd" style="padding:8px 0 0;justify-content:space-between"><div><h1 class="row" style="font-size:22px;gap:8px">${icon("rise", 20, "currentColor", 2.2)}Signals</h1><div class="sub">Calls from traders, scored by what the price did next</div></div>
 <div class="row" style="gap:8px"><a class="ic" href="/ranks" aria-label="Leaderboard">${icon("bars", 18)}</a><button class="btn p sm only-d" data-open="post-signal">${icon("plus", 14, "currentColor", 2.4)}Post a signal</button></div></header>
 <div class="only-m">${await desk(viewer)}</div>
 ${tabs}
-<div class="col" style="gap:14px">${cards || empty}</div></main>`, await aside(viewer), "Your signal desk and top callers");
+<div class="col sigcards" style="gap:14px">${cards || empty}</div></main>`, await aside(viewer), "Your signal desk and top callers");
   const mark = await getPrice(TOKENS.ETH).catch(() => 2500);
   const horizons = (Object.keys(HORIZONS) as (keyof typeof HORIZONS)[]).map((k) => `<label class="chip${k === "days" ? " on" : ""}"><input type="radio" name="horizon" value="${k}"${k === "days" ? " checked" : ""} hidden>${HORIZONS[k].label}</label>`).join("");
   const composer = sheet("post-signal", `<div class="row sp"><h2>Post a signal</h2><button class="ic s" data-close="post-signal" aria-label="Close">${icon("close", 14, "currentColor", 2.4)}</button></div>

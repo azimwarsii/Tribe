@@ -64,6 +64,13 @@ addCol("users", "meta", "TEXT NOT NULL DEFAULT '{}'");
 addCol("users", "avatar", "INTEGER NOT NULL DEFAULT 0");
 addCol("users", "persona", "TEXT");
 addCol("users", "created_at", "INTEGER NOT NULL DEFAULT 0");
+// Privy embedded wallet: the user owns it, Tribe signs as a policy-limited signer. Once linked, pk is cleared.
+addCol("users", "privy_user_id", "TEXT");
+addCol("users", "privy_wallet_id", "TEXT");
+addCol("users", "privy_policy_id", "TEXT");
+// Which wallet trades for the user: "demo" (generated key, practice), "external" (their own MetaMask: every trade is
+// approved in the browser, Tribe holds no key) or "privy" (embedded wallet with Tribe as a limited signer).
+addCol("users", "wallet_kind", "TEXT NOT NULL DEFAULT 'demo'");
 addCol("orders", "price", "REAL");
 addCol("orders", "tokens", "REAL");
 addCol("orders", "usd", "REAL");
@@ -86,8 +93,29 @@ for (const [from, to] of [["🔥", "fire"], ["💎", "diamond"], ["🎯", "bulb"
 db.exec("DELETE FROM reactions WHERE emoji IN ('🔥', '💎', '🎯', '🙏')");
 // Free follow: see someone's trades in Following without copying them (copying lives in follows).
 db.exec("CREATE TABLE IF NOT EXISTS watches (follower INTEGER NOT NULL, leader INTEGER NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (follower, leader))");
+// Signed-in browsers and AI agent tokens (src/auth.ts). A token names its row; revoking the row signs it out.
+db.exec(`CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY, user INTEGER NOT NULL, kind TEXT NOT NULL, name TEXT, user_agent TEXT,
+  created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user, kind)");
+// Telegram sign-in links already used (each works once); pruned after a day, past their 15-minute life.
+db.exec("CREATE TABLE IF NOT EXISTS used_logins (sig TEXT PRIMARY KEY, at INTEGER NOT NULL)");
+// App-wide switches set by the operator (npm run freeze), read fresh on every use so they apply at once.
+db.exec("CREATE TABLE IF NOT EXISTS app_flags (key TEXT PRIMARY KEY, value TEXT NOT NULL, at INTEGER NOT NULL)");
 
-export interface User { id: number; handle: string; address: `0x${string}`; pk: `0x${string}`; xp: number; avatar: number; persona: string | null; created_at: number; photo_at: number; bio: string | null }
+/** The reason all copying is paused for everyone, or undefined when copying runs. */
+export const copyFreeze = () => (db.prepare("SELECT value FROM app_flags WHERE key = 'copy_freeze'").get() as { value: string } | undefined)?.value;
+export const setCopyFreeze = (reason: string | undefined) =>
+  reason ? db.prepare("INSERT OR REPLACE INTO app_flags (key, value, at) VALUES ('copy_freeze', ?, ?)").run(reason, Date.now()) : db.prepare("DELETE FROM app_flags WHERE key = 'copy_freeze'").run();
+
+export interface User {
+  id: number; handle: string; address: `0x${string}`; xp: number; avatar: number; persona: string | null; created_at: number; photo_at: number; bio: string | null;
+  /** Demo wallets only: the server-held key. Empty once the user links a Privy wallet. */
+  pk: `0x${string}` | "";
+  privy_user_id: string | null; privy_wallet_id: string | null; privy_policy_id: string | null;
+  wallet_kind: "demo" | "external" | "privy";
+}
 
 export interface Meta {
   perm: boolean; // auto-copy permission granted
@@ -271,10 +299,14 @@ export function claimPending(id: number, follower: number, status: "approved" | 
   return live ? { tradeId: row.trade_id, leader: row.leader, trade: JSON.parse(row.trade) as Trade } : undefined;
 }
 
+/** Called once when a leader goes from not paused to paused, whichever path saw it first (CRE post, watcher, copy-time read). */
+export const haltListeners: ((leader: number) => void)[] = [];
 export const haltLeader = (leader: number, reason: string, tx?: string) => {
   const was = haltOf(leader);
   db.prepare("INSERT OR REPLACE INTO guard_halts (leader, reason, at, tx) VALUES (?, ?, ?, ?)").run(leader, reason, Date.now(), tx ?? null);
-  if (!was) db.prepare("INSERT INTO guard_events (leader, kind, reason, tx, at) VALUES (?, 'halt', ?, ?, ?)").run(leader, reason, tx ?? null, Date.now());
+  if (was) return;
+  db.prepare("INSERT INTO guard_events (leader, kind, reason, tx, at) VALUES (?, 'halt', ?, ?, ?)").run(leader, reason, tx ?? null, Date.now());
+  for (const fn of haltListeners) fn(leader);
 };
 export const resumeLeader = (leader: number, tx?: string) => {
   if (haltOf(leader)) db.prepare("INSERT INTO guard_events (leader, kind, reason, tx, at) VALUES (?, 'resume', NULL, ?, ?)").run(leader, tx ?? null, Date.now());
@@ -377,6 +409,30 @@ export const leaveSquad = (user: number) => db.prepare("DELETE FROM squad_member
 export interface CatMsg { id: number; chat: number; role: "user" | "cat"; text: string; data: Record<string, unknown> | null; vote: number; at: number }
 export const createChat = (user: number, title: string, source: string) =>
   Number(db.prepare("INSERT INTO cat_chats (user, title, source, at, updated) VALUES (?, ?, ?, ?, ?)").run(user, title.slice(0, 60), source, Date.now(), Date.now()).lastInsertRowid);
+/**
+ * Each user has one continuous chat with Cat, like a messaging thread: their oldest chat. Any other chats (from before
+ * Cat became one thread) are merged into it; message ids are global and increasing, so the merged thread stays in order.
+ */
+export function mainChatOf(user: number): number {
+  const ids = (db.prepare("SELECT id FROM cat_chats WHERE user = ? ORDER BY id").all(user) as unknown as { id: number }[]).map((r) => r.id);
+  if (!ids.length) return createChat(user, "Cat", "App");
+  const [main, ...rest] = ids;
+  if (rest.length) {
+    db.exec("BEGIN");
+    try {
+      for (const id of rest) {
+        db.prepare("UPDATE cat_msgs SET chat = ? WHERE chat = ?").run(main, id);
+        db.prepare("DELETE FROM cat_chats WHERE id = ?").run(id);
+      }
+      db.prepare("UPDATE cat_chats SET title = 'Cat' WHERE id = ?").run(main);
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+  }
+  return main;
+}
 export const chatById = (id: number, user: number) => db.prepare("SELECT * FROM cat_chats WHERE id = ? AND user = ?").get(id, user) as unknown as { id: number; title: string; source: string; state: string; at: number; updated: number } | undefined;
 export const chatsOf = (user: number, q = "") =>
   db.prepare("SELECT id, title, source, updated FROM cat_chats WHERE user = ? AND title LIKE ? ORDER BY updated DESC LIMIT 60").all(user, `%${q}%`) as unknown as { id: number; title: string; source: string; updated: number }[];

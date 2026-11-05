@@ -3,7 +3,7 @@ import { face, initials, money, openPositions, pct, portfolio, profile, seasonOf
 import { traderStats } from "../stats.js";
 import { isDry } from "../tracker.js";
 import { txUrl } from "../flash.js";
-import { makeSession } from "../auth.js";
+import { sessionsOf, takeReveal, type Session } from "../auth.js";
 import { DISCLAIMER, esc, header, icon, money2, page, seg, sheet, signCls, split, sw } from "../ui.js";
 
 const guardTxUrl = (tx: string) => `https://${process.env.GUARD_CHAIN === "base" ? "" : "sepolia."}basescan.org/tx/${tx}`;
@@ -55,36 +55,56 @@ export async function mePage(uid: number): Promise<string> {
 <div class="line"><span class="ico">${icon("swap", 16)}</span><span class="grow">Max slippage</span>${seg(["0.3%", "0.5%", "1%"].map((v) => ({ label: v, on: meta.slip === v, attrs: `data-act="/api/meta" data-body='{"slip":"${v}"}'` })), true, "Max slippage")}</div>
 <div class="line"><span class="ico">${icon("bell", 16)}</span><span class="grow"><span class="t">Push notifications</span><span class="s">Copy requests, Guard pauses, fills</span></span>${sw(meta.push, "Push notifications", `data-act="/api/meta" data-body='{"key":"push"}'`)}</div>
 <div class="line"><span class="ico">${icon("tg", 16)}</span><span class="grow"><span class="t">Telegram</span><span class="s">${meta.tgId || uid < 1e10 ? "Approve copies and chat with Cat in Telegram" : "Link it in Alerts to approve copies there"}</span></span>${sw(meta.tg, "Telegram", `data-act="/api/meta" data-body='{"key":"tg"}'`)}</div>
-${row("help", "Risk profile", `${u.persona ?? "Not set"} · sets your default copy rules`, `<span class="sm mut">Retake</span>`, "/onboarding?retake=1")}
-${row("wallet", "Wallet", `${isDry() ? "Demo wallet" : "Embedded wallet"} · ${u.address.slice(0, 6)}…${u.address.slice(-4)}`, "", "/funds")}
+
+${row("wallet", "Wallet", u.wallet_kind === "external" ? `MetaMask · ${u.address.slice(0, 6)}…${u.address.slice(-4)}` : `Practice wallet · connect MetaMask`, "", "/wallet")}
 <button class="line" style="background:none;border:0;width:100%;text-align:left;color:#F87171" data-act="/api/signout"><span class="ico">${icon("logout", 16)}</span><span class="grow">Sign out</span></button></section>
 <p class="note" style="margin:0 0 100px">${DISCLAIMER}</p></main>`;
   return page({ title: "Me", nav: "me", body });
 }
 
-export function settingsPage(uid: number): string {
+/** "Chrome on macOS" from a user agent; good enough to tell your own devices apart. */
+function deviceName(ua: string | null): string {
+  if (!ua) return "Unknown device";
+  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : /curl|node|undici/i.test(ua) ? "Script" : "Browser";
+  const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
+  return os ? `${browser} on ${os}` : browser;
+}
+const ago = (ms: number) => {
+  const m = Math.round((Date.now() - ms) / 60_000);
+  return m < 2 ? "active now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+};
+
+export function settingsPage(uid: number, sessionId?: string): string {
   const u = getUser(uid);
   const m = getMeta(uid);
   const segr = (key: string, opts: string[], cur: string) => seg(opts.map((v) => ({ label: v, on: cur === v, attrs: `data-act="/api/meta" data-body='{"${key}":"${v}"}'` })), true, key);
   const toggle = (ic: string, label: string, sub: string, key: string, on: boolean) => `<div class="line"><span class="ico">${icon(ic, 16)}</span><span class="grow"><span class="t">${label}</span><span class="s">${sub}</span></span>${sw(on, label, `data-act="/api/meta" data-body='{"key":"${key}"}'`)}</div>`;
-  const section = (t: string, inner: string) => `<section><h2 style="font-size:13px;color:#A3A3A3;font-weight:600;margin:14px 0 2px;text-transform:uppercase;letter-spacing:.04em">${t}</h2>${inner}</section>`;
-  const agentToken = makeSession(uid);
-  const body = `${header("Settings", "Account, copying, Guard and alerts", "/me")}<main class="main" style="gap:6px">
-<div class="card row" style="gap:12px"><span class="av w">${face(u.handle)}</span><span class="grow"><b>@${esc(u.handle)}</b><span class="sm mut" style="display:block">${esc(u.persona ?? "Trader")}</span></span></div>
-${section("Account", `${row("user", "Handle", "Shown on the feed and leaderboard", `<form data-form action="/api/handle" class="row" style="gap:6px"><input class="f" name="handle" value="${esc(u.handle)}" style="height:36px;width:130px;font-size:14px;padding:0 10px" aria-label="Handle"><button class="btn sm">Save</button></form>`)}${row("help", "Risk profile", `${u.persona ?? "Not set"}`, `<span class="sm mut">Retake</span>`, "/onboarding?retake=1")}${row("wallet", "Wallet", `${u.address}`, `<button class="btn sm" data-copy="${u.address}">Copy</button>`)}`)}
-${section("Copying", `<div class="line"><span class="ico">${icon("bolt", 16)}</span><span class="grow">Default mode</span>${segr("mode", ["Ask first", "Auto"], m.defaults.mode === "auto" ? "Auto" : "Ask first")}</div>
-<div class="line"><span class="ico">${icon("clock", 16)}</span><span class="grow">Approval timer</span>${segr("timer", ["60s", "2m", "5m"], ({ 60: "60s", 120: "2m", 300: "5m" } as Record<number, string>)[m.timerSec] ?? "")}</div>
-<div class="line"><span class="ico">${icon("swap", 16)}</span><span class="grow">Max slippage</span>${segr("slip", ["0.3%", "0.5%", "1%"], m.slip)}</div>
-<div class="line"><span class="ico">${icon("target", 16)}</span><span class="grow"><span class="t">Chase limit</span><span class="s">Never pay more than this above the trader's entry; past it, the copy waits as a 30-minute limit order</span></span>${segr("chase", ["Off", "0.5%", "1%", "2%"], m.defaults.chase ? `${m.defaults.chase}%` : "Off")}</div>
+  const section = (t: string, inner: string, sub = "") => `<section class="setsec"><div class="sethd"><h2>${t}</h2>${sub ? `<span>${sub}</span>` : ""}</div><div class="setcard">${inner}</div></section>`;
+  const opt = (ic: string, label: string, sub: string, control: string) => `<div class="line"><span class="ico">${icon(ic, 16)}</span><span class="grow"><span class="t">${label}</span><span class="s">${sub}</span></span>${control}</div>`;
+  const devices = sessionsOf(uid, "web");
+  const agents = sessionsOf(uid, "agent");
+  const fresh = takeReveal(uid);
+  const mcpConfig = (token: string) => JSON.stringify({ mcpServers: { tribe: { command: "npx", args: ["tsx", "src/mcp.ts"], env: { TRIBE_URL: process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`, TRIBE_TOKEN: token } } } }, null, 2);
+  const deviceRow = (d: Session) => `<div class="line"><span class="ico">${icon("user", 16)}</span><span class="grow"><span class="t">${esc(deviceName(d.user_agent))}${d.id === sessionId ? ' <span class="xs up">· this device</span>' : ""}</span><span class="s">Signed in ${new Date(d.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · ${ago(d.last_seen)}</span></span>${d.id === sessionId ? "" : `<button class="btn sm" data-act="/api/sessions/revoke" data-body='{"id":"${d.id}"}'>Sign out</button>`}</div>`;
+  const agentRow = (a: Session) => `<div class="line"><span class="ico">${icon("cat", 16)}</span><span class="grow"><span class="t">${esc(a.name ?? "Agent")}</span><span class="s">Created ${new Date(a.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} · last used ${ago(a.last_seen)} · expires ${new Date(a.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span></span><button class="btn sm" data-act="/api/agent-tokens/revoke" data-body='{"id":"${a.id}"}' data-confirm="Revoke ${esc(a.name ?? "this token")}? Agents using it stop working at once.">Revoke</button></div>`;
+  const body = `${header("Settings", "Account, copying, Guard and alerts", "/me")}<main class="main setmain">
+<div class="card row setme"><span class="av w">${face(u.handle)}</span><span class="grow"><b>@${esc(u.handle)}</b><span class="sm mut" style="display:block">${esc(u.persona ?? "Trader")} · ${esc(u.address.slice(0, 6))}…${esc(u.address.slice(-4))}</span></span><a class="btn sm" href="/me">View profile</a></div>
+${section("Account", `${row("user", "Handle", "Shown on the feed and leaderboard", `<form data-form action="/api/handle" class="row" style="gap:6px"><input class="f" name="handle" value="${esc(u.handle)}" style="height:36px;width:130px;font-size:14px;padding:0 10px" aria-label="Handle"><button class="btn sm">Save</button></form>`)}${row("wallet", "Wallet", `${u.address}`, `<button class="btn sm" data-copy="${u.address}">Copy</button>`)}`)}
+${section("Copying", `${opt("bolt", "Default mode", "Ask first sends you a request to approve each copy", segr("mode", ["Ask first", "Auto"], m.defaults.mode === "auto" ? "Auto" : "Ask first"))}
+${opt("clock", "Approval timer", "How long a copy request waits for you", segr("timer", ["60s", "2m", "5m"], ({ 60: "60s", 120: "2m", 300: "5m" } as Record<number, string>)[m.timerSec] ?? ""))}
+${opt("swap", "Max slippage", "The most a fill may move against you", segr("slip", ["0.3%", "0.5%", "1%"], m.slip))}
+${opt("target", "Chase limit", "Never pay more than this above the trader's entry; past it, the copy waits as a 30-minute limit order", segr("chase", ["Off", "0.5%", "1%", "2%"], m.defaults.chase ? `${m.defaults.chase}%` : "Off"))}
 ${toggle("shieldok", "Tight approvals", "Flash spends only what each order needs (Permit2, minimal allowance). No standing unlimited approval on your wallet.", "tightApprovals", m.tightApprovals)}`)}
-${section("Guard", `<div class="line"><span class="ico">${icon("shield", 16)}</span><span class="grow"><span class="t">Strictness</span><span class="s">Pause line: Strict 50 · Balanced 65 · Relaxed 80</span></span></div><div style="padding:8px 0">${segr("strict", ["Strict", "Balanced", "Relaxed"], m.strict)}</div>`)}
+${section("Guard", opt("shield", "Strictness", "Pause line: Strict 50 · Balanced 65 · Relaxed 80", segr("strict", ["Strict", "Balanced", "Relaxed"], m.strict)), "Chainlink CRE checks every trader you copy")}
 ${section("Alerts", `${toggle("bell", "Push notifications", "Copy requests, Guard pauses, fills", "push", m.push)}${toggle("tg", "Telegram", "Approve copies and chat with Cat", "tg", m.tg)}${row("tg", "Link Telegram", "Connect this account to the Tribe bot", "", "/alerts")}${toggle("clock", "Quiet hours", "Hold non-urgent alerts overnight", "quiet", m.quiet)}`)}
 ${section("Privacy", toggle("eye", "Hide balances", "Mask your wallet balance on Me", "hideBalance", m.hideBalance))}
-${section("AI agent access", `<div class="line" style="align-items:flex-start;padding:10px 0"><span class="ico">${icon("cat", 16)}</span><span class="grow"><span class="t">Use Tribe from your own AI agent</span><span class="s" style="line-height:1.45">Claude, Cursor or any MCP client can read the leaderboard, check Guard, copy traders and propose trades through the Tribe MCP server. Trades still need your confirm, your copy rules and Guard apply. The token acts as you for 30 days; keep it private.</span></span></div>
-<div class="row" style="gap:8px;padding:4px 0 10px"><button class="btn sm" data-toggle="agent-token">Show setup</button><button class="btn sm" data-copy="${esc(agentToken)}">Copy token</button></div>
-<pre id="agent-token" class="hide tile" style="white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.5;margin:0">${esc(JSON.stringify({ mcpServers: { tribe: { command: "npx", args: ["tsx", "src/mcp.ts"], env: { TRIBE_URL: process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`, TRIBE_TOKEN: agentToken } } } }, null, 2))}</pre>`)}
-<div class="col" style="margin-top:16px"><button class="btn" data-act="/api/signout">Sign out</button><button class="btn danger" data-act="/api/delete-account" data-confirm="Delete your Tribe account? Copying stops and your profile disappears. Your wallet funds stay yours, so export first.">Delete account</button></div>
-<p class="note" style="text-align:center;margin:12px 0 100px">Tribe v0.2 · hackathon build</p></main>`;
+${section("Signed-in devices", `${devices.map(deviceRow).join("")}${devices.length > 1 ? `<div style="padding:8px 0"><button class="btn sm" data-act="/api/sessions/revoke-others" data-confirm="Sign out every other device?">Sign out all other devices</button></div>` : ""}`)}
+${section("AI agent access", `<div class="line" style="align-items:flex-start;padding:10px 0"><span class="ico">${icon("cat", 16)}</span><span class="grow"><span class="t">Use Tribe from your own AI agent</span><span class="s" style="line-height:1.45">Claude, Cursor or any MCP client can read the leaderboard, check Guard, copy traders and propose trades through the Tribe MCP server. Trades still need your confirmation. A token can't change your account, devices or wallet, and you can revoke it any time.</span></span></div>
+${fresh ? `<div class="card good col" style="gap:8px" role="status"><b class="up">Copy your new token now</b><span class="sm">It won't be shown again. Paste this into your MCP client's config:</span><pre class="tile" style="white-space:pre-wrap;word-break:break-all;font-size:12px;line-height:1.5;margin:0">${esc(mcpConfig(fresh))}</pre><div class="row" style="gap:8px"><button class="btn sm" data-copy="${esc(mcpConfig(fresh))}">Copy config</button><button class="btn sm" data-copy="${esc(fresh)}">Copy token only</button></div></div>` : ""}
+${agents.map(agentRow).join("")}
+<form data-form action="/api/agent-tokens" class="row" style="gap:6px;padding:8px 0 10px"><input class="f" name="name" placeholder="Name, e.g. Claude Desktop" maxlength="40" style="height:36px;flex:1;min-width:0;font-size:14px;padding:0 10px" aria-label="Token name"><button class="btn sm">Create token</button></form>`)}
+<div class="grid2 setout"><button class="btn" data-act="/api/signout">Sign out</button><button class="btn danger" data-act="/api/delete-account" data-confirm="Delete your Tribe account? Copying stops and your profile disappears. Your wallet funds stay yours, so export first.">Delete account</button></div>
+<p class="note" style="text-align:center;margin:4px 0 100px">Tribe v0.2 · hackathon build</p></main>`;
   return page({ title: "Settings", body });
 }
 
