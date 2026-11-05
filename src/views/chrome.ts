@@ -24,7 +24,7 @@ export function activeFor(path: string): string {
   if (p.startsWith("/cat")) return "cat";
   if (p.startsWith("/guard")) return "guard";
   if (["/portfolio", "/positions", "/traders", "/requests", "/funds", "/transfer", "/activity"].some((x) => p.startsWith(x))) return "portfolio";
-  if (p.startsWith("/creator") || p.startsWith("/strategy")) return "creator";
+  if (["/creator", "/strategy", "/trade/new", "/bots", "/bot"].some((x) => p.startsWith(x))) return "creator";
   if (p.startsWith("/settings") || p.startsWith("/me") || p.startsWith("/alerts")) return "settings";
   return "feed";
 }

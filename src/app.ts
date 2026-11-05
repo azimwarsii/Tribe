@@ -13,10 +13,10 @@ import { addSignalComment, postSignal, setSignalReaction, signalById, signalComm
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
 import {
-  addComment, addLedger, addRule, chatById, deleteRule, mainChatOf, setChatState, voteMsg, wipeCat, createSquad, joinSquad, leaveSquad, squadOf, claimQuest, addStrategy, claimPending, commentsOf, createWebUser, db, DEFAULT_RULES, getFollowRules, getMeta, getUser, ledgerOf, recordTrade, setFollow, setHandle, setMeta,
+  addComment, addLedger, addRule, chatById, deleteChat, deleteRule, setChatState, voteMsg, wipeCat, detachDeleted, createSquad, joinSquad, leaveSquad, squadOf, claimQuest, addStrategy, claimPending, commentsOf, createWebUser, db, DEFAULT_RULES, getFollowRules, getMeta, getUser, ledgerOf, recordTrade, setFollow, setHandle, setMeta,
   setStrategyPublic, setReaction, tradeById, unfollow, userByHandle, userById, type Meta, allHalts, followingOf, haltOf, handleOk, isWatching, setWatch, recordSwipe,
 } from "./db.js";
-import { openPositions, portfolio, profile, symOf, topTraders, tradeCard } from "./data.js";
+import { freeBalance, openPositions, portfolio, profile, symOf, topTraders, tradeCard } from "./data.js";
 import { lastOracleCheck } from "./guard.js";
 import { placeAndTrack, isDry, heldTokens, cancelProtective, moveStop } from "./tracker.js";
 import type { Trade } from "./flash.js";
@@ -30,6 +30,12 @@ import { esc, icon, notFound, page, SIDE_JS } from "./ui.js";
 import { finalize } from "./views/chrome.js";
 import { tradePage } from "./views/tradepage.js";
 import { transcribe } from "./transcribe.js";
+import { isExternal } from "./wallet.js";
+import { answerRequest, interactive, nextRequest } from "./browsersign.js";
+import { popularTokens, searchTokens, tradableToken } from "./tokens.js";
+import { answerSignal, botById, controlBot, createBot, fastForwardTrial, publishBot, runBot, updateBot } from "./creator.js";
+import { BLOCKED_COUNTRIES, botBuilderPage, botDetailPage, creatorStudioPage, tradeTicketPage, verifyPage } from "./views/creator.js";
+import { buildProposal } from "./ask.js";
 import { botPage, profileEditPage } from "./views/profile.js";
 import { landingPage, portfolioPage, signinPage, topPage, topSvg } from "./views/web.js";
 import { badgesPage, levelUpPage, progressPage, squadPage } from "./views/game.js";
@@ -62,7 +68,11 @@ export function appRouter(): Router {
   const html = async (res: Response, s: string, status = 200) => {
     try {
       const req = res.req;
-      res.status(status).type("html").send(await finalize(s, currentUser(req), req.path));
+      const uid = currentUser(req);
+      let out = await finalize(s, uid, req.path);
+      // Live MetaMask accounts: the page carries the bridge that asks MetaMask when an order needs a signature.
+      if (uid !== undefined && !isDry() && isExternal(uid)) out = out.replace('<script src="/app.js">', `<script>window.TRIBE_SIGNER=${JSON.stringify({ address: getUser(uid).address })}</script><script src="/app.js">`);
+      res.status(status).type("html").send(out);
     } catch (e) {
       console.error("render", e);
       if (!res.headersSent) res.status(500).send("Something went wrong");
@@ -86,11 +96,29 @@ export function appRouter(): Router {
     const uid = me(req);
     if (uid === undefined) return res.status(401).json({ error: "Sign in first", redirect: "/signin" });
     try {
-      res.json((await fn(uid, req, res)) ?? { ok: true });
+      // Inside an action the user's own browser wallet (MetaMask) may be asked to sign; see browsersign.ts.
+      res.json((await interactive(uid, () => fn(uid, req, res))) ?? { ok: true });
     } catch (e) {
       res.status(400).json({ error: (e as Error).message });
     }
   };
+
+  // The open tab's MetaMask bridge: wait for the next signature this user's action needs, then send back the answer.
+  r.get("/api/sign/wait", async (req, res) => {
+    const uid = me(req);
+    if (uid === undefined) return res.status(401).json({ error: "Sign in first" });
+    res.json({ req: await nextRequest(uid, String(req.query.tab ?? "").slice(0, 40)) });
+  });
+  r.post("/api/sign/:id", json, (req, res) => {
+    const uid = me(req);
+    if (uid === undefined) return res.status(401).json({ error: "Sign in first" });
+    try {
+      answerRequest(uid, String(req.params.id), { result: req.body?.result ? String(req.body.result) : undefined, error: req.body?.error ? String(req.body.error).slice(0, 200) : undefined });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
 
   r.get("/app.js", (_q, res) => res.type("application/javascript").set("Cache-Control", "no-cache").send(`${CLIENT_JS};\n${REACT_JS};\n${SIDE_JS}`));
   r.get("/", (req, res) => (me(req) === undefined ? html(res, landingPage()) : res.redirect("/feed")));
@@ -162,8 +190,9 @@ export function appRouter(): Router {
   r.get("/positions", authed((uid, req) => positionsPage(uid, String(req.query.tab ?? "open"))));
   r.get("/traders", authed((uid) => myTradersPage(uid)));
   r.get("/guard", authed((uid) => guardPage(uid)));
-  // Cat is one continuous chat; /cat and /cat/chat both open it (?trade= pins a trade, ?q= asks something).
-  const catChat = authed((uid, req) => catChatPage(uid, String(req.query.q ?? ""), req.query.trade ? Number(req.query.trade) : undefined));
+  // Ask Cat: /cat (or /cat/chat) starts a new chat, /cat/chat?id= opens an old one from the history.
+  // ?trade= pins a trade to ask about, ?q= asks something straight away.
+  const catChat = authed((uid, req) => catChatPage(uid, String(req.query.q ?? ""), req.query.trade ? Number(req.query.trade) : undefined, req.query.id && !req.query.new ? Number(req.query.id) : undefined));
   r.get("/cat", catChat);
   r.get("/cat/chat", catChat);
   r.get("/profile/edit", authed((uid) => profileEditPage(uid)));
@@ -190,12 +219,25 @@ export function appRouter(): Router {
     res.type("text/csv").attachment("activity.csv").send(activityCsv(uid, String(req.query.tab ?? "All")));
   });
   r.get("/alerts", authed((uid) => alertsPage(uid, uid < 1e10 ? null : `https://t.me/${BOT()}?start=link_${makeLoginToken(uid)}`, BOT())));
-  r.get("/creator", authed((uid) => creatorPage(uid)));
+  // Creator Studio: post trades by hand, build bots, publish them, get paid.
+  r.get("/creator", authed((uid) => creatorStudioPage(uid)));
+  r.get("/creator/verify", authed((uid) => verifyPage(uid)));
+  r.get("/trade/new", authed((uid, req) => tradeTicketPage(uid, req.query as Record<string, unknown>)));
+  r.get("/bots/new", authed((uid) => botBuilderPage(uid)));
+  r.get("/bots/:id", async (req, res) => {
+    const uid = me(req);
+    if (uid === undefined) return res.redirect("/signin");
+    const out = await botDetailPage(uid, Number(req.params.id));
+    return out ? html(res, out) : html(res, notFound("Bot not found"), 404);
+  });
   r.get("/strategy/new", authed((uid) => newStrategyPage(uid)));
   // Every trade has one page, open to anyone: /t/<id>. The older thread and share links forward to it.
   r.get("/t/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (!(await tradeCard(id))) return html(res, notFound("Trade not found"), 404);
+    // A bot's trial trades are private to its owner.
+    const priv = db.prepare("SELECT leader FROM trades WHERE id = ? AND private = 1").get(id) as { leader: number } | undefined;
+    if (priv && priv.leader !== me(req)) return html(res, notFound("Trade not found"), 404);
     html(res, await tradePage(id, me(req)));
   });
   r.get("/thread/:id", (req, res) => res.redirect(301, `/t/${Number(req.params.id)}#comments`));
@@ -227,7 +269,7 @@ export function appRouter(): Router {
     const s = t ? await (req.query.f === "story" ? storySvg : ogSvg)(t.handle, t.id) : undefined;
     s ? res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(s)) : res.sendStatus(404);
   });
-  r.get("/api/feed", (_q, res) => res.json(db.prepare("SELECT id, leader, at FROM trades ORDER BY id DESC LIMIT 50").all()));
+  r.get("/api/feed", (_q, res) => res.json(db.prepare("SELECT id, leader, at FROM trades WHERE private = 0 ORDER BY id DESC LIMIT 50").all()));
 
   // ---- JSON reads for agents (the Tribe MCP server, src/mcp.ts). Auth: session cookie or `Authorization: Bearer <agent token>`. ----
   r.get("/api/v1/top", act(async (_uid, req) => {
@@ -376,9 +418,12 @@ export function appRouter(): Router {
       db.prepare(sql).run(...Array(n).fill(uid));
     }
     db.prepare("UPDATE users SET handle = ? WHERE id = ?").run(`deleted_${uid}`, uid);
+    detachDeleted(uid); // the wallet and Privy login are free again: signing in with them makes a new account
+    db.prepare("UPDATE bots SET status = 'stopped', reason = 'Account deleted' WHERE owner = ?").run(uid);
+    wipeCat(uid);
     revokeSessions(uid); // every browser and agent token
     res.setHeader("Set-Cookie", "tribe=; Path=/; Max-Age=0");
-    return { redirect: "/signin" };
+    return { redirect: "/signin?out=1" }; // also ends the Privy wallet session in this browser
   }));
   r.post("/api/handle", express.urlencoded({ extended: false }), json, act((uid, req) => {
     const why = handleOk(String(req.body.handle ?? ""), uid);
@@ -571,7 +616,7 @@ export function appRouter(): Router {
   }));
 
   // ---- Ask Cat ----
-  r.post("/api/cat/ask", json, act((uid, req) => catAsk(uid, String(req.body?.text ?? ""), { chatId: req.body?.chat ? Number(req.body.chat) : undefined, source: "App", live: req.body?.live !== false, trade: req.body?.trade ? Number(req.body.trade) : req.body?.handle ? handleEntry(String(req.body.handle)) : undefined })));
+  r.post("/api/cat/ask", json, act((uid, req) => catAsk(uid, String(req.body?.text ?? ""), { chatId: req.body?.chat ? Number(req.body.chat) : undefined, newChat: !req.body?.chat, source: "App", live: req.body?.live !== false, trade: req.body?.trade ? Number(req.body.trade) : req.body?.handle ? handleEntry(String(req.body.handle)) : undefined })));
   // A Bearer token means the user's AI agent (the MCP server) confirmed it: the trade is theirs, tagged Bot.
   r.post("/api/cat/confirm", json, act((uid, req) => catConfirm(uid, String(req.body?.id), (p, l) => notifier?.(p, l), req.headers.authorization?.startsWith("Bearer ") ? "agent" : "user")));
   // The chat's mic: a short WAV recorded in the browser, transcribed on the server (works in every browser).
@@ -581,11 +626,17 @@ export function appRouter(): Router {
     return { text: await transcribe(audio) };
   }));
   // Back to general questions: the chat stops being about the pinned trade.
-  r.post("/api/cat/unpin", json, act((uid) => {
-    const id = mainChatOf(uid);
-    const state = JSON.parse(chatById(id, uid)?.state || "{}") as { trade?: number };
+  r.post("/api/cat/unpin", json, act((uid, req) => {
+    const id = Number(req.body?.chat);
+    const chat = id ? chatById(id, uid) : undefined;
+    if (!chat) return { ok: true }; // a new chat isn't saved until its first message
+    const state = JSON.parse(chat.state || "{}") as { trade?: number };
     delete state.trade;
     setChatState(id, state);
+    return { ok: true };
+  }));
+  r.post("/api/cat/chat/delete", json, act((uid, req) => {
+    if (!deleteChat(Number(req.body?.id), uid)) throw new Error("Chat not found");
     return { ok: true };
   }));
   r.post("/api/cat/vote", json, act((uid, req) => { voteMsg(Number(req.body.msg), uid, Math.max(-1, Math.min(1, Number(req.body.vote) || 0))); }));
@@ -635,10 +686,77 @@ export function appRouter(): Router {
   r.post("/api/claim", json, act((uid) => {
     const cr = creatorEarnings(uid);
     if (cr.claimable < 0.01) throw new Error("Nothing to claim yet");
+    if (!getMeta(uid).kyc) return { redirect: "/creator/verify", toast: "Verify once before your first payout" };
     if (!isDry()) throw new Error("Onchain fee-share payouts aren't built yet.");
-    setMeta(uid, { claimed: cr.accrued, simBalance: getMeta(uid).simBalance + cr.claimable });
+    setMeta(uid, { claimed: cr.claimed + cr.claimable, simBalance: getMeta(uid).simBalance + cr.claimable });
     addLedger(uid, "payout", cr.claimable, "Fee-share (demo payout)");
     return { reload: true, toast: `$${cr.claimable.toFixed(2)} added to your balance` };
+  }));
+  // A trade by hand from the trade ticket: always with a stop; copied to followers by their own rules.
+  r.post("/api/trade/new", json, act(async (uid, req) => {
+    const usd = Number(req.body?.usd), stop = Number(req.body?.stop), tp = Number(req.body?.tp ?? 0);
+    const note = String(req.body?.note ?? "").trim().slice(0, 200);
+    if (!(usd >= 1 && usd <= 10000)) throw new Error("Amount is $1 to $10,000");
+    const free = await freeBalance(uid);
+    if (usd > free + 1e-6) throw new Error(`You have $${free.toFixed(2)} USDC on Base. Lower the amount or add funds.`);
+    if (!(stop >= 0.5 && stop <= 50)) throw new Error("Every trade needs a stop between 0.5% and 50%");
+    if (!(tp === 0 || (tp >= 0.5 && tp <= 500))) throw new Error("Target is none, or 0.5% to 500%");
+    // ETH, or any Base token picked from Flash search: checked again here (not flagged, liquid enough).
+    const raw = String(req.body?.token ?? "ETH");
+    const token = raw.toUpperCase() === "ETH" ? "ETH" : (await tradableToken(raw)).address;
+    const proposal = await buildProposal({ side: "buy", usd, token, stopPct: stop, tpPct: tp || undefined }, { oneOrder: isExternal(uid) && !isDry() });
+    let first: number | undefined;
+    let offers = 0;
+    for (const t of proposal.trades) {
+      const m = await mirror(uid, t, "user", note || undefined);
+      if (m.own.startsWith("failed")) throw new Error(m.own.replace(/^failed: /, "Couldn't place it: "));
+      first ??= m.tradeId;
+      offers += m.pending.length + m.executed.length;
+      notifier?.(m.pending, uid);
+    }
+    return { redirect: `/t/${first}`, toast: `Placed${offers ? ` · ${offers} copier${offers === 1 ? "" : "s"} copying or asked` : ""}` };
+  }));
+  // Token picker: popular Base tokens, or Flash search results, each marked tradable or not (and why).
+  r.get("/api/tokens", async (req, res) => {
+    if (me(req) === undefined) return res.status(401).json({ error: "Sign in first" });
+    const q = String(req.query.q ?? "").trim();
+    try {
+      res.json({ tokens: q ? await searchTokens(q) : await popularTokens() });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  r.post("/api/bots", json, act(async (uid, req) => {
+    const b = req.body ?? {};
+    const tpl = String(b.template ?? "");
+    const bot = await createBot(uid, String(b.name ?? ""), tpl, { usd: b.usd, perDay: b.perDay, stopPct: b.stopPct, tpPct: b.tpPct, maxDdPct: b.maxDdPct, p: b[`p_${tpl}`] ?? b.p });
+    return { redirect: `/bots/${bot.id}`, toast: `${bot.name} started its private trial` };
+  }));
+  r.post("/api/bots/:id/:action", json, act(async (uid, req) => {
+    const id = Number(req.params.id), action = String(req.params.action);
+    const b = botById(id);
+    if (!b || b.owner !== uid) throw new Error("Bot not found");
+    if (action === "publish") return { reload: true, toast: `${await publishBot(uid, id)} is live: people can copy it now` };
+    if (action === "fastforward") { fastForwardTrial(uid, id); return { reload: true, toast: "Trial time skipped (demo)" }; }
+    if (action === "check" || action === "run") {
+      if (b.status !== "trial" && b.status !== "live") throw new Error("Resume the bot first");
+      const r = await runBot(b, { force: action === "run" });
+      return { reload: true, toast: r.why };
+    }
+    if (action === "update") { updateBot(uid, id, req.body ?? {}); return { reload: true, toast: "Saved" }; }
+    return { reload: true, toast: controlBot(uid, id, action) };
+  }));
+  r.post("/api/bot-signals/:id", json, act(async (uid, req) => {
+    const r = await answerSignal(uid, Number(req.params.id), !!req.body?.approve);
+    return { reload: true, toast: r.why };
+  }));
+  r.post("/api/creator/verify", json, act((uid, req) => {
+    const country = String(req.body?.country ?? "").toUpperCase();
+    if (!country) throw new Error("Choose where you live");
+    if (req.body?.adult !== true || req.body?.honest !== true) throw new Error("Tick both boxes to continue");
+    if (BLOCKED_COUNTRIES().includes(country)) throw new Error("Creator payouts aren't available where you live yet. You can still post trades and run bots.");
+    setMeta(uid, { kyc: { country, at: Date.now() } });
+    return { redirect: "/creator", toast: "Verified. You can claim payouts now." };
   }));
   r.post("/api/strategy", json, act((uid, req) => {
     const name = String(req.body.name ?? "").trim();

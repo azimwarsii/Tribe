@@ -4,8 +4,16 @@ import { getPrice } from "./prices.js";
 import { allHalts, haltOf, userByHandle, userById } from "./db.js";
 import { riskOf } from "./guard.js";
 import { ranking } from "./stats.js";
+import { priceStr, qtyStr } from "./tokens.js";
+import { symOf } from "./data.js";
+import { integratorFeeBps } from "./flash.js";
 
 export interface Intent { side: "buy" | "sell"; usd?: number; qty?: number; token: string; stopPct?: number; tpPct?: number }
+/**
+ * A wallet only its owner signs for (MetaMask, live) can't sign a stop later, after the entry fills: its stop must ride
+ * the entry as one Flash order. With no target, the attached target is set far away (10x), where it never triggers.
+ */
+export interface BuildOpts { oneOrder?: boolean }
 export interface Card { title: string; usd: number; kind: string; maxGain?: number; maxLoss?: number; fee: number; stopPct?: number; tpPct?: number; token: string }
 export interface Proposal { summary: string; trades: Trade[]; card?: Card }
 export interface Answer { reply: string; proposal?: Proposal; sources?: string[] }
@@ -79,22 +87,29 @@ async function llmIntent(text: string): Promise<Intent | undefined> {
 /** Parse a trade request with the AI model when a key is set, else rules. */
 export const resolveIntent = async (text: string) => (await llmIntent(text)) ?? parseIntent(text);
 
-export async function buildProposal(i: Intent): Promise<Proposal> {
-  const target = TOKENS[i.token];
+export async function buildProposal(i: Intent, opts: BuildOpts = {}): Promise<Proposal> {
+  // A symbol Tribe knows (ETH) or any Base token address picked from Flash search.
+  const target = TOKENS[i.token.toUpperCase()] ?? (/^0x[0-9a-fA-F]{40}$/.test(i.token) ? i.token : undefined);
+  if (!target) throw new Error(`Tribe can't trade ${i.token} yet`);
+  const sym = TOKENS[i.token.toUpperCase()] ? i.token.toUpperCase() : symOf(target);
   const price = await getPrice(target);
   const base = { chain: "base", target, contra: USDC };
   if (i.side === "sell") {
     if (!i.qty) throw new Error("How much? e.g. 'sell 0.01 ETH'.");
-    return { summary: `Sell ${i.qty} ${i.token} at market (~$${price.toFixed(2)})`, trades: [{ ...base, side: "sell", qty: String(i.qty), orderType: "market" }] };
+    return { summary: `Sell ${i.qty} ${sym} at market (~$${priceStr(price)})`, trades: [{ ...base, side: "sell", qty: String(i.qty), orderType: "market" }] };
   }
   if (!i.usd || i.usd <= 0) throw new Error("How much? e.g. 'buy $50 ETH'.");
   const trades: Trade[] = [{ ...base, side: "buy", qty: String(i.usd), orderType: "market", hasStop: !!i.stopPct }];
-  let summary = `Buy $${i.usd} of ${i.token} at market (~$${price.toFixed(2)})`;
+  let summary = `Buy $${i.usd} of ${sym} at market (~$${priceStr(price)})`;
   if (i.stopPct || i.tpPct) {
-    const tokens = (i.usd / price).toFixed(6);
-    const sl = String((price * (1 - (i.stopPct ?? 0) / 100)).toFixed(2));
-    const tp = String((price * (1 + (i.tpPct ?? 0) / 100)).toFixed(2));
-    if (i.stopPct && i.tpPct) {
+    const tokens = qtyStr(i.usd / price);
+    const sl = priceStr(price * (1 - (i.stopPct ?? 0) / 100));
+    const tp = priceStr(price * (1 + (i.tpPct ?? 0) / 100));
+    if (i.stopPct && !i.tpPct && opts.oneOrder) {
+      const far = priceStr(price * 10);
+      trades[0] = { ...trades[0], attach: { tp: far, sl } };
+      summary += ` with its stop attached: stop $${sl} (no target)`;
+    } else if (i.stopPct && i.tpPct) {
       // One Flash order: the take-profit / stop-loss pair rides the entry and activates on its fill.
       trades[0] = { ...trades[0], attach: { tp, sl } };
       summary += ` with a bracket attached: take profit $${tp} / stop $${sl}`;
@@ -106,12 +121,12 @@ export async function buildProposal(i: Intent): Promise<Proposal> {
       summary += `, then a take-profit at $${tp}`;
     }
   }
-  const feeBps = Number(process.env.FLASH_FEE_BPS ?? 50);
+  const feeBps = integratorFeeBps();
   const card: Card = {
-    title: `${i.token} · Long`, usd: i.usd, fee: (i.usd * feeBps) / 1e4,
+    title: `${sym} · Long`, usd: i.usd, fee: (i.usd * feeBps) / 1e4,
     kind: trades[0].attach ? "Bracket order" : trades.length > 1 ? (trades[1].orderType === "stop-loss" ? "Market + stop-loss" : "Market + take-profit") : "Market order",
     maxGain: i.tpPct ? (i.usd * i.tpPct) / 100 : undefined, maxLoss: i.stopPct ? (i.usd * i.stopPct) / 100 : undefined,
-    stopPct: i.stopPct, tpPct: i.tpPct, token: i.token,
+    stopPct: i.stopPct, tpPct: i.tpPct, token: sym,
   };
   return { summary, trades, card };
 }

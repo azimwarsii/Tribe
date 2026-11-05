@@ -50,6 +50,7 @@ export async function botPage(uid: number): Promise<string> {
 <section class="col" style="gap:8px"><b class="md">Most bot trades a day</b>${pick("perDay", [1, 2, 3, 5], bot.perDay, (v) => String(v))}<span class="xs mut">${botTradesToday(uid)} today</span></section>
 <div class="grid3"><div class="tile"><div class="k">Bot entries</div><div class="v">${rec.trades}</div></div><div class="tile"><div class="k">Closed green</div><div class="v">${rec.closed ? `${rec.wins}/${rec.closed}` : "—"}</div></div><div class="tile"><div class="k">Return</div><div class="v ${rec.pnlPct === null ? "" : rec.pnlPct >= 0 ? "up" : "down"}">${rec.pnlPct === null ? "—" : pct(rec.pnlPct)}</div></div></div>
 ${recent.length ? `<h2>Recent bot trades</h2>${recent.map((c) => tradeCardHtml(c, uid)).join("")}` : ""}
+<a class="card row" href="/bots/new" style="gap:12px;color:#F5F5F5">${icon("plus", 18, "#34D399", 2.2)}<span class="grow"><b>Build your own bot</b><span class="sm mut" style="display:block">Pick a strategy and limits in Creator Studio. It runs a private trial, then others can copy it.</span></span>${icon("chev", 14, "#8A8A8A", 2)}</a>
 <p class="note">Guard watches your bot too: if CopyGuard pauses you, your bot stops and nobody copies you until it clears. Your manual trades are tagged Manual.</p></main>`;
   return page({ title: "Your bot", body });
 }

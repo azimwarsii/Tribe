@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { ask, buildProposal, resolveIntent, type Card, type Intent, type Proposal } from "./ask.js";
 import { mirror, type PendingNotice } from "./copy.js";
 import { flashAnswer, wantsFlash } from "./catflash.js";
-import { addCatRead, addMsg, allHalts, chatById, db, getMeta, mainChatOf, guardEvents, patchMsgData, rulesOf, setChatState, spentToday, userByHandle, userById, followingOf, msgsOf } from "./db.js";
+import { addCatRead, addMsg, allHalts, chatById, createChat, currentChatOf, db, getMeta, renameChat, guardEvents, patchMsgData, rulesOf, setChatState, spentToday, userByHandle, userById, followingOf, msgsOf } from "./db.js";
 import { ago, ORDER_LABEL, money, portfolio, pct } from "./data.js";
 import { traderStats } from "./stats.js";
 import type { Trade } from "./flash.js";
 import { researchTrade, subjectTrade, type TradeCtx, type Verdict } from "./research.js";
+import { isExternal } from "./wallet.js";
+import { isDry } from "./tracker.js";
 
 export type Source = "App" | "Telegram" | "X";
 export interface CatData { card?: Card; proposalId?: string; steps?: { t: string; d: string }[]; sources?: string[]; follow?: { label: string; text?: string; href?: string; icon?: string }[]; signed?: boolean; receipt?: string; verdict?: Verdict; ctx?: TradeCtx }
@@ -49,7 +51,7 @@ function applyFollowUp(prev: Intent, text: string): Intent | undefined {
 
 async function compareText(uid: number): Promise<{ reply: string; sources: string[] }> {
   const follows = new Set(followingOf(uid).map((f) => f.leader));
-  const rows = db.prepare("SELECT id, leader, trade, at FROM trades WHERE leader != ? AND json_extract(trade,'$.side') = 'buy' ORDER BY id DESC LIMIT 40").all(uid) as unknown as { id: number; leader: number; trade: string; at: number }[];
+  const rows = db.prepare("SELECT id, leader, trade, at FROM trades WHERE leader != ? AND private = 0 AND json_extract(trade,'$.side') = 'buy' ORDER BY id DESC LIMIT 40").all(uid) as unknown as { id: number; leader: number; trade: string; at: number }[];
   const pick = rows.find((r) => follows.has(r.leader)) ?? rows[0];
   if (!pick) return { reply: "No recent trades from other traders to compare with yet.", sources: [] };
   const t = JSON.parse(pick.trade) as Trade;
@@ -75,13 +77,16 @@ async function awayLine(uid: number): Promise<string> {
 }
 export { awayLine };
 
-export async function catAsk(uid: number, text: string, opts: { chatId?: number; source?: Source; live?: boolean; trade?: number } = {}): Promise<CatReply> {
+export async function catAsk(uid: number, text: string, opts: { chatId?: number; newChat?: boolean; source?: Source; live?: boolean; trade?: number } = {}): Promise<CatReply> {
   const source = opts.source ?? "App";
   const meta = getMeta(uid);
   const clean = text.trim().slice(0, 300);
-  // One continuous chat per user, in the app and in Telegram alike.
-  const chatId = mainChatOf(uid);
+  // The named chat; a new one (titled by its first question) when the app starts one; otherwise the latest chat
+  // (Telegram and agents carry on where the user left off).
+  const named0 = opts.chatId !== undefined && chatById(opts.chatId, uid) ? opts.chatId : undefined;
+  const chatId = named0 ?? (opts.newChat ? createChat(uid, clean || "New chat", source) : currentChatOf(uid, source));
   const chat = chatById(chatId, uid)!;
+  if (chat.title === "New chat" && clean) renameChat(chatId, clean);
   const state = JSON.parse(chat.state || "{}") as { intent?: Intent; trade?: number };
   // A chat opened from a feed post stays about that post until the user asks for a concrete order.
   const order = /\b(buy|sell|long)\b[^?]*\d/i.test(clean) || !!(state.intent && applyFollowUp(state.intent, clean));
@@ -117,7 +122,7 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
     data = { sources: c.sources };
   } else if (intent) {
     try {
-      const proposal = await buildProposal(intent);
+      const proposal = await buildProposal(intent, { oneOrder: isExternal(uid) && !isDry() });
       const card = proposal.card;
       const capLeft = Math.max(0, meta.defaults.cap - spentToday(uid));
       const halted = allHalts();
@@ -135,7 +140,7 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
         { t: "Guard", d: halted.length ? `${halted.length} paused, none for ${intent.token}` : `No market alerts on ${intent.token}` },
         { t: "Order", d: proposal.summary },
       ];
-      const top = db.prepare("SELECT leader FROM trades WHERE leader != ? ORDER BY id DESC LIMIT 1").get(uid) as { leader: number } | undefined;
+      const top = db.prepare("SELECT leader FROM trades WHERE leader != ? AND private = 0 ORDER BY id DESC LIMIT 1").get(uid) as { leader: number } | undefined;
       const topHandle = top ? userById(top.leader)?.handle : undefined;
       const follow = [
         ...(card?.stopPct && card.stopPct > 3 ? [{ label: "Tighter stop, 3%", text: "make the stop 3%" }] : []),

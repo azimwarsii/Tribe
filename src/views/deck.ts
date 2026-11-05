@@ -4,6 +4,7 @@ import { FRESH_MS } from "../copy.js";
 import { researchTrade, traderBrief, type Brief } from "../research.js";
 import { esc, icon, page, sheet, signCls, split } from "../ui.js";
 import { ladder, sourceTag, orderStrip } from "./feed.js";
+import { copyFee } from "../creator.js";
 
 /**
  * The feed: one live trade at a time. Swipe right to copy it (a confirm sheet shows size and worst case first), left to skip,
@@ -29,9 +30,10 @@ async function cardHtml(c: TradeCard, viewer: number, req?: { id: number; expire
   const max = meta.defaults.max;
   const usd = req ? req.usd : Math.min(Number(c.trade.qty) || max, max);
   const needStop = meta.defaults.stop && !(c.trade.hasStop || c.trade.attach);
+  const fee = copyFee(c.leader, 1);
   const following = c.viewerCopying || isWatching(viewer, c.leader);
   const ask = `/cat/chat?new=1&trade=${c.id}&q=${encodeURIComponent("Is this a good trade?")}`;
-  return `<article class="swcard${req ? " req" : ""}" data-trade="${c.id}" data-handle="${esc(c.handle)}" data-symbol="${esc(c.symbol)}" data-usd="${usd}" data-max="${max}" data-needstop="${needStop ? 1 : ""}" data-sl="${slPct?.toFixed(2) ?? ""}" data-tp="${tpPct?.toFixed(2) ?? ""}" data-ask="${ask}" data-following="${following ? 1 : ""}" data-copying="${c.viewerCopying ? 1 : ""}" data-verdict="${esc(v?.label ?? "")}" data-tone="${v?.tone ?? ""}" data-ini="${initials(c.handle)}"${req ? ` data-pending="${req.id}"` : ``} aria-label="@${esc(c.handle)} ${esc(verbOf(c))} ${esc(c.symbol)}">
+  return `<article class="swcard${req ? " req" : ""}" data-trade="${c.id}" data-handle="${esc(c.handle)}" data-symbol="${esc(c.symbol)}" data-usd="${usd}" data-max="${max}" data-needstop="${needStop ? 1 : ""}" data-fee="${fee.bps}" data-share="${fee.sharePct}" data-sl="${slPct?.toFixed(2) ?? ""}" data-tp="${tpPct?.toFixed(2) ?? ""}" data-ask="${ask}" data-following="${following ? 1 : ""}" data-copying="${c.viewerCopying ? 1 : ""}" data-verdict="${esc(v?.label ?? "")}" data-tone="${v?.tone ?? ""}" data-ini="${initials(c.handle)}"${req ? ` data-pending="${req.id}"` : ``} aria-label="@${esc(c.handle)} ${esc(verbOf(c))} ${esc(c.symbol)}">
 <span class="stamp copy" aria-hidden="true">${req ? "APPROVE" : "COPY"}</span><span class="stamp skip" aria-hidden="true">SKIP</span><span class="stamp ask" aria-hidden="true">ASK CAT</span>
 ${req ? `<div class="reqband" role="status">${icon("inbox", 14, "currentColor", 2)}Copy request from a trader you copy · <b data-expire="${req.expires}"></b> left</div>`
     : `<div class="freshband" role="status"><span class="live" aria-hidden="true"></span>Live trade · placed ${ago(c.at)} ago</div>`}
@@ -223,7 +225,7 @@ export async function deckPage(viewer: number, tab: DeckTab = "for-you"): Promis
 <div class="chips" id="swc-amt" role="radiogroup" aria-label="Amount"></div>
 <div class="row" style="gap:10px;margin-top:8px"><label class="chip camt"><span>$</span><input id="swc-custom" type="number" inputmode="decimal" min="1" step="any" placeholder="Custom" aria-label="Custom amount in dollars"></label><span class="xs down" id="swc-err" role="alert" hidden></span></div>
 <div class="grid2" style="margin-top:12px"><div class="tile"><div class="k">If the stop hits</div><div class="v down" id="swc-loss"></div></div><div class="tile"><div class="k">If the target hits</div><div class="v up" id="swc-gain"></div></div></div>
-<p class="xs mut" style="margin:10px 0 0" id="swc-n"></p>
+<p class="xs mut" style="margin:10px 0 0" id="swc-n"></p><p class="xs mut" style="margin:6px 0 0" id="swc-fee"></p>
 <div class="grid2" style="margin-top:14px"><button class="btn" data-close="swconfirm">Not now</button><button class="btn p" id="swc-go">${icon("bolt", 14)}Confirm &amp; sign</button></div></div>
 <script>${DECK_JS}</script>`;
   return page({ title: "Live trades", nav: "feed", body, sheets, split: true });
@@ -290,7 +292,7 @@ function openConfirm(c){var max=Number(c.dataset.max),usd=Math.min(Number(c.data
  cu.oninput=function(){var v=Math.round(parseFloat(cu.value)*100)/100,e=document.getElementById('swc-err'),ok=v>=1&&v<=max;e.hidden=ok||!cu.value;e.textContent=v>max?'Your max per trade is '+fmt(max)+'.':'At least $1.';
   if(ok){amt=v;box.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on')});risk()}else document.getElementById('swc-go').disabled=true};
  risk();document.getElementById('swconfirm').classList.add('open');document.getElementById('bd-swconfirm').classList.add('open')}
-function risk(){var sl=parseFloat(cur.dataset.sl),tp=parseFloat(cur.dataset.tp),block=!!cur.dataset.needstop,go=document.getElementById('swc-go');go.disabled=block;
+function risk(){var fb=Number(cur.dataset.fee),fs=Number(cur.dataset.share),fe=document.getElementById('swc-fee');if(fe&&fb)fe.textContent='Fee about '+fmt(amt*fb/1e4)+' ('+(fb/100)+'%), and @'+cur.dataset.handle+' gets '+fs+'% of it ('+fmt(amt*fb/1e4*fs/100)+') for being copied.';var sl=parseFloat(cur.dataset.sl),tp=parseFloat(cur.dataset.tp),block=!!cur.dataset.needstop,go=document.getElementById('swc-go');go.disabled=block;
  document.getElementById('swc-n').textContent=block?'This trade has no stop-loss, and your rules only copy trades with one. Change that in Settings, or skip it.':'One Flash order from your wallet'+(isNaN(sl)?', with no stop-loss.':', with the stop'+(isNaN(tp)?'':' and target')+' attached.')+' CopyGuard checks the trader again right before it\\u2019s placed.';document.getElementById('swc-loss').textContent=isNaN(sl)?'No stop':'\\u2212'+fmt(amt*sl/100);document.getElementById('swc-gain').textContent=isNaN(tp)?'No target':'+'+fmt(amt*tp/100)}
 function closeConfirm(back){document.getElementById('swconfirm').classList.remove('open');document.getElementById('bd-swconfirm').classList.remove('open');if(back&&cur)reset(cur)}
 document.addEventListener('click',function(e){if(e.target.closest('[data-close=swconfirm]'))closeConfirm(true)});

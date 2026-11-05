@@ -8,10 +8,11 @@ import { isDry } from "./tracker.js";
 import { drawdown, greenDays, positionsOf, totalPnl, traderStats } from "./stats.js";
 import { createPublicClient, erc20Abi, http } from "viem";
 import { base } from "viem/chains";
+import { knownSymbol, priceStr } from "./tokens.js";
 
 const SYMBOLS: Record<string, string> = {};
 for (const [k, v] of Object.entries(TOKENS)) SYMBOLS[v.toLowerCase()] ??= k === "WETH" ? "ETH" : k;
-export const symOf = (addr: string) => SYMBOLS[addr.toLowerCase()] ?? addr.slice(0, 6);
+export const symOf = (addr: string) => SYMBOLS[addr.toLowerCase()] ?? knownSymbol(addr) ?? addr.slice(0, 6);
 
 export const initials = (handle: string) => handle.replace(/[^a-z0-9]/gi, "").slice(0, 2).toUpperCase() || "??";
 /** What goes inside an avatar circle: the user's profile photo if they set one, else their initials (only [A-Z0-9], safe as HTML). */
@@ -34,6 +35,7 @@ export interface TradeCard {
   id: number; leader: number; handle: string; level: number; persona: string | null; at: number; trade: Trade; symbol: string;
   entry: number | null; sincePct: number | null; guard: "passed" | "paused"; risk: number; copiers: number; reactions: number; comments: number;
   detail: string; orderLabel: string; hasStop: boolean; viewerCopying: boolean;
+  botId: number | null; botName: string | null; // the creator bot that placed it, if any
   source: TradeSource; note: string | null; // bot = the user's bot (CRE strategy), agent = their AI agent over MCP; both are tagged Bot
   tx: string | null; // settlement transaction of the trader's own Flash order
   mark: number | null; stopPrice: number | null; targetPrice: number | null; // the price ladder on open longs
@@ -43,7 +45,7 @@ export interface TradeCard {
 
 /** Token amounts for people: 0.0039972 -> "0.0040". */
 /** A price as people read it: $2,790.60. */
-const usdFmt = (p: string | number) => `$${Number(p).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const usdFmt = (p: string | number) => { const n = Number(p); return n > 0 && n < 1 ? `$${priceStr(n).replace(/0+$/, "").replace(/\.$/, "")}` : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 
 /**
  * The Flash order a trade placed, in plain words: what kind, how much, at what price or trigger, and the attached
@@ -103,6 +105,8 @@ export async function tradeCard(id: number, viewer?: number): Promise<TradeCard 
     realisedPct: sold ? (sold.pnl! / Math.max(1e-9, sold.usd! - sold.pnl!)) * 100 : null,
     copierHandles, streak: greenDays(t.leader),
     viewerCopying: viewer !== undefined && !!db.prepare("SELECT 1 FROM follows WHERE follower = ? AND leader = ?").get(viewer, t.leader),
+    botId: t.bot_id ?? null,
+    botName: t.bot_id ? (db.prepare("SELECT name FROM bots WHERE id = ?").get(t.bot_id) as { name: string } | undefined)?.name ?? null : null,
   };
 }
 
@@ -111,7 +115,7 @@ const WINDOW: Record<string, number> = { "1h": 3600e3, "24h": 86400e3, "7d": 7 *
 
 export async function feed(viewer: number | undefined, f: FeedFilter, limit = 30): Promise<TradeCard[]> {
   const since = Date.now() - (WINDOW[f.time ?? "7d"] ?? WINDOW["7d"]);
-  const rows = db.prepare("SELECT id FROM trades WHERE at >= ? ORDER BY id DESC LIMIT 200").all(since) as unknown as { id: number }[];
+  const rows = db.prepare("SELECT id FROM trades WHERE at >= ? AND private = 0 ORDER BY id DESC LIMIT 200").all(since) as unknown as { id: number }[];
   const following = new Set(viewer === undefined ? [] : (db.prepare("SELECT leader FROM follows WHERE follower = ? UNION SELECT leader FROM watches WHERE follower = ?").all(viewer, viewer) as unknown as { leader: number }[]).map((r) => r.leader));
   const sq = viewer === undefined ? undefined : squadOf(viewer);
   const mates = new Set(sq ? squadMembers(sq.id) : []);
@@ -280,7 +284,7 @@ export function monthlyHistory(trader: number, months = 12): MonthRow[] {
 export async function liveBook(trader: number) {
   const pos = await openPositions(trader);
   const held = pos.map((p) => {
-    const entry = db.prepare("SELECT t.id FROM trades t JOIN orders o ON o.trade_id = t.id AND o.trader = t.leader AND o.role = 'own' WHERE t.leader = ? AND json_extract(t.trade,'$.target') = ? AND json_extract(t.trade,'$.side') = 'buy' AND o.status = 'filled' ORDER BY t.id DESC LIMIT 1").get(trader, p.token) as { id: number } | undefined;
+    const entry = db.prepare("SELECT t.id FROM trades t JOIN orders o ON o.trade_id = t.id AND o.trader = t.leader AND o.role = 'own' WHERE t.private = 0 AND t.leader = ? AND json_extract(t.trade,'$.target') = ? AND json_extract(t.trade,'$.side') = 'buy' AND o.status = 'filled' ORDER BY t.id DESC LIMIT 1").get(trader, p.token) as { id: number } | undefined;
     return { ...p, tradeId: entry?.id ?? null };
   });
   const resting = (db.prepare("SELECT o.trade_id, o.trade, o.placed_at FROM orders o WHERE o.trader = ? AND o.role = 'own' AND o.status = 'open' AND json_extract(o.trade,'$.side') = 'buy'").all(trader) as unknown as { trade_id: number; trade: string; placed_at: number }[])

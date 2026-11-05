@@ -286,11 +286,18 @@ test("Cat: persona tone, follow-ups, rules, memory and history", async () => {
   assert.equal(db.msgsOf(big.json.chatId).find((m) => m.id === big.json.msgId)!.data!.signed, true);
   assert.equal((await c("/api/cat/vote", { msg: big.json.msgId, vote: 1 })).status, 200);
   for (const p of ["/cat", `/cat/chat?id=${big.json.chatId}`, "/cat/chat?new=1&q=hello", "/cat/voice", "/cat/memory"]) assert.equal((await c(p)).status, 200, p);
-  // One continuous chat: every message so far is on the one page, with no chat list.
-  const thread = (await c("/cat")).text;
-  assert.ok(!thread.includes("New chat") && !thread.includes("Search chats"), "no chat history or new-chat button");
-  assert.equal(new Set([chill.json.chatId, tight.json.chatId, big.json.chatId]).size, 1, "every message lands in the same chat");
-  assert.equal((await c("/cat/chat?id=999999")).status, 200); // old chat links just open the one chat
+  // Chats like a chat app: follow-ups stay in their chat, a message with no chat starts a new one, titled by its question.
+  assert.equal(new Set([chill.json.chatId, tight.json.chatId, big.json.chatId]).size, 1, "follow-ups land in the same chat");
+  assert.notEqual(sharp.json.chatId, chill.json.chatId, "a message without a chat starts a new one");
+  const home = (await c("/cat")).text;
+  assert.match(home, /New chat/);
+  assert.match(home, /Trade with Flash/); // a new chat lists what Cat can do
+  assert.match(home, new RegExp(`/cat/chat\\?id=${chill.json.chatId}`)); // past chats in the history
+  assert.match((await c(`/cat/chat?id=${chill.json.chatId}`)).text, /make the stop 3%/);
+  assert.equal((await c("/cat/chat?id=999999")).status, 200); // an unknown chat opens a new one
+  assert.equal((await c("/api/cat/chat/delete", { id: sharp.json.chatId })).status, 200);
+  assert.ok(!db.chatsOf(uid).some((x) => x.id === sharp.json.chatId), "deleted chats are gone");
+  assert.equal((await c("/api/cat/chat/delete", { id: 999999 })).status, 400);
 
   // Forget one learned memory, then everything.
   assert.match((await c("/cat/memory")).text, /Prefers/);
@@ -823,4 +830,136 @@ test("every trade has a public page: details, copy, share, comments; old links f
   assert.equal((await fetch(`${base}/thread/${tradeId}`, { redirect: "manual" })).headers.get("location"), `/t/${tradeId}#comments`);
   assert.equal((await fetch(`${base}/s/${tradeId}`, { redirect: "manual" })).headers.get("location"), `/t/${tradeId}`);
   assert.equal((await fetch(`${base}/t/999999`)).status, 404);
+});
+
+test("Creator studio: trade ticket, bot trial, publish, copies and pay", async () => {
+  const c = client(), f = client(), poor = client();
+  await c("/api/signup", { handle: "botmaker", persona: "Sniper" });
+  await f("/api/signup", { handle: "botfan", persona: "Hodler" });
+  await poor("/api/signup", { handle: "nofunds", persona: "Hodler" });
+  const maker = db.userByHandle("botmaker")!.id, fan = db.userByHandle("botfan")!.id;
+  db.setMeta(maker, { simBalance: 1000 });
+  db.setMeta(fan, { simBalance: 1000 });
+  db.setMeta(db.userByHandle("nofunds")!.id, { simBalance: 50 });
+  db.setFollow(fan, maker, { mode: "auto" });
+  const copiesOf = (trade: number) => (db.db.prepare("SELECT COUNT(*) AS n FROM copies WHERE trade_id = ? AND follower = ? AND status IN ('executed','dry-run')").get(trade, fan) as { n: number }).n;
+
+  // A trade by hand needs a stop, then lands on its own page and is copied.
+  for (const p of ["/creator", "/trade/new", "/bots/new", "/creator/verify"]) assert.equal((await c(p)).status, 200, p);
+  assert.equal((await c("/api/trade/new", { usd: 20, stop: 0 })).status, 400, "no trade without a stop");
+  const t = await c("/api/trade/new", { usd: 20, stop: 5, tp: 10, note: "Range low held" });
+  assert.match(t.json.redirect, /^\/t\/\d+$/);
+  const manualId = Number(t.json.redirect.split("/").pop());
+  assert.equal(db.tradeById(manualId)!.note, "Range low held");
+  assert.equal(copiesOf(manualId), 1, "followers copy a manual trade");
+
+  // A bot needs a $100 stake and a stop.
+  const spec = { name: "Steady test", template: "dca", usd: 10, perDay: 5, stopPct: 5, tpPct: 0, maxDdPct: 15, p_dca: 4 };
+  assert.match((await poor("/api/bots", spec)).json.error, /at least \$100/);
+  assert.match((await c("/api/bots", { ...spec, stopPct: 0 })).json.error, /stop/);
+  const made = await c("/api/bots", spec);
+  const botId = Number(made.json.redirect.split("/").pop());
+  assert.equal((await c(`/bots/${botId}`)).status, 200);
+  assert.equal((await f(`/bots/${botId}`)).status, 404, "a bot on trial is private");
+
+  // Trial trades build its record but stay private and uncopied.
+  for (let i = 0; i < 3; i++) assert.equal((await c(`/api/bots/${botId}/run`, {})).status, 200);
+  const trial = db.db.prepare("SELECT id, private, source FROM trades WHERE bot_id = ? AND json_extract(trade,'$.side') = 'buy'").all(botId) as { id: number; private: number; source: string }[];
+  assert.equal(trial.length, 3);
+  assert.ok(trial.every((x) => x.private === 1 && x.source === "bot"));
+  assert.equal(copiesOf(trial[0].id), 0, "nobody copies a trial trade");
+  assert.equal((await f(`/t/${trial[0].id}`)).status, 404);
+  assert.equal((await f("/api/copy-trade", { trade: trial[0].id, usd: 5 })).status, 400, "trial trades can't be copied by id");
+  assert.equal((await c(`/t/${trial[0].id}`)).status, 200, "the owner sees their trial trades");
+  assert.ok(!(await f("/feed")).text.includes(`/t/${trial[0].id}"`), "trial trades stay out of the feed");
+
+  // Publishing waits for the 14-day trial (demo mode can skip it), then its trades are copied.
+  assert.match((await c(`/api/bots/${botId}/publish`, {})).json.error, /14 days/);
+  process.env.DEMO = "true";
+  try { await c(`/api/bots/${botId}/fastforward`, {}); } finally { delete process.env.DEMO; }
+  assert.match((await c(`/api/bots/${botId}/publish`, {})).json.toast, /is live/);
+  assert.equal((await f(`/bots/${botId}`)).status, 200, "a live bot has a public page");
+  await c(`/api/bots/${botId}/run`, {});
+  const live = db.db.prepare("SELECT id, private FROM trades WHERE bot_id = ? ORDER BY id DESC LIMIT 1").get(botId) as { id: number; private: number };
+  assert.equal(live.private, 0);
+  assert.equal(copiesOf(live.id), 1, "followers copy a published bot");
+  assert.match((await c("/creator")).text, /Steady test/);
+  assert.match((await c(`/api/bots/${botId}/pause`, {})).json.toast, /paused/);
+  assert.match((await c(`/api/bots/${botId}/check`, {})).json.error, /Resume/);
+
+  // Pay: a share of the fee, half held for the season; payouts only after verifying.
+  const { earningsOf } = await import("./creator.js");
+  process.env.FLASH_API_KEY = "tribe-own-key"; // creators earn from Tribe's own integrator fee
+  const e = earningsOf(maker);
+  assert.ok(e.accrued > 0 && Math.abs(e.held - e.accrued / 2) < 1e-9 && Math.abs(e.claimable - e.accrued / 2) < 1e-9);
+  assert.equal((await c("/api/claim", {})).json.redirect, "/creator/verify");
+  assert.match((await c("/api/creator/verify", { country: "US", adult: true, honest: true })).json.error, /aren't available/);
+  assert.match((await c("/api/creator/verify", { country: "IN", adult: false, honest: true })).json.error, /Tick both/);
+  assert.equal((await c("/api/creator/verify", { country: "IN", adult: true, honest: true })).json.redirect, "/creator");
+  assert.match((await c("/api/claim", {})).json.toast, /added to your balance/);
+  const after = earningsOf(maker);
+  assert.ok(after.claimable < 1e-9 && after.held > 0, "claiming pays the released half; the held half waits for the season");
+  delete process.env.FLASH_API_KEY;
+});
+
+test("Creator bots: the dip rule buys only after a real drop", async () => {
+  const { evaluate, createBot } = await import("./creator.js");
+  const owner = db.userByHandle("botmaker")!.id;
+  const b = await createBot(owner, "Dip watcher", "dip", { usd: 10, perDay: 2, stopPct: 5, p: 3 });
+  assert.match(evaluate(b, 2500).why, /Watching the price/);
+  const now = Date.now();
+  for (let i = 0; i < 12; i++) db.db.prepare("INSERT INTO price_ticks (token, price, at) VALUES (?, ?, ?)").run("0x4200000000000000000000000000000000000006", 2600, now - (i + 1) * 60e3);
+  assert.equal(evaluate(b, 2590).buy, false, "a 0.4% dip isn't enough");
+  assert.equal(evaluate(b, 2500).buy, true, "a 3.8% dip from the high triggers a buy");
+});
+
+test("Deleting an account frees its wallet and ends the wallet session", async () => {
+  const c = client();
+  await c("/api/signup", { handle: "leaving", persona: "Hodler" });
+  const u = db.userByHandle("leaving")!;
+  db.db.prepare("UPDATE users SET wallet_kind = 'external', privy_user_id = 'did:privy:leaving' WHERE id = ?").run(u.id);
+  const { userByWallet } = await import("./wallet-api.js");
+  assert.equal(userByWallet(u.address), u.id);
+  const r = await c("/api/delete-account", {});
+  assert.equal(r.json.redirect, "/signin?out=1", "the sign-in page also signs out of the wallet");
+  assert.equal(userByWallet(u.address), undefined, "the wallet no longer leads into the deleted account");
+  assert.equal(db.getUser(u.id).privy_user_id ?? null, null);
+  assert.equal((await c("/feed")).status, 302, "signed out");
+});
+
+test("MetaMask bridge: an action's signature request reaches the open tab and the answer comes back", async () => {
+  const c = client();
+  await c("/api/signup", { handle: "mmuser", persona: "Hodler" });
+  const u = db.userByHandle("mmuser")!;
+  db.db.prepare("UPDATE users SET wallet_kind = 'external' WHERE id = ?").run(u.id);
+  const { interactive, browserSigner } = await import("./browsersign.js");
+  const { signerOf } = await import("./wallet.js");
+  assert.throws(() => signerOf(u.id), /from the app/, "background work can't ask MetaMask");
+  const s = interactive(u.id, () => signerOf(u.id)) as { remote?: boolean };
+  assert.equal(s.remote, true, "inside an action, the user's browser signs");
+
+  const signed = browserSigner(u.id, u.address as `0x${string}`).signMessage("Definitive Flash v1 — Cancel Order", "Cancel the order");
+  const w = await c("/api/sign/wait?tab=t1");
+  assert.equal(w.json.req.kind, "message");
+  assert.equal(w.json.req.label, "Cancel the order");
+  assert.equal((await c(`/api/sign/${w.json.req.id}`, { result: "0xabcdef" })).status, 200);
+  assert.equal(await signed, "0xabcdef");
+
+  const rejected = browserSigner(u.id, u.address as `0x${string}`).signTypedData("{}", "Sign the order");
+  const check = assert.rejects(rejected, /Not signed: User rejected/);
+  const w2 = await c("/api/sign/wait?tab=t1");
+  await c(`/api/sign/${w2.json.req.id}`, { error: "User rejected the request." });
+  await check;
+  const other = client();
+  await other("/api/signup", { handle: "notmm", persona: "Hodler" });
+  assert.equal((await other(`/api/sign/${w2.json.req.id}`, { result: "0x01" })).status, 400, "nobody else can answer");
+});
+
+test("Token prices are written as plain decimals Flash accepts, even for tiny prices", async () => {
+  const { priceStr, qtyStr } = await import("./tokens.js");
+  assert.equal(priceStr(2263.5), "2263.50");
+  assert.equal(priceStr(0.0008691), "0.00086910");
+  assert.ok(!/e/i.test(priceStr(5.179e-8)) && Number(priceStr(5.179e-8)) > 0);
+  assert.ok(!/e/i.test(qtyStr(1e-7)) && Number(qtyStr(1e-7)) > 0);
+  assert.equal(qtyStr(3450.123456), "3450.1235");
 });

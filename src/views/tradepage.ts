@@ -4,6 +4,7 @@ import { txUrl } from "../flash.js";
 import { esc, header, icon, notFound, page, sheet, signCls, split, stat } from "../ui.js";
 import { tradeCardHtml } from "./feed.js";
 import { commentHtml } from "./trader.js";
+import { copyFee } from "../creator.js";
 
 const BASE_URL = () => process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`;
 export const tradeUrl = (id: number) => `${BASE_URL()}/t/${id}`;
@@ -60,17 +61,19 @@ export async function tradePage(id: number, viewer: number | undefined): Promise
   // The sheet describes the follower's own order: the trader's amount becomes the one picked, and follows the picker.
   const leaderAmt = `$${Number(c.trade.qty).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
   const yourOrder = esc(c.detail).replace(leaderAmt, '<b id="tc-amtlbl"></b>');
+  const fee = copyFee(c.leader, 1);
   const confirmSheet = copyable && signedIn
     ? sheet("copyconfirm", `<h2>Copy @${esc(c.handle)}'s ${esc(c.symbol)} trade</h2><p class="sm mut" style="margin:4px 0 12px">Pick how much. Your max per trade is ${money(max)}.</p>
 <div class="chips" id="tc-amt" role="radiogroup" aria-label="Amount">${opts.map((v) => `<button type="button" class="chip" role="radio" data-v="${v}">${money(v)}</button>`).join("")}<label class="chip camt"><span>$</span><input id="tc-custom" type="number" inputmode="decimal" min="1" max="${max}" step="any" placeholder="Custom" aria-label="Custom amount in dollars"></label></div>
 <div class="xs down" id="tc-err" role="alert" hidden></div>
 <div class="grid2" style="margin-top:12px"><div class="tile"><div class="k">If the stop hits</div><div class="v down" id="tc-loss"></div></div><div class="tile"><div class="k">If the target hits</div><div class="v up" id="tc-gain"></div></div></div>
 <div class="ordstrip" style="margin-top:10px"><span class="pill flash">${icon("bolt", 11)}${esc(c.orderLabel)}</span><span class="sm">${yourOrder}</span></div>
+<p class="xs mut" id="tc-fee" style="margin:8px 0 0"></p>
 <p class="xs mut" style="margin:10px 0 0">${needStop ? "This trade has no stop-loss, and your rules only copy trades with one. Change that in Settings." : `One Flash order from your wallet${c.stopPrice !== null ? ", with the stop" + (c.targetPrice !== null ? " and target" : "") + " attached" : ", with no stop-loss"}. CopyGuard checks the trader again right before it's placed.`}</p>
 <div class="grid2" style="margin-top:14px"><button class="btn" data-close="copyconfirm">Not now</button><button class="btn p" id="tc-go"${needStop ? " disabled" : ""}>${icon("bolt", 14)}Confirm &amp; sign</button></div>
-<script>(function(){var amt=0,sl=${slPct === null ? "NaN" : slPct.toFixed(3)},tp=${tpPct === null ? "NaN" : tpPct.toFixed(3)},max=${max};
+<script>(function(){var fb=${fee.bps},fs=${fee.sharePct},fh=${JSON.stringify(c.handle)};var amt=0,sl=${slPct === null ? "NaN" : slPct.toFixed(3)},tp=${tpPct === null ? "NaN" : tpPct.toFixed(3)},max=${max};
 function fmt(v){return '$'+v.toFixed(2)}
-function pick(v,typed){amt=v;if(!typed){document.getElementById('tc-custom').value='';document.getElementById('tc-err').hidden=true;document.getElementById('tc-go').disabled=${needStop ? "true" : "false"}}var l=document.getElementById('tc-amtlbl');if(l)l.textContent='$'+(v%1?v.toFixed(2):v);document.querySelectorAll('#tc-amt [data-v]').forEach(function(x){var on=!typed&&Number(x.dataset.v)===v;x.classList.toggle('on',on);x.setAttribute('aria-checked',on?'true':'false')});document.getElementById('tc-loss').textContent=isNaN(sl)?'No stop':'\u2212'+fmt(v*sl/100);document.getElementById('tc-gain').textContent=isNaN(tp)?'No target':'+'+fmt(v*tp/100)}
+function pick(v,typed){amt=v;document.getElementById('tc-fee').textContent='Fee about '+fmt(v*fb/1e4)+' ('+(fb/100)+'%), and @'+fh+' gets '+fs+'% of it ('+fmt(v*fb/1e4*fs/100)+') for being copied.';if(!typed){document.getElementById('tc-custom').value='';document.getElementById('tc-err').hidden=true;document.getElementById('tc-go').disabled=${needStop ? "true" : "false"}}var l=document.getElementById('tc-amtlbl');if(l)l.textContent='$'+(v%1?v.toFixed(2):v);document.querySelectorAll('#tc-amt [data-v]').forEach(function(x){var on=!typed&&Number(x.dataset.v)===v;x.classList.toggle('on',on);x.setAttribute('aria-checked',on?'true':'false')});document.getElementById('tc-loss').textContent=isNaN(sl)?'No stop':'\u2212'+fmt(v*sl/100);document.getElementById('tc-gain').textContent=isNaN(tp)?'No target':'+'+fmt(v*tp/100)}
 function open(v){pick(Math.min(v,max));document.getElementById('copyconfirm').classList.add('open');document.getElementById('bd-copyconfirm').classList.add('open')}
 document.querySelectorAll('[data-copyamt]').forEach(function(b){b.onclick=function(){open(Number(b.dataset.copyamt))}});
 document.querySelectorAll('#tc-amt [data-v]').forEach(function(x){x.onclick=function(){pick(Number(x.dataset.v))}});

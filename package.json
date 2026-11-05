@@ -6,6 +6,7 @@
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
     "freeze": "tsx src/freeze.ts",
+    "founding": "tsx src/founding.ts",
     "privy:setup": "tsx src/privy-setup.ts",
     "web:build": "cd web && npm install && npm run build",
     "typecheck": "tsc --noEmit",

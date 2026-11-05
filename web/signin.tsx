@@ -19,7 +19,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return j as T;
 }
 
-const signingOut = new URLSearchParams(location.search).has("out");
+// Arrived from "Sign out" or "Delete account": end the Privy session once, then behave like a normal sign-in page.
+let signingOut = new URLSearchParams(location.search).has("out");
 
 function SignIn() {
   const { ready, authenticated, login, logout, getAccessToken } = usePrivy();
@@ -29,9 +30,10 @@ function SignIn() {
   useEffect(() => {
     if (!ready) return;
     // Signed out of Tribe: end the Privy session too, so the next sign-in can pick another wallet.
-    if (signingOut && authenticated) {
-      void logout().then(() => history.replaceState(null, "", "/signin"));
-      return;
+    if (signingOut) {
+      signingOut = false; // only once: connecting a wallet afterwards must sign in, not sign out again
+      history.replaceState(null, "", "/signin");
+      if (authenticated) { void logout(); return; }
     }
     if (!authenticated || busy) return;
     setBusy(true);

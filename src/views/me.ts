@@ -5,24 +5,14 @@ import { isDry } from "../tracker.js";
 import { txUrl } from "../flash.js";
 import { sessionsOf, takeReveal, type Session } from "../auth.js";
 import { DISCLAIMER, esc, header, icon, money2, page, seg, sheet, signCls, split, sw } from "../ui.js";
+import { earningsOf, FEE_BPS } from "../creator.js";
+const SHARE = () => 0.3;
 
 const guardTxUrl = (tx: string) => `https://${process.env.GUARD_CHAIN === "base" ? "" : "sepolia."}basescan.org/tx/${tx}`;
-const FEE_BPS = () => Number(process.env.FLASH_FEE_BPS ?? 50);
-const SHARE = () => Number(process.env.CREATOR_SHARE ?? 0.5);
 
 /** Creator fee-share, estimated from copies of this user's trades: copied USD x Flash fee x creator share. */
-export function creatorEarnings(user: number) {
-  const q = (since: number) =>
-    db.prepare("SELECT COALESCE(SUM(usd), 0) AS v, COUNT(*) AS n FROM copies WHERE leader = ? AND follower != ? AND status IN ('executed','dry-run') AND at >= ?").get(user, user, since) as { v: number; n: number };
-  const all = q(0);
-  const week = q(Date.now() - 7 * 86400e3);
-  const rate = (FEE_BPS() / 1e4) * SHARE();
-  // Live: the integrator fee Flash actually charged on copies of this trader (from fills). Demo: copied volume x fee.
-  const live = db.prepare("SELECT COALESCE(SUM(fee), 0) AS f, COUNT(*) AS n FROM orders WHERE leader = ? AND trader != ? AND role = 'copy' AND sim = 0 AND fee IS NOT NULL").get(user, user) as { f: number; n: number };
-  const accrued = live.n ? live.f * SHARE() : all.v * rate;
-  const claimed = getMeta(user).claimed;
-  return { volume: all.v, orders: all.n, accrued, weekly: week.v * rate, claimed, claimable: Math.max(0, accrued - claimed), copiers: followCount(user), shareBps: Math.round(SHARE() * 100) };
-}
+/** What a creator has earned: see earningsOf in creator.ts (tiered share, season hold-back, nothing while paused). */
+export const creatorEarnings = (user: number) => earningsOf(user);
 
 const row = (ic: string, title: string, sub: string, right: string, href?: string) => {
   const inner = `<span class="ico" aria-hidden="true">${icon(ic, 16)}</span><span class="grow"><span class="t">${esc(title)}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}</span>${right}`;
@@ -307,7 +297,7 @@ export async function newStrategyPage(uid: number): Promise<string> {
 <div><label class="l" for="sdesc">Describe it to Cat</label><textarea class="f" id="sdesc" name="description" rows="3" maxlength="300" placeholder="Buy $10 of ETH on every 5% dip, stop at −8%, take profit at +15%"></textarea></div>
 <p class="note">Bots are listed with your rules. Automated execution of bot rules is not built in this version: it publishes your rule so people can follow your manual trades under this strategy.</p>
 <div class="row" style="margin-top:auto;gap:8px"><button class="btn" data-goto="2">Back</button><button class="btn p" data-goto="4">Continue</button></div></section>
-<section class="step col hide" data-step-id="4"><div><h1 class="h1">${n(4)}How you earn</h1></div><div class="card col"><div class="md">Free for people to copy.</div><div class="up lg">${Math.round(SHARE() * 100)}% of the Flash fee</div><div class="sm mut" style="line-height:1.5">on every order your copiers place through you. Example: 100 copiers each copy a $25 trade → $2,500 copied → you earn ${money(2500 * (FEE_BPS() / 1e4) * SHARE())}.</div></div>
+<section class="step col hide" data-step-id="4"><div><h1 class="h1">${n(4)}How you earn</h1></div><div class="card col"><div class="md">Free for people to copy.</div><div class="up lg">30–50% of the Flash fee</div><div class="sm mut" style="line-height:1.5">on every order your copiers place through you. Example: 100 copiers each copy a $25 trade → $2,500 copied → you earn ${money(2500 * (FEE_BPS() / 1e4) * SHARE())}.</div></div>
 <div class="row" style="margin-top:auto;gap:8px"><button class="btn" data-goto="3">Back</button><button class="btn p" data-goto="5">Continue</button></div></section>
 <section class="step col hide" data-step-id="5"><div class="nsprev"><h1 class="h1">Preview and publish</h1></div><div class="tile nsprev" style="border-radius:18px;padding:14px"><div class="row"><span class="av w">${face(handle)}</span><span class="grow"><b data-bind="name" data-ph="Your strategy">Your strategy</b><span class="sm mut" style="display:block">by @${esc(handle)}</span></span><span class="pill ok">Guarded</span></div></div>
 <label class="row md" style="gap:10px;color:#D4D4D4"><input type="checkbox" id="nsack" style="width:20px;height:20px;accent-color:#34D399">I understand copiers see my results, and Guard can pause me</label>

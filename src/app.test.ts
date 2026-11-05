@@ -163,7 +163,11 @@ test("Flash request shapes: expireTime and tight approvals are quote-only; batch
   assert.equal(q.expireTime, until);
   assert.equal(q.evmUsePermit2, true);
   assert.equal(q.forceMinimalAllowance, true);
-  assert.equal(q.flashIntegratorFeeBps, "50"); // a string, as Flash requires
+  assert.equal(q.flashIntegratorFeeBps, "0", "no fee on the shared public key: it would go to Definitive, not Tribe");
+  process.env.FLASH_API_KEY = "tribe-own-key";
+  try {
+    assert.equal((flash.quoteBody(limit, "0xabc", undefined, { tight: true }) as Record<string, unknown>).flashIntegratorFeeBps, "50"); // a string, as Flash requires
+  } finally { delete process.env.FLASH_API_KEY; }
   const echo = flash.submitEcho(limit, "0xabc", undefined, { tight: true });
   for (const k of ["expireTime", "evmUsePermit2", "forceMinimalAllowance", "durationSeconds", "attachedBracket"]) assert.ok(!(k in echo), `${k} must not be echoed on submit`);
   // Market and TWAP never carry expireTime (Flash rejects it on TWAP; market has its own ~5 min deadline).

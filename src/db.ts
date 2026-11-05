@@ -49,6 +49,17 @@ CREATE TABLE IF NOT EXISTS cre_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at IN
 CREATE TABLE IF NOT EXISTS cat_reads (id INTEGER PRIMARY KEY AUTOINCREMENT, trade INTEGER NOT NULL, user INTEGER NOT NULL, label TEXT NOT NULL, token TEXT NOT NULL, price REAL NOT NULL, at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS season_boards (season INTEGER PRIMARY KEY, hash TEXT NOT NULL, tx TEXT, computed_at INTEGER NOT NULL, ranking TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS quest_claims (user INTEGER NOT NULL, quest TEXT NOT NULL, period TEXT NOT NULL, xp INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (user, quest, period));
+CREATE TABLE IF NOT EXISTS bots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, owner INTEGER NOT NULL, name TEXT NOT NULL, template TEXT NOT NULL, params TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'trial', reason TEXT, created_at INTEGER NOT NULL, trial_from INTEGER NOT NULL, published_at INTEGER,
+  last_check INTEGER, last_why TEXT
+);
+CREATE TABLE IF NOT EXISTS bot_signals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, bot INTEGER NOT NULL, owner INTEGER NOT NULL, intent TEXT NOT NULL, why TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS price_ticks (token TEXT NOT NULL, price REAL NOT NULL, at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS price_ticks_token_at ON price_ticks (token, at);
 CREATE TABLE IF NOT EXISTS strategies (
   id INTEGER PRIMARY KEY AUTOINCREMENT, owner INTEGER NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, description TEXT,
   public INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
@@ -71,6 +82,13 @@ addCol("users", "privy_policy_id", "TEXT");
 // Which wallet trades for the user: "demo" (generated key, practice), "external" (their own MetaMask: every trade is
 // approved in the browser, Tribe holds no key) or "privy" (embedded wallet with Tribe as a limited signer).
 addCol("users", "wallet_kind", "TEXT NOT NULL DEFAULT 'demo'");
+// Accounts deleted before deleting freed their wallet: free it now.
+db.prepare("UPDATE users SET address = '0x000000000000000000000000000000000000dEaD', privy_user_id = NULL, privy_wallet_id = NULL, privy_policy_id = NULL WHERE handle LIKE 'deleted\\_%' ESCAPE '\\' AND (privy_user_id IS NOT NULL OR address != '0x000000000000000000000000000000000000dEaD')").run();
+// Chats from when Cat was one thread were all titled "Cat": name them by their first question for the history list.
+db.exec("UPDATE cat_chats SET title = (SELECT substr(text, 1, 60) FROM cat_msgs WHERE chat = cat_chats.id AND role = 'user' ORDER BY id LIMIT 1) WHERE title IN ('Cat', 'New chat') AND EXISTS (SELECT 1 FROM cat_msgs WHERE chat = cat_chats.id AND role = 'user')");
+// Creator bots: which bot placed a trade, and whether it's private (a bot on its trial: not in the feed, not copied).
+addCol("trades", "bot_id", "INTEGER");
+addCol("trades", "private", "INTEGER NOT NULL DEFAULT 0");
 addCol("orders", "price", "REAL");
 addCol("orders", "tokens", "REAL");
 addCol("orders", "usd", "REAL");
@@ -136,6 +154,8 @@ export interface Meta {
   seenLevel: number; // highest level the level-up screen has been shown for
   aReq: boolean; aGuard: boolean; aFills: boolean; aHits: boolean; aPayout: boolean; aWeekly: boolean; // which events send alerts
   bot: { on: boolean; usd: number; perDay: number }; // the user's own bot: runs the CRE strategy and trades under their name, tagged Bot
+  kyc?: { country: string; at: number }; // creator verified before their first payout
+  foundingUntil?: number; // founding creator: the higher fee share until this time
 }
 
 export const DEFAULT_META: Meta = {
@@ -204,13 +224,17 @@ export function setHandle(id: number, handle: string, seed = false): boolean {
 
 export const allUsers = () => db.prepare("SELECT id, handle, address FROM users").all() as unknown as { id: number; handle: string; address: string }[];
 export const tradeById = (id: number) => {
-  const r = db.prepare("SELECT id, leader, trade, at, source, note FROM trades WHERE id = ?").get(id) as any;
+  const r = db.prepare("SELECT id, leader, trade, at, source, note, bot_id, private FROM trades WHERE id = ?").get(id) as any;
   return r ? { ...r, trade: JSON.parse(r.trade) as Trade } : undefined;
 };
 export const pendingFor = (follower: number) =>
   (db.prepare("SELECT id, trade_id, leader, trade, expires_at FROM pending_copies WHERE follower = ? AND status = 'open' AND expires_at > ? ORDER BY expires_at").all(follower, Date.now()) as any[]).map(
     (r) => ({ ...r, trade: JSON.parse(r.trade) as Trade }),
   );
+/** A deleted account lets go of its wallet and Privy login, so neither signs back into it. */
+export const DEAD_ADDRESS = "0x000000000000000000000000000000000000dEaD";
+export const detachDeleted = (uid: number) =>
+  db.prepare("UPDATE users SET address = ?, privy_user_id = NULL, privy_wallet_id = NULL, privy_policy_id = NULL WHERE id = ?").run(DEAD_ADDRESS, uid);
 export const followCount = (leader: number) => (db.prepare("SELECT COUNT(*) AS n FROM follows WHERE leader = ?").get(leader) as { n: number }).n;
 export const isFollowing = (follower: number, leader: number) => !!getFollowRules(follower, leader);
 
@@ -260,8 +284,8 @@ export const followingOf = (follower: number) =>
 
 /** Who placed a trade: the user themselves (Manual), their bot running the CRE strategy, or their own AI agent over MCP. Bot and agent trades are tagged Bot. */
 export type TradeSource = "user" | "bot" | "agent";
-export function recordTrade(leader: number, trade: Trade, source: TradeSource, note?: string): number {
-  const r = db.prepare("INSERT INTO trades (leader, trade, at, source, note) VALUES (?, ?, ?, ?, ?)").run(leader, JSON.stringify(trade), Date.now(), source, note?.slice(0, 280) ?? null);
+export function recordTrade(leader: number, trade: Trade, source: TradeSource, note?: string, extra: { bot?: number; private?: boolean } = {}): number {
+  const r = db.prepare("INSERT INTO trades (leader, trade, at, source, note, bot_id, private) VALUES (?, ?, ?, ?, ?, ?, ?)").run(leader, JSON.stringify(trade), Date.now(), source, note?.slice(0, 280) ?? null, extra.bot ?? null, extra.private ? 1 : 0);
   return Number(r.lastInsertRowid);
 }
 
@@ -323,7 +347,7 @@ export const guardEvents = (leader?: number, limit = 20) =>
   }[];
 
 export const recentTrades = (limit = 50) =>
-  (db.prepare("SELECT id, leader, trade, at, source FROM trades ORDER BY id DESC LIMIT ?").all(limit) as any[]).map((r) => ({ ...r, trade: JSON.parse(r.trade) }));
+  (db.prepare("SELECT id, leader, trade, at, source FROM trades WHERE private = 0 ORDER BY id DESC LIMIT ?").all(limit) as any[]).map((r) => ({ ...r, trade: JSON.parse(r.trade) }));
 
 // Social
 export const toggleReaction = (tradeId: number, user: number, emoji: string) => {
@@ -409,30 +433,18 @@ export const leaveSquad = (user: number) => db.prepare("DELETE FROM squad_member
 export interface CatMsg { id: number; chat: number; role: "user" | "cat"; text: string; data: Record<string, unknown> | null; vote: number; at: number }
 export const createChat = (user: number, title: string, source: string) =>
   Number(db.prepare("INSERT INTO cat_chats (user, title, source, at, updated) VALUES (?, ?, ?, ?, ?)").run(user, title.slice(0, 60), source, Date.now(), Date.now()).lastInsertRowid);
-/**
- * Each user has one continuous chat with Cat, like a messaging thread: their oldest chat. Any other chats (from before
- * Cat became one thread) are merged into it; message ids are global and increasing, so the merged thread stays in order.
- */
-export function mainChatOf(user: number): number {
-  const ids = (db.prepare("SELECT id FROM cat_chats WHERE user = ? ORDER BY id").all(user) as unknown as { id: number }[]).map((r) => r.id);
-  if (!ids.length) return createChat(user, "Cat", "App");
-  const [main, ...rest] = ids;
-  if (rest.length) {
-    db.exec("BEGIN");
-    try {
-      for (const id of rest) {
-        db.prepare("UPDATE cat_msgs SET chat = ? WHERE chat = ?").run(main, id);
-        db.prepare("DELETE FROM cat_chats WHERE id = ?").run(id);
-      }
-      db.prepare("UPDATE cat_chats SET title = 'Cat' WHERE id = ?").run(main);
-      db.exec("COMMIT");
-    } catch (e) {
-      db.exec("ROLLBACK");
-      throw e;
-    }
-  }
-  return main;
+/** The chat Cat carries on in when none is named (Telegram, agents): the one used most recently, or a new one. */
+export function currentChatOf(user: number, source = "App"): number {
+  const r = db.prepare("SELECT id FROM cat_chats WHERE user = ? ORDER BY updated DESC, id DESC LIMIT 1").get(user) as { id: number } | undefined;
+  return r?.id ?? createChat(user, "New chat", source);
 }
+export const renameChat = (id: number, title: string) => db.prepare("UPDATE cat_chats SET title = ? WHERE id = ?").run(title.slice(0, 60), id);
+export const deleteChat = (id: number, user: number) => {
+  if (!db.prepare("SELECT 1 FROM cat_chats WHERE id = ? AND user = ?").get(id, user)) return false;
+  db.prepare("DELETE FROM cat_msgs WHERE chat = ?").run(id);
+  db.prepare("DELETE FROM cat_chats WHERE id = ?").run(id);
+  return true;
+};
 export const chatById = (id: number, user: number) => db.prepare("SELECT * FROM cat_chats WHERE id = ? AND user = ?").get(id, user) as unknown as { id: number; title: string; source: string; state: string; at: number; updated: number } | undefined;
 export const chatsOf = (user: number, q = "") =>
   db.prepare("SELECT id, title, source, updated FROM cat_chats WHERE user = ? AND title LIKE ? ORDER BY updated DESC LIMIT 60").all(user, `%${q}%`) as unknown as { id: number; title: string; source: string; updated: number }[];

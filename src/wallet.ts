@@ -4,6 +4,7 @@ import { base } from "viem/chains";
 import { getUser } from "./db.js";
 import type { Signer } from "./flash.js";
 import { privyAccount } from "./privy.js";
+import { browserSigner, canAsk } from "./browsersign.js";
 
 /** A wallet the user signs with in their browser (MetaMask). Tribe can't sign for it, so every trade is approved there. */
 export const isExternal = (user: number) => getUser(user).wallet_kind === "external";
@@ -14,7 +15,11 @@ export const isExternal = (user: number) => getUser(user).wallet_kind === "exter
  */
 export function signerOf(user: number): Signer {
   const u = getUser(user);
-  if (u.wallet_kind === "external") throw new Error("Approve this in MetaMask: Tribe can't sign for your wallet.");
+  // MetaMask: only its owner signs, in their open Tribe tab, and only while they're acting in the app.
+  if (u.wallet_kind === "external") {
+    if (canAsk(user)) return browserSigner(user, u.address as `0x${string}`);
+    throw new Error("Only you can sign for your MetaMask wallet: do this from the app.");
+  }
   if (u.privy_wallet_id) return privyAccount(u.privy_wallet_id, u.address) as unknown as LocalAccount;
   if (u.pk) return u.pk;
   throw new Error("No wallet is connected to this account. Connect one in Me, then Wallet.");

@@ -53,7 +53,7 @@ export const handleEntry = (h: string) => {
 
 /** A trader's latest buy, or their latest trade if they have never bought. */
 export const latestEntry = (leader: number) =>
-  (db.prepare("SELECT id FROM trades WHERE leader = ? ORDER BY json_extract(trade,'$.side') = 'buy' DESC, id DESC LIMIT 1").get(leader) as { id: number } | undefined)?.id;
+  (db.prepare("SELECT id FROM trades WHERE leader = ? AND private = 0 ORDER BY json_extract(trade,'$.side') = 'buy' DESC, id DESC LIMIT 1").get(leader) as { id: number } | undefined)?.id;
 
 /** Cat's read as plain text, for Telegram and MCP where there is no card. */
 export const verdictText = (v: Verdict) => `Cat's read: ${v.label}\n${v.checks.map((c) => `${c.ok === true ? "✅" : c.ok === false ? "⚠️" : "▫️"} ${c.t}`).join("\n")}`;

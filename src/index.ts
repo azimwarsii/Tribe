@@ -25,6 +25,8 @@ import { assertSafeConfig } from "./preflight.js";
 import { rateLimit } from "./ratelimit.js";
 import { privyRouter } from "./privy-api.js";
 import { walletRouter } from "./wallet-api.js";
+import { tickBots } from "./creator.js";
+import { startLocalCre } from "./cre-local.js";
 
 assertSafeConfig();
 // Copiers who opted in sell what they copied from a trader as soon as CopyGuard pauses them.
@@ -209,5 +211,11 @@ startTracker();
 // Live orders update from Flash's orders stream; polling becomes a slow safety sweep while the stream is healthy.
 if (!isDry()) startOrderStream();
 watchCopyGuard((leader, halted, reason) => void notifyHalt(leader, halted, reason));
+// Chainlink CRE from this machine until the workflows are deployed (CRE_LOCAL=true).
+startLocalCre();
+
+// Creators' bots: record prices and give every running bot a look, once a minute (BOT_TICK_MS to change).
+setInterval(() => void tickBots().catch((e) => console.error("bots:", (e as Error).message)), Number(process.env.BOT_TICK_MS ?? 60_000));
+
 app.listen(Number(process.env.PORT ?? 8787), () => console.log(`Tribe on ${baseUrl()} (bot ${bot ? "on" : "off: set TELEGRAM_BOT_TOKEN"}, DRY_RUN=${process.env.DRY_RUN !== "false"})`));
 void bot?.start();

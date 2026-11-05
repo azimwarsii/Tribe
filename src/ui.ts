@@ -438,6 +438,43 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 button,a{transition:transform 120ms ease,background-color 180ms ease,color 180ms ease,border-color 180ms ease,opacity 180ms ease}
 button:active,a:active{transform:scale(.97)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;transition:none!important}}
+/* Ask Cat: chat history and the new-chat feature grid. */
+.chat-hist{display:none}.hlist{display:flex;flex-direction:column;gap:2px}.hgrp{font-size:11px;font-weight:600;color:#6B6B6B;text-transform:uppercase;letter-spacing:.06em;padding:12px 10px 4px}
+.hitem{display:flex;align-items:center;border-radius:10px}.hitem a{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:9px 10px;color:#D4D4D4;font-size:14px}.hitem a span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hitem:hover{background:#171717}.hitem.on{background:#1F1F1F}.hitem.on a{color:#fff}.hdel{flex:none;width:28px;height:28px;margin-right:4px;border:0;border-radius:8px;background:transparent;color:#8A8A8A;display:flex;align-items:center;justify-content:center;opacity:0;cursor:pointer}.hitem:hover .hdel,.hitem.on .hdel,.hdel:focus-visible{opacity:1}.hdel:hover{background:#2A2A2A;color:#F87171}
+@media (hover:none){.hdel{opacity:1}}
+.chat-hist .hnew{width:100%;height:40px;justify-content:center;margin-bottom:6px;flex:none}
+.chatsbtn{height:36px;gap:6px;padding:0 12px;flex:none}
+.catwelcome{gap:14px;margin:auto 0}.cwhead{align-items:center;text-align:center;gap:10px}.cwsub{margin:4px 0 0;font-size:14px}
+.catfeat{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cfeat{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 14px;color:#F5F5F5;text-align:left;font:inherit;cursor:pointer;border:1px solid rgba(255,255,255,.07);transition:border-color .15s,transform .15s;min-width:0}.cfeat:hover{border-color:color-mix(in srgb,var(--fc) 55%,transparent);transform:translateY(-1px)}
+.cft{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}.cfh{display:flex;align-items:center;justify-content:space-between;gap:8px}.cfh b{font-size:15px;white-space:nowrap}.cft .sm{line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cfi{flex:none;width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--fc) 14%,transparent)}
+.cftag{white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#A3A3A3;padding:3px 7px;border-radius:999px;background:#1F1F1F;border:1px solid rgba(255,255,255,.06)}.cftag.s{margin-left:4px;padding:1px 6px;font-size:9px}
+.catmore{justify-content:center}.catmore .chip{gap:6px}
+@media (max-width:899px){.cfeat{flex-direction:column;align-items:flex-start;gap:8px}.cft .sm{display:none}.cfh{flex-direction:column;align-items:flex-start;gap:4px}
+ .catmore{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;margin:0 -16px;padding:0 16px}.catmore .chip{flex:none}}
+/* Desktop: full-width app view. History is its own column, divided by a line, and scrolls on its own; so does the chat. */
+@media (min-width:900px){
+ .app.chatapp{max-width:none;margin:0;padding-bottom:0!important}.ic.only-d{display:flex!important}
+ .catshell{flex:1;min-height:0;display:grid;grid-template-columns:272px minmax(0,1fr)}
+ .chat-hist{display:flex;flex-direction:column;min-height:0;overflow-y:auto;overscroll-behavior:contain;border-right:1px solid rgba(255,255,255,.08);padding:18px 12px 24px;background:#0C0C0C}
+ .catmain{display:flex;flex-direction:column;min-width:0;min-height:0}
+ .catmain>.chatpanes{flex:1;min-height:0;overflow:hidden;padding-bottom:0!important}
+ .catmain .msgcol{flex:1;width:100%;max-width:760px;margin:0 auto}
+ .catmain>.hd{width:100%;max-width:808px;margin:0 auto}
+}
+@media (min-width:900px) and (max-height:820px){.cwhead .orb{display:none}.cwsub{display:none}}
+/* Creator Studio: trade ticket, bot builder, studio cards. */
+.tkpick{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#F5F5F5;font:inherit;text-align:left;cursor:pointer}.tkpick:hover{border-color:rgba(255,255,255,.2)}
+.tkimg{width:32px;height:32px;border-radius:50%;background:#262626;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;overflow:hidden;flex:none}.tkimg img{width:100%;height:100%;object-fit:cover}
+.tklist{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:10px;border-radius:14px;background:#111;border:1px solid rgba(255,255,255,.08)}.tklist[hidden]{display:none}.tklist .f{height:42px}
+#tk-res{max-height:300px;overflow-y:auto}.tkrow{display:flex;align-items:center;gap:12px;width:100%;padding:8px 10px;border-radius:12px;border:0;background:transparent;color:#F5F5F5;font:inherit;text-align:left;cursor:pointer}.tkrow:hover{background:#1C1C1C}.tkrow.off{opacity:.5;cursor:not-allowed}
+.tkf{gap:8px}.chip.cust{padding:0 10px;cursor:text}.chip.cust input{width:64px;border:0;background:transparent;color:#F5F5F5;font-size:13px;outline:none}.chip.cust:focus-within{border-color:#F5F5F5}
+.tkta{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#F5F5F5;font:inherit;font-size:14px;resize:vertical}
+@media (max-width:899px){.cmake{grid-template-columns:1fr}}
+.cnew{display:flex;gap:12px;align-items:center;color:#F5F5F5;padding:16px;transition:border-color .15s}.cnew:hover{border-color:rgba(255,255,255,.2)}.cnew b{display:block;font-size:16px}.cnew .sm{display:block;line-height:1.4;margin-top:2px}
+.signbox{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:90;display:flex;gap:12px;align-items:center;max-width:min(440px,calc(100vw - 32px));padding:14px 18px;border-radius:18px;background:#1A1A1A;border:1px solid rgba(252,211,77,.45);box-shadow:0 12px 40px rgba(0,0,0,.6);color:#F5F5F5}.signbox[hidden]{display:none}.signbox b{display:block}.signbox .sb-t{display:block;font-size:13px;color:#A3A3A3;margin-top:2px}
 /* Scrolling still works everywhere; the bars just stay out of sight. */
 *{scrollbar-width:none!important}*::-webkit-scrollbar{display:none;width:0;height:0}
 `;

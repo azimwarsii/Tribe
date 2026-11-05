@@ -11,6 +11,7 @@ import { madeByMonth } from "./web.js";
 import { catReadCard } from "./cat.js";
 import { reactBar, reactBreakdown } from "./reactions.js";
 import { Resvg } from "@resvg/resvg-js";
+import { botsStrip } from "./creator.js";
 
 /** Render the share card SVG to a 1200x630 PNG so X, Telegram and TikTok show it (they ignore SVG). */
 export const svgToPng = (svg: string): Buffer => Buffer.from(new Resvg(svg, { font: { loadSystemFonts: true, defaultFontFamily: "Segoe UI" } }).render().asPng());
@@ -82,6 +83,7 @@ ${events.map((e) => `<div class="tile"><div class="row sp"><b class="md">${e.kin
     : tab === "Badges" ? (p.badges.length ? `<div class="grid3">${p.badges.map((b) => `<div class="tile col" style="align-items:center;text-align:center;gap:8px;padding:14px 8px"><span class="medal on" aria-hidden="true">${icon(b.icon, 22)}</span><span class="sm" style="font-weight:600">${esc(b.label)}</span></div>`).join("")}</div>` : '<span class="sm mut">No badges yet.</span>')
     : `<h2>Stats</h2><div class="grid2">${stat("Win rate", p.winRate === null ? "—" : p.winRate + "%")}${stat("Guard pauses", `${p.guardPauses} in ${p.days || 0} days`)}${stat("Copies", String(p.copies))}${stat("Track record", `${p.days} days · ${p.trades} trades`)}</div>
 ${splitCard(u.id)}
+${botsStrip(u.id)}
 <div class="tile"><div class="row sp sm mut"><span>Max drawdown</span><span>${riskWord(Math.min(100, dd * 3.5))}</span></div><div style="font-size:18px;font-weight:600;margin-top:4px">${dd ? "−" + dd.toFixed(1) + "pp" : "—"}</div><div class="bar" style="margin-top:8px"><i style="width:${Math.min(100, (dd / 25) * 100)}%"></i></div></div>`;
   const cta = me ? `<a class="btn p" href="/profile/edit" style="flex:2">Edit profile</a>`
     : rules ? `<a class="btn" href="/traders" style="flex:2">Copying · manage</a>`
@@ -121,7 +123,7 @@ const PRESETS = {
 /** What these rules would have done on the leader's last 30 days of buys, marked to market. Real fills, not a promise. */
 export async function simulateCopy(leader: number, rules: FollowRules) {
   const since = Date.now() - 30 * 86400e3;
-  const rows = db.prepare("SELECT t.id, t.trade, o.price FROM trades t JOIN orders o ON o.trade_id = t.id AND o.trader = t.leader AND o.role = 'own' WHERE t.leader = ? AND t.at >= ? AND o.price IS NOT NULL").all(leader, since) as unknown as { id: number; trade: string; price: number }[];
+  const rows = db.prepare("SELECT t.id, t.trade, o.price FROM trades t JOIN orders o ON o.trade_id = t.id AND o.trader = t.leader AND o.role = 'own' WHERE t.leader = ? AND t.private = 0 AND t.at >= ? AND o.price IS NOT NULL").all(leader, since) as unknown as { id: number; trade: string; price: number }[];
   let copied = 0, pnl = 0, invested = 0, worst = 0, total = 0;
   for (const r of rows) {
     const t = JSON.parse(r.trade) as Trade;
@@ -336,7 +338,7 @@ export async function publicPage(handle: string, tradeId?: number): Promise<stri
   const p = await profile(u.id);
   const month = windowPnl(u.id, Date.now() - 30 * 86400e3);
   const url = `${BASE_URL()}/u/${encodeURIComponent(handle)}`;
-  const recent = (await Promise.all((db.prepare("SELECT id FROM trades WHERE leader = ? ORDER BY id DESC LIMIT 5").all(u.id) as unknown as { id: number }[]).map((r) => tradeCard(r.id)))).filter((c) => c !== undefined);
+  const recent = (await Promise.all((db.prepare("SELECT id FROM trades WHERE leader = ? AND private = 0 ORDER BY id DESC LIMIT 5").all(u.id) as unknown as { id: number }[]).map((r) => tradeCard(r.id)))).filter((c) => c !== undefined);
   const spark = p.curve.length > 1 ? `<svg class="only-d" width="100%" height="80" viewBox="0 0 310 80" preserveAspectRatio="none" aria-hidden="true" style="margin-top:12px"><path d="${polyline(p.curve.slice(-40), 310, 80)}" fill="none" stroke="#34D399" stroke-width="2"/></svg>` : "";
   const pitch = `<ul class="mut md" style="margin:0;padding-left:18px;line-height:1.7"><li>Every trade is copied with its stop and target</li><li>A Chainlink-powered Guard pauses risky traders onchain</li><li>Your wallet stays yours, and you set the limits</li></ul>`;
   const join = `<a class="btn p big" href="/onboarding?follow=${esc(handle)}">${icon("bolt", 14)}Join and copy @${esc(handle)}</a>`;

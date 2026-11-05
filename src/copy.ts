@@ -98,7 +98,7 @@ export const FRESH_MS = 86400e3;
  */
 export async function copyOne(viewer: number, tradeId: number, usd: number): Promise<{ handle: string; usd: number; receipt: string }> {
   const t = tradeById(tradeId);
-  if (!t) throw new Error("Trade not found");
+  if (!t || t.private) throw new Error("Trade not found"); // a bot's trial trades can't be copied
   const trade = t.trade as Trade;
   if (t.leader === viewer) throw new Error("That's your own trade");
   if (trade.side !== "buy") throw new Error("Only entries can be copied");
@@ -128,9 +128,9 @@ export async function copyOne(viewer: number, tradeId: number, usd: number): Pro
  * A leader trades: place the leader's own order, then fan out to followers by their rules
  * (skip, auto-execute, or queue an ask-first request).
  */
-export async function mirror(leader: number, trade: Trade, source: TradeSource = "user", note?: string): Promise<MirrorResult> {
+export async function mirror(leader: number, trade: Trade, source: TradeSource = "user", note?: string, opts: { bot?: number; private?: boolean } = {}): Promise<MirrorResult> {
   getUser(leader); // ensure wallet exists
-  const tradeId = recordTrade(leader, trade, source, note);
+  const tradeId = recordTrade(leader, trade, source, note, opts);
   const out: MirrorResult = { tradeId, own: "", executed: [], skipped: [], pending: [] };
   // A sell copies as the same share of the position: the leader selling 40% of what they hold sells 40% of what each
   // follower copied from them (Flash sells are sized in tokens, and followers hold different amounts).
@@ -143,6 +143,8 @@ export async function mirror(leader: number, trade: Trade, source: TradeSource =
     out.own = `failed: ${(e as Error).message}`;
     return out; // do not copy a trade the leader could not place
   }
+  // A bot on its private trial builds a record first: nobody copies it yet.
+  if (opts.private) return out;
 
   const followers = followersOf(leader);
   const risk = followers.length ? await riskOf(leader) : 0;

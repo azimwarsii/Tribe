@@ -52,4 +52,27 @@ document.addEventListener('input',function(e){var i=e.target;if(!i.name)return;v
 $$('[data-autoopen]').forEach(function(a){sheet(a.dataset.autoopen,true)});
 $$('[data-auto]').forEach(function(a){setTimeout(function(){location.href=a.dataset.auto},Number(a.dataset.delay||2200))});
 $$('[data-autogrow]').forEach(function(a){a.addEventListener('input',function(){a.style.height='auto';a.style.height=a.scrollHeight+'px'})});
+
+// MetaMask bridge (live mode, own-wallet accounts): when an action needs a signature, the server queues it, this tab
+// claims it, MetaMask shows it, and the answer goes back. Nothing is signed without the user confirming in MetaMask.
+(function(){var S=window.TRIBE_SIGNER;if(!S)return;
+var tab=Math.random().toString(36).slice(2),box=null;
+function show(t){if(!box){box=document.createElement('div');box.className='signbox';box.setAttribute('role','status');document.body.appendChild(box)}box.innerHTML='<span class="live" style="width:8px;height:8px"></span><span><b>Confirm in MetaMask</b><span class="sb-t"></span></span>';box.querySelector('.sb-t').textContent=t;box.hidden=false}
+function hide(){if(box)box.hidden=true}
+async function ready(){var e=window.ethereum;if(!e)throw new Error('No wallet extension found in this browser');
+ var acc=await e.request({method:'eth_requestAccounts'}),me=S.address.toLowerCase();
+ if(!acc.some(function(a){return a.toLowerCase()===me}))throw new Error('MetaMask is on another account: switch to '+S.address.slice(0,6)+'...'+S.address.slice(-4));
+ if(await e.request({method:'eth_chainId'})!=='0x2105'){try{await e.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]})}catch(x){if(x&&x.code===4902)await e.request({method:'wallet_addEthereumChain',params:[{chainId:'0x2105',chainName:'Base',nativeCurrency:{name:'Ether',symbol:'ETH',decimals:18},rpcUrls:['https://mainnet.base.org'],blockExplorerUrls:['https://basescan.org']}]});else throw x}}
+ return e}
+function hex(s){var b=new TextEncoder().encode(s),h='0x';for(var i=0;i<b.length;i++)h+=('0'+b[i].toString(16)).slice(-2);return h}
+async function run(r){var e=await ready(),p=r.payload,a=S.address;
+ if(r.kind==='typed')return e.request({method:'eth_signTypedData_v4',params:[a,p.json]});
+ if(r.kind==='message')return e.request({method:'personal_sign',params:[hex(p.message),a]});
+ if(r.kind==='tx')return e.request({method:'eth_sendTransaction',params:[{from:a,to:p.to,data:p.data,value:p.value?'0x'+BigInt(p.value).toString(16):'0x0'}]});
+ throw new Error('Unknown request')}
+async function loop(){for(;;){try{var j=await fetch('/api/sign/wait?tab='+tab).then(function(x){return x.json()});
+  if(j&&j.req){show(j.req.label);var body;try{body={result:await run(j.req)}}catch(x){body={error:(x&&(x.message||String(x.code)))||'rejected'};toast(body.error)}
+   await fetch('/api/sign/'+j.req.id,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});hide()}
+ }catch(x){hide();await new Promise(function(r){setTimeout(r,3000)})}}}
+loop()})();
 })();`;
