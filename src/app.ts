@@ -518,8 +518,12 @@ export function appRouter(): Router {
     const t: Trade = { chain: "base", target: token, contra: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", side: "sell", qty: String(qty), orderType: "market" };
     // Cancel the resting stop / target first (gasless signed cancel at Flash), so they can't fire on a closed position.
     await cancelProtective(uid, token);
-    await placeAndTrack(0, uid, uid, "own", t);
-    return { reload: true, toast: `Closed ${symOf(token)} at market` };
+    // A close is a sell like any other: everyone holding a copy of this position sells the same share of their copy.
+    const m = await mirror(uid, t, "user", "Closed the position");
+    if (m.own.startsWith("failed")) throw new Error(m.own.replace(/^failed: /, "Couldn't close it: "));
+    notifier?.(m.pending, uid);
+    const n = m.pending.length + m.executed.length;
+    return { reload: true, toast: `Closed ${symOf(token)} at market${n ? ` · ${n} copier${n === 1 ? "" : "s"} selling too` : ""}` };
   }));
   r.post("/api/position-stop", json, act(async (uid, req) => {
     const token = String(req.body.token).toLowerCase();

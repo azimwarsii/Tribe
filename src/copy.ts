@@ -1,5 +1,5 @@
 import type { Trade } from "./flash.js";
-import { type TradeSource, copyFreeze, createPending, followersOf, getMeta, getUser, haltOf, recordCopy, recordTrade, spentToday, tradeById } from "./db.js";
+import { type TradeSource, copyFreeze, createPending, DEFAULT_RULES, followersOf, getMeta, getUser, haltOf, recordCopy, recordTrade, spentToday, tradeById } from "./db.js";
 import { decide, protectCopy, RISK_LINE } from "./rules.js";
 import { cancelCopiedProtective, heldTokens, isDry, moveStop, placeAndTrack, stopOf } from "./tracker.js";
 import { usdcBalance } from "./data.js";
@@ -32,6 +32,8 @@ export async function execute(tradeId: number, follower: number, leader: number,
     if (free !== undefined && free + 1e-6 < usd) return skip(`Not enough USDC: $${free.toFixed(2)} in the wallet, this copy needs $${usd.toFixed(2)}`);
   }
   try {
+    // Selling a copy: cancel its own stop / target first, so they can't fire on what's been sold.
+    if (trade.side === "sell") await cancelCopiedProtective(follower, leader, trade.target);
     const chased = await chaseGuard(tradeId, leader, follower, trade);
     const p = await placeAndTrack(tradeId, follower, leader, "copy", chased.trade);
     recordCopy({ tradeId, follower, leader, usd, status: p.sim ? "dry-run" : "executed", orderId: p.orderId, note: chased.note });
@@ -146,7 +148,16 @@ export async function mirror(leader: number, trade: Trade, source: TradeSource =
   // A bot on its private trial builds a record first: nobody copies it yet.
   if (opts.private) return out;
 
+  // A sell (close) reaches everyone still holding a copy of this leader's position, not only current followers:
+  // someone who copied one trade, or unfollowed since, gets asked to sell their copy too.
   const followers = followersOf(leader);
+  if (trade.side === "sell") {
+    const holders = db.prepare("SELECT DISTINCT trader FROM orders WHERE leader = ? AND role = 'copy' AND trader != ?").all(leader, leader) as { trader: number }[];
+    for (const { trader } of holders) {
+      if (followers.some((f) => f.follower === trader)) continue;
+      if (copiedTokens(trader, leader, trade.target) > 1e-12) followers.push({ follower: trader, rules: { ...DEFAULT_RULES, mode: "ask" } });
+    }
+  }
   const risk = followers.length ? await riskOf(leader) : 0;
   // Read after the leader's own order, right before fan-out: the latest CopyGuard state, onchain when deployed.
   const gate = followers.length ? await guardGate(leader) : { halted: !!haltOf(leader), stale: false };

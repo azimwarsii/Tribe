@@ -963,3 +963,28 @@ test("Token prices are written as plain decimals Flash accepts, even for tiny pr
   assert.ok(!/e/i.test(qtyStr(1e-7)) && Number(qtyStr(1e-7)) > 0);
   assert.equal(qtyStr(3450.123456), "3450.1235");
 });
+
+test("Closing a position asks everyone holding a copy to sell theirs, and their copy's stop is cancelled first", async () => {
+  const lead = client(), fan = client();
+  await lead("/api/signup", { handle: "closer", persona: "Sniper" });
+  await fan("/api/signup", { handle: "onecopy", persona: "Hodler" });
+  const L = db.userByHandle("closer")!.id, F = db.userByHandle("onecopy")!.id;
+  const t = await lead("/api/trade/new", { usd: 20, stop: 5, tp: 10 });
+  const tradeId = Number(t.json.redirect.split("/").pop());
+  // Copied once from the trade page: no follow.
+  assert.equal((await fan("/api/copy-trade", { trade: tradeId, usd: 10 })).status, 200);
+  assert.ok(!db.db.prepare("SELECT 1 FROM follows WHERE follower = ? AND leader = ?").get(F, L));
+  const { copiedTokens } = await import("./copy.js");
+  const weth = "0x4200000000000000000000000000000000000006";
+  assert.ok(copiedTokens(F, L, weth) > 0);
+  // The leader closes: their position is sold and the copier is asked to sell theirs.
+  const close = await lead("/api/position-close", { token: weth });
+  assert.match(close.json.toast, /1 copier selling too/);
+  const req = db.db.prepare("SELECT id, trade FROM pending_copies WHERE follower = ? AND status = 'open'").get(F) as { id: number; trade: string };
+  assert.equal(JSON.parse(req.trade).side, "sell");
+  assert.match((await fan(`/requests?id=${req.id}`)).text, /closed their ETH position: sell your copy too\?/);
+  assert.equal((await fan("/api/pending", { id: req.id, action: "approve" })).status, 200);
+  assert.ok(copiedTokens(F, L, weth) < 1e-9, "the copier's copy is sold");
+  const open = db.db.prepare("SELECT COUNT(*) AS n FROM orders WHERE trader = ? AND role = 'copy' AND status IN ('open','waiting') AND json_extract(trade,'$.side') = 'sell' AND json_extract(trade,'$.orderType') != 'market'").get(F) as { n: number };
+  assert.equal(open.n, 0, "the copy's stop / target were cancelled");
+});

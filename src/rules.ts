@@ -46,7 +46,8 @@ export function usdOf(t: Trade, ratio: number): number {
 export function decide(trade: Trade, rules: FollowRules, ctx: DecideCtx): Decision {
   if (ctx.pausedAll) return { action: "skip", reason: "all copying paused" };
   if (rules.paused) return { action: "skip", reason: "paused by you" };
-  if (!rules.guardOverride) {
+  // Exits always go through: a Guard pause or risk score stops new entries, never a sell.
+  if (!rules.guardOverride && trade.side === "buy") {
     if (ctx.halted) return { action: "skip", reason: "leader paused by CopyGuard" };
     if (ctx.risk !== undefined && ctx.riskLine !== undefined && ctx.risk >= ctx.riskLine) {
       return { action: "skip", reason: `CopyGuard: risk ${Math.round(ctx.risk)} is above your line of ${ctx.riskLine}` };
