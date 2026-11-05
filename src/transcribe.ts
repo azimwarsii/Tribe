@@ -1,5 +1,5 @@
 /**
- * Speech to text for Ask Cat's mic, done on the server so it works in every browser (Brave ships no built-in speech
+ * Speech to text for Ask Chief's mic, done on the server so it works in every browser (Brave ships no built-in speech
  * recognition). The browser records a short WAV and Tribe asks an audio-capable model on the OpenAI-compatible API
  * (OpenRouter) to write down exactly what was said.
  */

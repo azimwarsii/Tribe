@@ -18,7 +18,7 @@ export const integratorFeeBps = () => (process.env.FLASH_API_KEY ? Math.max(0, M
 const FEE = () => String(integratorFeeBps());
 const RPC = () => process.env.BASE_RPC || "https://mainnet.base.org";
 
-export type OrderType = "market" | "limit" | "stop" | "stop-loss" | "take-profit" | "bracket" | "twap";
+export type OrderType = "market" | "limit" | "stop" | "stop-loss" | "take-profit" | "bracket" | "twap" | "trailing-stop" | "trailing-stop-limit";
 
 export interface Trade {
   chain: string;
@@ -28,12 +28,18 @@ export interface Trade {
   qty: string;
   orderType: OrderType;
   triggers?: { notionalPrice: string; triggerType: "upper" | "lower" }[];
+  /**
+   * Trailing stop (trailing-stop fires at market, trailing-stop-limit rests a limit at the trigger): trails the best
+   * price by trailPercent ("0.05" is 5%, 0.005 to 0.5), armed at activationPrice (USD) or at once. peak is Tribe only:
+   * the simulated watermark, never sent to Flash.
+   */
+  trailingStop?: { trailPercent: string; activationPrice?: string; peak?: number };
   limitNotionalPrice?: string;
   durationSeconds?: number;
   twapBucketCount?: number;
   /** Take-profit / stop-loss attached to a market, limit or TWAP entry (USD prices). Placed with the entry as one Flash order. */
   attach?: { tp: string; sl: string };
-  hasStop?: boolean; // entry that ships with a stop-loss (set by Ask Cat and bracket flows)
+  hasStop?: boolean; // entry that ships with a stop-loss (set by Ask Chief and bracket flows)
   /** Tribe only, never sent to Flash: a copier's own stop-loss price, placed as a stop-loss once this entry fills. */
   followStop?: string;
   /** Good-til-time for limit, trigger and bracket orders (ISO-8601). Quote-only in Flash: never echoed on submit. */
@@ -121,6 +127,7 @@ export function quoteBody(t: Trade, funder: string, slippage?: string, auth: Aut
     funderAddress: funder,
     flashIntegratorFeeBps: FEE(),
     ...(t.triggers ? { triggers: t.triggers } : {}),
+    ...(t.trailingStop ? { trailingStop: { trailPercent: t.trailingStop.trailPercent, ...(t.trailingStop.activationPrice ? { activationPrice: t.trailingStop.activationPrice } : {}) } } : {}),
     ...(t.limitNotionalPrice ? { limitNotionalPrice: t.limitNotionalPrice } : {}),
     ...(timed ? { durationSeconds: Math.max(300, t.durationSeconds ?? 300), ...(t.twapBucketCount ? { twapBucketCount: t.twapBucketCount } : {}) } : {}),
     ...(t.orderType === "market" && slippage ? { maxSlippage: slippage } : {}),

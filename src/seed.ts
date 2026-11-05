@@ -34,7 +34,7 @@ setFollow(you, kestrel, { mode: "auto", ratio: 1, maxUsdPerTrade: 20 });
 setFollow(you, traderx, { mode: "auto", ratio: 0.5, maxUsdPerTrade: 15 });
 setFollow(mav, nightowl, { mode: "auto" });
 setFollow(kestrel, nightowl, { mode: "auto" });
-setFollow(mav, ember, { mode: "auto" }); // ember: a careful trader the demo viewer does not copy yet (Cat's pick in the feed)
+setFollow(mav, ember, { mode: "auto" }); // ember: a careful trader the demo viewer does not copy yet (Chief's pick in the feed)
 
 // @kestrel runs their own bot: the CRE agent strategy trades from their wallet, under their name, tagged Bot.
 setMeta(kestrel, { bot: { on: true, usd: 25, perDay: 3 } });
@@ -141,7 +141,7 @@ for (const u of [kestrel, you]) joinSquad(u, night);
 const blue = createSquad(mav, "Blue Chips")!;
 joinSquad(traderx, blue);
 
-// Cat: a couple of past chats (one from Telegram) and rules, so the history drawer and memory screen are alive.
+// Chief: a couple of past chats (one from Telegram) and rules, so the history drawer and memory screen are alive.
 await catAsk(you, "buy $50 ETH with 5% stop and 12% take profit", { source: "App" });
 await catAsk(you, "who's best this week?", { source: "Telegram" });
 addRule(you, "Never copy memecoins without a stop", "Telegram");

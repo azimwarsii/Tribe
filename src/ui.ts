@@ -210,7 +210,7 @@ h2{margin:0;font-size:17px;font-weight:600}
   .swmain{padding:0 10px}.deck{height:calc(100vh - 190px);height:calc(100dvh - 190px);min-height:430px;margin:0 8px;--peek:16%}
   .swmain .swbar{margin-bottom:-16px}}
 .bcard{padding:20px 20px 18px;gap:16px!important}.bcard #brief{gap:16px!important;flex:1 1 auto}
-/* Deck side panel: runs to the bottom of the screen. Cat's brief takes all the room the portfolio and active trades leave,
+/* Deck side panel: runs to the bottom of the screen. Chief's brief takes all the room the portfolio and active trades leave,
    with its last trades and stats sitting at the bottom; on a short screen the brief scrolls inside itself. */
 @media (min-width:900px){.paside:has(.bcard){height:calc(100vh - 140px);overflow:hidden}.split:has(.bcard){padding-bottom:16px}.app.pad:has(.deck),.app:has(.tdetails){padding-bottom:0!important}.split:has(.tdetails){padding-bottom:16px}.paside .bcard{flex:1 1 0;min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#333 transparent}.paside>section:not(.bcard){flex:none}.bcard .blast{margin-top:auto}}
 .bheld{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:14px;background:#1A1A1A;font-size:15px}
@@ -313,7 +313,8 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 .composer{position:fixed;left:var(--cx,50%);transform:translateX(-50%);width:100%;max-width:430px;padding:0 16px;z-index:25}
 .composer::before{content:"";position:absolute;left:0;right:0;top:-28px;bottom:-24px;background:linear-gradient(180deg,rgba(10,10,10,0),#0A0A0A 34px);z-index:-1;pointer-events:none}
 .composer .box{border-radius:26px;background:#1A1A1A;border:1px solid rgba(255,255,255,.1);padding:10px 10px 8px 16px}
-.composer input{width:100%;border:0;background:transparent;color:#F5F5F5;font-size:16px;height:36px;padding:0}
+.composer input{width:100%;border:0;background:transparent;color:#F5F5F5;font-size:16px;height:36px;padding:0;outline:none}
+.composer .box:focus-within{border-color:#34D399}
 .tg{height:32px;padding:0 12px;border-radius:16px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#D4D4D4;font-size:13px;display:inline-flex;align-items:center;gap:5px}
 .tg[aria-pressed=true]{background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.55);color:#34D399}
 .steps{margin:6px 0 0;padding-left:18px;font-size:13px;color:#A3A3A3;line-height:1.6}.steps b{color:#F5F5F5;font-weight:600}
@@ -385,14 +386,14 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   .tbl td{padding:12px;border-bottom:1px solid #1C1C1C;font-size:14px;vertical-align:middle}.tbl tr:hover td{background:#101010}.tbl .r{text-align:right}
   .pad2{padding:0 28px}
   .catgrid{display:grid;grid-template-columns:260px minmax(0,1fr);gap:24px;align-items:start}
-  /* Cat is one chat with no history column: the conversation takes the width, centred at a readable measure. */
+  /* Chief is one chat with no history column: the conversation takes the width, centred at a readable measure. */
   .catgrid:not(:has(.chat-hist)){grid-template-columns:minmax(0,1fr)}.catgrid:not(:has(.chat-hist))>.msgcol{width:100%;max-width:760px;margin:0 auto}
   .split{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;padding:0 28px 40px;align-items:start}.split>.main{padding:0}
   .paside{display:flex;flex-direction:column;gap:16px;min-width:0}
   .d2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.d3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
   .d3 .qcard{flex-direction:column;align-items:flex-start}.d3 .qcard>.grow{width:100%}
   .chat-hist{position:sticky;top:76px;display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 100px);overflow:auto}
-  /* Ask Cat chat: an app view, not a page. The history list and the conversation are separate scroll panes; the page itself never scrolls. */
+  /* Ask Chief chat: an app view, not a page. The history list and the conversation are separate scroll panes; the page itself never scrolls. */
   .app.chatapp{height:100vh;height:100dvh;min-height:0}
   .mainc:has(>.app.chatapp){height:100vh;height:100dvh;display:flex;flex-direction:column}.mainc:has(>.app.chatapp)>.app{flex:1;height:auto}
   .chatapp .chatpanes{flex:1;min-height:0;padding-bottom:0!important;overflow:hidden;grid-template-rows:minmax(0,1fr);align-items:stretch}
@@ -412,7 +413,7 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   /* The side panel never runs past the bottom of the screen: on short screens it scrolls inside itself. */
   .paside{position:sticky;top:84px;max-height:calc(100vh - 100px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#333 transparent}
 }
-/* Focus pages (Ask Cat chat): the menu collapses to icons and the summary rail goes, unless the user opens the menu. */
+/* Focus pages (Ask Chief chat): the menu collapses to icons and the summary rail goes, unless the user opens the menu. */
 @media (min-width:900px){
   body.slim{--cx:calc(76px + (100vw - 76px)/2)}
   body.slim .side{width:76px;padding:22px 12px}body.slim .side-item{justify-content:center}body.slim .side-label,body.slim .side-extra{display:none}
@@ -438,7 +439,7 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 button,a{transition:transform 120ms ease,background-color 180ms ease,color 180ms ease,border-color 180ms ease,opacity 180ms ease}
 button:active,a:active{transform:scale(.97)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;transition:none!important}}
-/* Ask Cat: chat history and the new-chat feature grid. */
+/* Ask Chief: chat history and the new-chat feature grid. */
 .chat-hist{display:none}.hlist{display:flex;flex-direction:column;gap:2px}.hgrp{font-size:11px;font-weight:600;color:#6B6B6B;text-transform:uppercase;letter-spacing:.06em;padding:12px 10px 4px}
 .hitem{display:flex;align-items:center;border-radius:10px}.hitem a{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:9px 10px;color:#D4D4D4;font-size:14px}.hitem a span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hitem:hover{background:#171717}.hitem.on{background:#1F1F1F}.hitem.on a{color:#fff}.hdel{flex:none;width:28px;height:28px;margin-right:4px;border:0;border-radius:8px;background:transparent;color:#8A8A8A;display:flex;align-items:center;justify-content:center;opacity:0;cursor:pointer}.hitem:hover .hdel,.hitem.on .hdel,.hdel:focus-visible{opacity:1}.hdel:hover{background:#2A2A2A;color:#F87171}
@@ -451,6 +452,8 @@ button:active,a:active{transform:scale(.97)}
 .cft{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}.cfh{display:flex;align-items:center;justify-content:space-between;gap:8px}.cfh b{font-size:15px;white-space:nowrap}.cft .sm{line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cfi{flex:none;width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--fc) 14%,transparent)}
 .cftag{white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#A3A3A3;padding:3px 7px;border-radius:999px;background:#1F1F1F;border:1px solid rgba(255,255,255,.06)}.cftag.s{margin-left:4px;padding:1px 6px;font-size:9px}
+.trendrow{display:flex;align-items:center;gap:10px;min-width:0}.trendrow[hidden]{display:none}.trendlbl{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#A3A3A3;white-space:nowrap;flex:none}
+.tchips{display:flex;gap:6px;overflow-x:auto;min-width:0;flex:1}.tchip{flex:none;display:flex;align-items:center;gap:6px;height:30px;padding:0 10px 0 6px;border-radius:15px;border:1px solid rgba(255,255,255,.08);background:#161616;color:#F5F5F5;font:inherit;font-size:12px;cursor:pointer}.tchip:hover{border-color:rgba(255,255,255,.2)}.tchip img{width:18px;height:18px;border-radius:50%}
 .catmore{justify-content:center}.catmore .chip{gap:6px}
 @media (max-width:899px){.cfeat{flex-direction:column;align-items:flex-start;gap:8px}.cft .sm{display:none}.cfh{flex-direction:column;align-items:flex-start;gap:4px}
  .catmore{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;margin:0 -16px;padding:0 16px}.catmore .chip{flex:none}}
@@ -470,6 +473,7 @@ button:active,a:active{transform:scale(.97)}
 .tkimg{width:32px;height:32px;border-radius:50%;background:#262626;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;overflow:hidden;flex:none}.tkimg img{width:100%;height:100%;object-fit:cover}
 .tklist{display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:10px;border-radius:14px;background:#111;border:1px solid rgba(255,255,255,.08)}.tklist[hidden]{display:none}.tklist .f{height:42px}
 #tk-res{max-height:300px;overflow-y:auto}.tkrow{display:flex;align-items:center;gap:12px;width:100%;padding:8px 10px;border-radius:12px;border:0;background:transparent;color:#F5F5F5;font:inherit;text-align:left;cursor:pointer}.tkrow:hover{background:#1C1C1C}.tkrow.off{opacity:.5;cursor:not-allowed}
+.posacts{gap:6px;justify-content:flex-end;flex-wrap:nowrap}.posacts .btn{flex:none;width:auto;white-space:nowrap}
 .tkf{gap:8px}.chip.cust{padding:0 10px;cursor:text}.chip.cust input{width:64px;border:0;background:transparent;color:#F5F5F5;font-size:13px;outline:none}.chip.cust:focus-within{border-color:#F5F5F5}
 .tkta{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#F5F5F5;font:inherit;font-size:14px;resize:vertical}
 @media (max-width:899px){.cmake{grid-template-columns:1fr}}
@@ -480,7 +484,7 @@ button:active,a:active{transform:scale(.97)}
 `;
 
 export type NavKey = "feed" | "signals" | "ranks" | "cat" | "guard" | "me";
-const NAV: [NavKey, string, string, string][] = [["feed", "/feed", "home", "Feed"], ["signals", "/signals", "rise", "Signals"], ["ranks", "/ranks", "bars", "Leaderboard"], ["cat", "/cat", "cat", "Ask Cat"], ["guard", "/guard", "shield", "Guard"], ["me", "/me", "user", "Me"]];
+const NAV: [NavKey, string, string, string][] = [["feed", "/feed", "home", "Feed"], ["signals", "/signals", "rise", "Signals"], ["ranks", "/ranks", "bars", "Leaderboard"], ["cat", "/cat", "cat", "Ask Chief"], ["guard", "/guard", "shield", "Guard"], ["me", "/me", "user", "Me"]];
 
 /** split: the body uses split(); on desktop its aside replaces the global right rail. */
 export interface PageOpts { title: string; body: string; nav?: NavKey; head?: string; bare?: boolean; sheets?: string; extraClass?: string; focus?: boolean; split?: boolean; slim?: boolean }

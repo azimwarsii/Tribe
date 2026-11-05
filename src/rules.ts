@@ -30,7 +30,7 @@ export interface DecideCtx {
   budgetUsed?: number; // USD currently open from copying this trader
 }
 
-const PROTECTIVE = new Set(["stop-loss", "take-profit", "bracket", "stop"]);
+const PROTECTIVE = new Set(["stop-loss", "take-profit", "bracket", "stop", "trailing-stop", "trailing-stop-limit"]);
 
 /** Guard strictness -> risk score at which Guard stops copying for that follower. */
 export const RISK_LINE = { Strict: 50, Balanced: 65, Relaxed: 80 } as const;

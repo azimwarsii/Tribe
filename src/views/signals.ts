@@ -82,7 +82,7 @@ ${viewer !== undefined && !pub ? `<template class="sharetpl">${shareRow(sig)}</t
 ${viewer !== undefined ? `<form class="cmform" data-signal="${sig.id}"><input name="text" maxlength="280" placeholder="Add a comment…" autocomplete="off" aria-label="Your comment"><button class="btn sm p" type="submit">Post</button></form>` : `<a class="sm" href="/signin">Sign in to comment</a>`}</section>
 ${viewer === undefined ? `<div class="grid2"><a class="btn p" href="/onboarding?follow=${esc(sig.handle)}">${icon("bolt", 14)}Join and follow @${esc(sig.handle)}</a><a class="btn" href="/signin">I have an account</a></div>`
     : own ? `<div class="sm mut row" style="gap:6px">${icon("star", 13, "currentColor", 2)}Your call. Share it: hits win you followers, and their copies earn you fees.</div>`
-    : `<div class="sigact"><button class="btn sm${watching ? "" : " p"}" data-act="/api/watch" data-body='{"leader":"${esc(sig.handle)}"}' aria-pressed="${watching}">${watching ? "Following" : `+ Follow @${esc(sig.handle)}`}</button><a class="btn sm" href="${ask}" aria-label="Ask Cat about @${esc(sig.handle)}"><span class="orb" aria-hidden="true" style="width:16px;height:16px"><i></i></span>Ask Cat</a></div>`}
+    : `<div class="sigact"><button class="btn sm${watching ? "" : " p"}" data-act="/api/watch" data-body='{"leader":"${esc(sig.handle)}"}' aria-pressed="${watching}">${watching ? "Following" : `+ Follow @${esc(sig.handle)}`}</button><a class="btn sm" href="${ask}" aria-label="Ask Chief about @${esc(sig.handle)}"><span class="orb" aria-hidden="true" style="width:16px;height:16px"><i></i></span>Ask Chief</a></div>`}
 </article>`;
 }
 

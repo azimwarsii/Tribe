@@ -60,8 +60,8 @@ const SLIDES: { h: string; p: string; art: string }[] = [
 <div class="row sp sm mut"><span>Risk 91</span><span>Pause line 65</span></div><div class="up sm">Proof onchain ↗</div></div>`,
   },
   {
-    h: "Just ask Cat",
-    p: "Cat is your AI research partner. Ask about any trade or trader, or trade in plain words: \"buy $50 ETH with a 5% stop\". Cat shows the risk before you sign.",
+    h: "Just ask Chief",
+    p: "Chief is your AI research partner. Ask about any trade or trader, or trade in plain words: \"buy $50 ETH with a 5% stop\". Chief shows the risk before you sign.",
     art: `<div style="width:280px;display:flex;flex-direction:column;gap:10px"><div class="bubble u" style="font-size:13px">buy $50 ETH with 5% stop</div>
 <div style="${CARD}"><div class="row sp sm"><b>ETH · Long</b><span class="mut">$50.00</span></div>
 <div class="grid2 xs"><span class="tile up">Max gain +$6</span><span class="tile down">Max loss −$2.50</span></div><div class="btn p" style="height:32px;font-size:13px">Confirm &amp; sign</div></div></div>`,
@@ -103,7 +103,7 @@ document.getElementById('next').onclick=function(){show(i+1)};sc.querySelectorAl
 }
 
 const AV_ICONS = ["M12 3l8 4.5v9L12 21l-8-4.5v-9z", "M13 2L4 14h7l-1 8 9-12h-7z", "M12 21s7-3.5 7-9V6l-7-3-7 3v6c0 5.5 7 9 7 9z", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v8M8 12h8", "M5 5l2.5 3.5h9L19 5v9a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6z", "M3 17l6-6 4 4 8-8", "M12 2l3 6 6 .9-4.5 4.4 1 6.2L12 16.6 6.5 19.5l1-6.2L3 8.9 9 8z", "M4 12a8 8 0 0 1 16 0M8 12a4 4 0 0 1 8 0"];
-const AV_NAMES = ["Cube", "Bolt", "Shield", "Target", "Cat", "Chart", "Star", "Arc"];
+const AV_NAMES = ["Cube", "Bolt", "Shield", "Target", "Chief", "Chart", "Star", "Arc"];
 
 /**
  * Sign-up after a new wallet signs in: pick a username and an avatar. The wallet is already proven by its signature.

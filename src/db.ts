@@ -84,7 +84,7 @@ addCol("users", "privy_policy_id", "TEXT");
 addCol("users", "wallet_kind", "TEXT NOT NULL DEFAULT 'demo'");
 // Accounts deleted before deleting freed their wallet: free it now.
 db.prepare("UPDATE users SET address = '0x000000000000000000000000000000000000dEaD', privy_user_id = NULL, privy_wallet_id = NULL, privy_policy_id = NULL WHERE handle LIKE 'deleted\\_%' ESCAPE '\\' AND (privy_user_id IS NOT NULL OR address != '0x000000000000000000000000000000000000dEaD')").run();
-// Chats from when Cat was one thread were all titled "Cat": name them by their first question for the history list.
+// Chats from when Chief was one thread were all titled "Chief": name them by their first question for the history list.
 db.exec("UPDATE cat_chats SET title = (SELECT substr(text, 1, 60) FROM cat_msgs WHERE chat = cat_chats.id AND role = 'user' ORDER BY id LIMIT 1) WHERE title IN ('Cat', 'New chat') AND EXISTS (SELECT 1 FROM cat_msgs WHERE chat = cat_chats.id AND role = 'user')");
 // Creator bots: which bot placed a trade, and whether it's private (a bot on its trial: not in the feed, not copied).
 addCol("trades", "bot_id", "INTEGER");
@@ -148,9 +148,9 @@ export interface Meta {
   push: boolean; tg: boolean; email: boolean; quiet: boolean; hideBalance: boolean;
   tgId?: number;
   claimed: number; // creator fee-share already claimed (USD)
-  catPersona: "Sharp" | "Chill" | "Degen"; // Cat's tone only; limits and Guard never change
+  catPersona: "Sharp" | "Chill" | "Degen"; // Chief's tone only; limits and Guard never change
   catMemory: boolean; // use memory in replies
-  catForgot: string[]; // learned-memory items the user asked Cat to forget
+  catForgot: string[]; // learned-memory items the user asked Chief to forget
   seenLevel: number; // highest level the level-up screen has been shown for
   aReq: boolean; aGuard: boolean; aFills: boolean; aHits: boolean; aPayout: boolean; aWeekly: boolean; // which events send alerts
   bot: { on: boolean; usd: number; perDay: number }; // the user's own bot: runs the CRE strategy and trades under their name, tagged Bot
@@ -391,7 +391,7 @@ export interface CreVerdict { leader: number; handle?: string; severity: "ok" | 
 export interface CreRun { id: number; at: number; oracle: number | null; dex: number | null; deviation: number | null; verdicts: CreVerdict[] }
 export const addCreRun = (r: Omit<CreRun, "id" | "at">) =>
   db.prepare("INSERT INTO cre_runs (at, oracle, dex, deviation, verdicts) VALUES (?, ?, ?, ?, ?)").run(Date.now(), r.oracle, r.dex, r.deviation, JSON.stringify(r.verdicts));
-// Cat's reads: each verdict Cat gave in a chat, with the price at that moment, so its calls can be scored later.
+// Chief's reads: each verdict Chief gave in a chat, with the price at that moment, so its calls can be scored later.
 export const addCatRead = (r: { trade: number; user: number; label: string; token: string; price: number }) =>
   db.prepare("INSERT INTO cat_reads (trade, user, label, token, price, at) VALUES (?, ?, ?, ?, ?, ?)").run(r.trade, r.user, r.label, r.token, r.price, Date.now());
 /** The first read per trade in the window (a call is made once, however often people ask). */
@@ -429,11 +429,11 @@ export function createSquad(owner: number, name: string): number | undefined {
 export const joinSquad = (user: number, squad: number) => db.prepare("INSERT OR REPLACE INTO squad_members (user, squad) VALUES (?, ?)").run(user, squad);
 export const leaveSquad = (user: number) => db.prepare("DELETE FROM squad_members WHERE user = ?").run(user);
 
-// Ask Cat: chats shared by the app and Telegram, per-user rules and feedback
+// Ask Chief: chats shared by the app and Telegram, per-user rules and feedback
 export interface CatMsg { id: number; chat: number; role: "user" | "cat"; text: string; data: Record<string, unknown> | null; vote: number; at: number }
 export const createChat = (user: number, title: string, source: string) =>
   Number(db.prepare("INSERT INTO cat_chats (user, title, source, at, updated) VALUES (?, ?, ?, ?, ?)").run(user, title.slice(0, 60), source, Date.now(), Date.now()).lastInsertRowid);
-/** The chat Cat carries on in when none is named (Telegram, agents): the one used most recently, or a new one. */
+/** The chat Chief carries on in when none is named (Telegram, agents): the one used most recently, or a new one. */
 export function currentChatOf(user: number, source = "App"): number {
   const r = db.prepare("SELECT id FROM cat_chats WHERE user = ? ORDER BY updated DESC, id DESC LIMIT 1").get(user) as { id: number } | undefined;
   return r?.id ?? createChat(user, "New chat", source);

@@ -79,7 +79,7 @@ server.registerTool("tribe_copy", {
 
 server.registerTool("tribe_research", {
   title: "Research a trader or trade",
-  description: "Ask Cat whether a trader's latest trade (or a specific feed post) is worth copying. Returns Cat's read: checks on the stop, payoff, track record, drawdown, the latest Chainlink CRE CopyGuard verdict and the Chainlink-vs-DEX price check, plus what copying would risk under the user's rules.",
+  description: "Ask Chief whether a trader's latest trade (or a specific feed post) is worth copying. Returns Chief's read: checks on the stop, payoff, track record, drawdown, the latest Chainlink CRE CopyGuard verdict and the Chainlink-vs-DEX price check, plus what copying would risk under the user's rules.",
   inputSchema: {
     handle: z.string().optional().describe("Trader username, e.g. nightowl"),
     tradeId: z.number().int().optional().describe("A specific feed post id"),
@@ -95,7 +95,7 @@ server.registerTool("tribe_research", {
 
 server.registerTool("tribe_propose_trade", {
   title: "Propose a trade",
-  description: "Ask Tribe's Cat to turn plain words into a Flash order, e.g. 'buy $20 ETH with a 5% stop and 12% target' (one order with a take-profit/stop-loss bracket attached). Nothing is placed: it returns a proposal id to confirm.",
+  description: "Ask Tribe's Chief to turn plain words into a Flash order, e.g. 'buy $20 ETH with a 5% stop and 12% target' (one order with a take-profit/stop-loss bracket attached). Nothing is placed: it returns a proposal id to confirm.",
   inputSchema: { request: z.string().describe("What to trade, in plain words") },
 }, safe(async ({ request }: { request: string }) => {
   const r = await api("/api/cat/ask", { text: request });

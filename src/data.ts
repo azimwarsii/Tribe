@@ -29,6 +29,7 @@ export function ago(ms: number): string {
 
 export const ORDER_LABEL: Record<string, string> = {
   market: "Market", limit: "Limit", twap: "TWAP", "stop-loss": "Stop-loss", "take-profit": "Take profit", bracket: "Bracket", stop: "Stop",
+  "trailing-stop": "Trailing stop", "trailing-stop-limit": "Trailing stop limit",
 };
 
 export interface TradeCard {
@@ -45,6 +46,7 @@ export interface TradeCard {
 
 /** Token amounts for people: 0.0039972 -> "0.0040". */
 /** A price as people read it: $2,790.60. */
+const trailPct = (t: Trade) => `${+(Number(t.trailingStop?.trailPercent ?? 0) * 100).toFixed(2)}%`;
 const usdFmt = (p: string | number) => { const n = Number(p); return n > 0 && n < 1 ? `$${priceStr(n).replace(/0+$/, "").replace(/\.$/, "")}` : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 
 /**
@@ -66,6 +68,7 @@ export function orderSteps(t: Trade): string[] {
     : t.orderType === "stop-loss" ? `Sells ${amount} if it falls to ${usdFmt(trig("lower") ?? 0)}`
     : t.orderType === "take-profit" ? `Sells ${amount} if it rises to ${usdFmt(trig("upper") ?? 0)}`
     : t.orderType === "bracket" ? `Sells ${amount} at ${usdFmt(trig("upper") ?? 0)} or ${usdFmt(trig("lower") ?? 0)}, whichever comes first`
+    : t.trailingStop ? `${t.orderType === "trailing-stop-limit" ? "Trailing stop limit" : "Trailing stop"}: ${verb}s ${amount} if it ${t.side === "buy" ? "rises" : "falls"} ${trailPct(t)} from its ${t.side === "buy" ? "low" : "peak"}${t.trailingStop.activationPrice ? `, once it reaches ${usdFmt(t.trailingStop.activationPrice)}` : ""}`
     : `${verb} ${amount}`;
   return [main, ...legs, until].filter(Boolean);
 }
@@ -99,7 +102,7 @@ export async function tradeCard(id: number, viewer?: number): Promise<TradeCard 
     entry, sincePct: entry && mark ? (mark / entry - 1) * 100 : null,
     guard: haltOf(t.leader) ? "paused" : "passed", risk: await riskOf(t.leader), copiers, reactions, comments: commentCount(id), detail,
     orderLabel: `Flash ${trade.attach ? "Bracket" : ORDER_LABEL[trade.orderType] ?? trade.orderType}`,
-    hasStop: !!trade.hasStop || !!trade.attach || ["bracket", "stop-loss"].includes(trade.orderType),
+    hasStop: !!trade.hasStop || !!trade.attach || ["bracket", "stop-loss", "trailing-stop", "trailing-stop-limit"].includes(trade.orderType),
     source: t.source === "cre" || t.source === "bot" ? "bot" : t.source === "agent" ? "agent" : "user", note: t.note ?? null, tx: own?.tx ?? null,
     mark, stopPrice: lo ? Number(lo) : null, targetPrice: up ? Number(up) : null,
     realisedPct: sold ? (sold.pnl! / Math.max(1e-9, sold.usd! - sold.pnl!)) * 100 : null,
@@ -175,15 +178,18 @@ export async function openPositions(user: number): Promise<Position[]> {
   for (const p of symbolsHeld(user)) {
     const mark = await getPrice(p.token).catch(() => p.cost / p.qty);
     const entry = p.cost / p.qty;
-    const prot = db.prepare("SELECT id, trade, leader FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit') ORDER BY id DESC LIMIT 1").get(user, p.token) as { id: number; trade: string } | undefined;
-    const trig = prot ? ((JSON.parse(prot.trade) as Trade).triggers ?? []) : [];
+    const prot = db.prepare("SELECT id, trade, leader FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit','trailing-stop','trailing-stop-limit') ORDER BY id DESC LIMIT 1").get(user, p.token) as { id: number; trade: string } | undefined;
+    const pt = prot ? (JSON.parse(prot.trade) as Trade) : undefined;
+    const trig = pt?.triggers ?? [];
+    // A trailing stop's level moves with the price: shown as its trail below the peak so far (or the mark).
+    const trailAt = pt?.trailingStop ? (pt.trailingStop.peak ?? mark) * (1 - Number(pt.trailingStop.trailPercent)) : undefined;
     const lo = trig.find((t) => t.triggerType === "lower");
     const up = trig.find((t) => t.triggerType === "upper");
     const src = db.prepare("SELECT leader, trade, role FROM orders WHERE trader = ? AND status = 'filled' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.side') = 'buy' ORDER BY id DESC LIMIT 1").get(user, p.token) as { leader: number; trade: string; role: string } | undefined;
     const leaderUser = src ? userById(src.leader) : undefined;
     out.push({
       token: p.token, symbol: symOf(p.token), qty: p.qty, entry, mark, value: p.qty * mark, pnlPct: (mark / entry - 1) * 100, pnlUsd: p.qty * mark - p.cost,
-      stopPct: lo ? (1 - Number(lo.notionalPrice) / entry) * 100 : null, tpPct: up ? (Number(up.notionalPrice) / entry - 1) * 100 : null,
+      stopPct: lo ? (1 - Number(lo.notionalPrice) / entry) * 100 : trailAt ? (1 - trailAt / entry) * 100 : null, tpPct: up && Number(up.notionalPrice) / entry - 1 <= 5 ? (Number(up.notionalPrice) / entry - 1) * 100 : null, // a 10x target only carries a stop: show no target
       orderId: prot?.id ?? null, from: src && src.role === "copy" ? leaderUser?.handle ?? "?" : "you", type: src ? ORDER_LABEL[(JSON.parse(src.trade) as Trade).orderType] ?? "Market" : "Market",
       sizeUsd: p.cost, fromLeader: src?.leader ?? user, fromHalted: !!(src && src.role === "copy" && haltOf(src.leader)),
     });
@@ -314,13 +320,15 @@ export async function activeTrades(user: number): Promise<ActiveTrade[]> {
     const entry = b.price ?? b.usd / b.tokens;
     const mark = await getPrice(t.target).catch(() => entry);
     const prot = db.prepare("SELECT trade FROM orders WHERE trader = ? AND trade_id = ? AND status = 'open' AND json_extract(trade,'$.side') = 'sell' ORDER BY id DESC LIMIT 1").get(user, b.trade_id) as { trade: string } | undefined;
-    const trig = prot ? ((JSON.parse(prot.trade) as Trade).triggers ?? []) : [];
-    const lo = trig.find((x) => x.triggerType === "lower")?.notionalPrice ?? t.attach?.sl;
+    const pt = prot ? (JSON.parse(prot.trade) as Trade) : undefined;
+    const trig = pt?.triggers ?? [];
+    const trail = pt?.trailingStop ? (pt.trailingStop.peak ?? mark) * (1 - Number(pt.trailingStop.trailPercent)) : undefined;
+    const lo = trig.find((x) => x.triggerType === "lower")?.notionalPrice ?? t.attach?.sl ?? trail;
     const up = trig.find((x) => x.triggerType === "upper")?.notionalPrice ?? t.attach?.tp;
     const cost = (b.usd * qty) / b.tokens;
     out.push({
       kind: "held", tradeId: b.trade_id, symbol: symOf(t.target), from: b.role === "copy" ? userById(b.leader)?.handle ?? "?" : "you", at: b.filled_at,
-      label: t.attach || prot ? "Bracket" : ORDER_LABEL[t.orderType] ?? "Market", usd: cost, entry, mark, pnlPct: (mark / entry - 1) * 100, pnlUsd: qty * mark - cost,
+      label: pt?.trailingStop ? ORDER_LABEL[pt.orderType] : t.attach || prot ? "Bracket" : ORDER_LABEL[t.orderType] ?? "Market", usd: cost, entry, mark, pnlPct: (mark / entry - 1) * 100, pnlUsd: qty * mark - cost,
       stopPrice: lo ? Number(lo) : null, targetPrice: up ? Number(up) : null, limit: null,
     });
   }

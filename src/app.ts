@@ -33,6 +33,7 @@ import { transcribe } from "./transcribe.js";
 import { isExternal } from "./wallet.js";
 import { answerRequest, interactive, nextRequest } from "./browsersign.js";
 import { popularTokens, searchTokens, tradableToken } from "./tokens.js";
+import { trendingTokens } from "./market.js";
 import { answerSignal, botById, controlBot, createBot, fastForwardTrial, publishBot, runBot, updateBot } from "./creator.js";
 import { BLOCKED_COUNTRIES, botBuilderPage, botDetailPage, creatorStudioPage, tradeTicketPage, verifyPage } from "./views/creator.js";
 import { buildProposal } from "./ask.js";
@@ -191,7 +192,7 @@ export function appRouter(): Router {
   r.get("/positions", authed((uid, req) => positionsPage(uid, String(req.query.tab ?? "open"))));
   r.get("/traders", authed((uid) => myTradersPage(uid)));
   r.get("/guard", authed((uid) => guardPage(uid)));
-  // Ask Cat: /cat (or /cat/chat) starts a new chat, /cat/chat?id= opens an old one from the history.
+  // Ask Chief: /cat (or /cat/chat) starts a new chat, /cat/chat?id= opens an old one from the history.
   // ?trade= pins a trade to ask about, ?q= asks something straight away.
   const catChat = authed((uid, req) => catChatPage(uid, String(req.query.q ?? ""), req.query.trade ? Number(req.query.trade) : undefined, req.query.id && !req.query.new ? Number(req.query.id) : undefined));
   r.get("/cat", catChat);
@@ -620,7 +621,7 @@ export function appRouter(): Router {
     return { reload: true, toast: `+${q.xp} XP` };
   }));
 
-  // ---- Ask Cat ----
+  // ---- Ask Chief ----
   r.post("/api/cat/ask", json, act((uid, req) => catAsk(uid, String(req.body?.text ?? ""), { chatId: req.body?.chat ? Number(req.body.chat) : undefined, newChat: !req.body?.chat, source: "App", live: req.body?.live !== false, trade: req.body?.trade ? Number(req.body.trade) : req.body?.handle ? handleEntry(String(req.body.handle)) : undefined })));
   // A Bearer token means the user's AI agent (the MCP server) confirmed it: the trade is theirs, tagged Bot.
   r.post("/api/cat/confirm", json, act((uid, req) => catConfirm(uid, String(req.body?.id), (p, l) => notifier?.(p, l), req.headers.authorization?.startsWith("Bearer ") ? "agent" : "user")));
@@ -648,7 +649,7 @@ export function appRouter(): Router {
   r.post("/api/cat/persona", json, act((uid, req) => {
     if (!["Sharp", "Chill", "Degen"].includes(String(req.body.persona))) throw new Error("Unknown personality");
     setMeta(uid, { catPersona: req.body.persona });
-    return { reload: true, toast: `Cat is ${req.body.persona} now. Limits and Guard are unchanged.` };
+    return { reload: true, toast: `Chief is ${req.body.persona} now. Limits and Guard are unchanged.` };
   }));
   r.post("/api/cat/memory", express.urlencoded({ extended: false }), json, act((uid, req) => {
     const b = req.body as Record<string, unknown>;
@@ -660,14 +661,14 @@ export function appRouter(): Router {
         const text = String(b.text ?? "").trim();
         if (text.length < 3) throw new Error("Write the rule first");
         addRule(uid, text);
-        return { reload: true, toast: "Cat will remember that" };
+        return { reload: true, toast: "Chief will remember that" };
       }
       case "delrule": deleteRule(uid, Number(b.id)); return { reload: true, toast: "Forgot it" };
-      case "wipe": wipeCat(uid); setMeta(uid, { catForgot: [] }); return { reload: true, toast: "Cat forgot everything" };
+      case "wipe": wipeCat(uid); setMeta(uid, { catForgot: [] }); return { reload: true, toast: "Chief forgot everything" };
       default: throw new Error("Unknown action");
     }
   }));
-  // Older clients and tests: same Cat, single endpoint pair.
+  // Older clients and tests: same Chief, single endpoint pair.
   r.post("/api/ask", json, act((uid, req) => catAsk(uid, String(req.body?.text ?? ""), { source: "App" })));
   r.post("/api/confirm", json, act((uid, req) => catConfirm(uid, String(req.body?.id), (p, l) => notifier?.(p, l))));
 
@@ -709,7 +710,14 @@ export function appRouter(): Router {
     // ETH, or any Base token picked from Flash search: checked again here (not flagged, liquid enough).
     const raw = String(req.body?.token ?? "ETH");
     const token = raw.toUpperCase() === "ETH" ? "ETH" : (await tradableToken(raw)).address;
-    const proposal = await buildProposal({ side: "buy", usd, token, stopPct: stop, tpPct: tp || undefined }, { oneOrder: isExternal(uid) && !isDry() });
+    // How it enters (market, limit, breakout or TWAP) and how it exits (a fixed stop, or one trailing the peak).
+    const b = req.body ?? {};
+    const entry = (["market", "limit", "stop", "twap"] as const).find((x) => x === b.type) ?? "market";
+    const trail = (["trailing-stop", "trailing-stop-limit"] as const).find((x) => x === b.stopType);
+    const proposal = await buildProposal({
+      side: "buy", usd, token, stopPct: stop, tpPct: trail ? undefined : tp || undefined,
+      entry, price: Number(b.price) || undefined, minutes: Number(b.minutes) || undefined, trail, activation: trail ? Number(b.activation) || undefined : undefined,
+    }, { oneOrder: isExternal(uid) && !isDry() });
     let first: number | undefined;
     let offers = 0;
     for (const t of proposal.trades) {
@@ -721,6 +729,15 @@ export function appRouter(): Router {
     }
     return { redirect: `/t/${first}`, toast: `Placed${offers ? ` · ${offers} copier${offers === 1 ? "" : "s"} copying or asked` : ""}` };
   }));
+  // Ask Chief's trending row: what's moving on Base right now (GeckoTerminal), cached for two minutes.
+  r.get("/api/trending", async (req, res) => {
+    if (me(req) === undefined) return res.status(401).json({ error: "Sign in first" });
+    try {
+      res.json({ tokens: (await trendingTokens()).slice(0, 10) });
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
   // Token picker: popular Base tokens, or Flash search results, each marked tradable or not (and why).
   r.get("/api/tokens", async (req, res) => {
     if (me(req) === undefined) return res.status(401).json({ error: "Sign in first" });

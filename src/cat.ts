@@ -8,7 +8,8 @@ import { traderStats } from "./stats.js";
 import type { Trade } from "./flash.js";
 import { researchTrade, subjectTrade, type TradeCtx, type Verdict } from "./research.js";
 import { isExternal } from "./wallet.js";
-import { isDry } from "./tracker.js";
+import { cancelProtective, isDry } from "./tracker.js";
+import { catAgent } from "./catagent.js";
 
 export type Source = "App" | "Telegram" | "X";
 export interface CatData { card?: Card; proposalId?: string; steps?: { t: string; d: string }[]; sources?: string[]; follow?: { label: string; text?: string; href?: string; icon?: string }[]; signed?: boolean; receipt?: string; verdict?: Verdict; ctx?: TradeCtx }
@@ -92,7 +93,7 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
   const order = /\b(buy|sell|long)\b[^?]*\d/i.test(clean) || !!(state.intent && applyFollowUp(state.intent, clean));
   // Or one named in the question ("is @nightowl worth copying?"); a new name switches the subject.
   const named = order ? undefined : subjectTrade(clean);
-  // "Ask Cat" on a trade switches the subject to it; later messages stay on it until the user unpins it.
+  // "Ask Chief" on a trade switches the subject to it; later messages stay on it until the user unpins it.
   const about = named ?? (opts.trade && opts.trade !== state.trade ? opts.trade : undefined);
   if (about && about !== state.trade) { state.trade = about; setChatState(chatId, state); }
   addMsg(chatId, "user", clean);
@@ -105,14 +106,26 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
   const guardQ = /\b(paus|halt|guard)/i.test(clean);
   const research = state.trade && !order && !guardQ && !/\bcompar/i.test(clean) ? await researchTrade(uid, state.trade, clean) : undefined;
   // Live Flash questions (a quote, balances, order status) go to Flash MCP first, so "what would $50 of ETH get me?"
-  // gets a quote rather than becoming a buy. If it can't answer, Cat carries on as usual.
-  const flash = !research && !order && !guardQ && opts.live !== false && wantsFlash(clean) ? await flashAnswer(uid, clean).catch(() => undefined) : undefined;
-  const intent = research || flash ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
+  // gets a quote rather than becoming a buy. If it can't answer, Chief carries on as usual.
+  // Everything else: the AI assistant with tools (Flash MCP, token search, portfolio, traders, Guard). If it isn't
+  // available (no key, model error), the built-in answers below take over.
+  const agent = research ? undefined : await catAgent(uid, chatId, { live: opts.live, pinned: state.trade }).catch((e) => { console.warn(`Chief agent: ${(e as Error).message}`); return undefined; });
+  const flash = !research && !agent && !order && !guardQ && opts.live !== false && wantsFlash(clean) ? await flashAnswer(uid, clean).catch(() => undefined) : undefined;
+  const intent = research || agent || flash ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
   if (research) {
     reply = research.reply;
     data = { steps: research.steps, sources: research.sources, follow: research.follow, verdict: research.verdict, ctx: research.ctx };
-    // Cat's call on an entry, priced now, so its track record can be scored honestly later.
+    // Chief's call on an entry, priced now, so its track record can be scored honestly later.
     if (research.verdict && research.ctx.buy && research.ctx.mark) addCatRead({ trade: research.ctx.id, user: uid, label: research.verdict.label, token: research.ctx.token, price: research.ctx.mark });
+  } else if (agent) {
+    reply = agent.reply;
+    data = { steps: agent.steps, sources: agent.sources };
+    if (agent.proposal) {
+      const proposalId = randomUUID();
+      sweep();
+      data = { ...data, card: agent.proposal.card, proposalId };
+      proposals.set(proposalId, { user: uid, chat: chatId, msg: 0, proposal: agent.proposal, at: Date.now() });
+    }
   } else if (flash) {
     reply = flash.reply;
     data = { steps: flash.steps, sources: flash.sources };
@@ -172,6 +185,9 @@ export async function catConfirm(uid: number, id: string, notify?: (p: PendingNo
   const lines: string[] = [];
   let offers = 0;
   let ok = true;
+  // Closing a position: cancel its stop / target first so they can't fire on what's sold.
+  const close = (p.proposal as Proposal & { close?: string }).close;
+  if (close) await cancelProtective(uid, close);
   for (const t of p.proposal.trades) {
     const m = await mirror(uid, t, source);
     lines.push(`${t.orderType} ${t.side}: ${m.own.startsWith("failed") ? m.own : "placed"}`);
@@ -188,7 +204,7 @@ export async function catConfirm(uid: number, id: string, notify?: (p: PendingNo
 // Memory screen data
 
 export interface MemoryItem { key: string; t: string; src: string }
-/** What Cat learned from real activity. Nothing here is stored; it is derived each time. */
+/** What Chief learned from real activity. Nothing here is stored; it is derived each time. */
 export async function learnedMemory(uid: number): Promise<MemoryItem[]> {
   const out: MemoryItem[] = [];
   const u = userById(uid);

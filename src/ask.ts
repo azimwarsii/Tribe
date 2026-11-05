@@ -8,7 +8,17 @@ import { priceStr, qtyStr } from "./tokens.js";
 import { symOf } from "./data.js";
 import { integratorFeeBps } from "./flash.js";
 
-export interface Intent { side: "buy" | "sell"; usd?: number; qty?: number; token: string; stopPct?: number; tpPct?: number }
+export type EntryType = "market" | "limit" | "stop" | "twap";
+export type TrailType = "trailing-stop" | "trailing-stop-limit";
+/**
+ * A trade request. Buys enter at market, at a limit (price), on a breakout (stop: price above the market) or as a TWAP
+ * over `minutes`. The stop is fixed at stopPct below the entry, or with `trail` it trails the peak by stopPct, armed
+ * at `activation` (USD) or at once; a trailing stop carries no separate target.
+ */
+export interface Intent {
+  side: "buy" | "sell"; usd?: number; qty?: number; token: string; stopPct?: number; tpPct?: number;
+  entry?: EntryType; price?: number; minutes?: number; trail?: TrailType; activation?: number;
+}
 /**
  * A wallet only its owner signs for (MetaMask, live) can't sign a stop later, after the entry fills: its stop must ride
  * the entry as one Flash order. With no target, the attached target is set far away (10x), where it never triggers.
@@ -99,34 +109,68 @@ export async function buildProposal(i: Intent, opts: BuildOpts = {}): Promise<Pr
     return { summary: `Sell ${i.qty} ${sym} at market (~$${priceStr(price)})`, trades: [{ ...base, side: "sell", qty: String(i.qty), orderType: "market" }] };
   }
   if (!i.usd || i.usd <= 0) throw new Error("How much? e.g. 'buy $50 ETH'.");
-  const trades: Trade[] = [{ ...base, side: "buy", qty: String(i.usd), orderType: "market", hasStop: !!i.stopPct }];
-  let summary = `Buy $${i.usd} of ${sym} at market (~$${priceStr(price)})`;
-  if (i.stopPct || i.tpPct) {
-    const tokens = qtyStr(i.usd / price);
-    const sl = priceStr(price * (1 - (i.stopPct ?? 0) / 100));
-    const tp = priceStr(price * (1 + (i.tpPct ?? 0) / 100));
-    if (i.stopPct && !i.tpPct && opts.oneOrder) {
-      const far = priceStr(price * 10);
+  const entry = i.entry ?? "market";
+  if ((entry === "limit" || entry === "stop") && !(Number(i.price) > 0)) throw new Error(entry === "limit" ? "Pick the limit price to buy at." : "Pick the breakout price to buy at.");
+  if (entry === "stop" && Number(i.price) <= price) throw new Error(`A breakout buy triggers above the price now (${"$" + priceStr(price)}). For a lower price, use a limit.`);
+  if (entry === "twap" && !(Number(i.minutes) >= 5 && Number(i.minutes) <= 1440)) throw new Error("A TWAP runs 5 minutes to 24 hours.");
+  // Stops and targets are set from where the entry fills: the limit or breakout price, else the price now.
+  const ref = entry === "limit" || entry === "stop" ? Number(i.price) : price;
+  const at = priceStr(ref);
+  const first: Trade = {
+    ...base, side: "buy", qty: String(i.usd), orderType: entry, hasStop: !!i.stopPct,
+    ...(entry === "limit" ? { limitNotionalPrice: at } : {}),
+    ...(entry === "stop" ? { triggers: [{ notionalPrice: at, triggerType: "upper" as const }] } : {}),
+    ...(entry === "twap" ? { durationSeconds: Math.round(Number(i.minutes) * 60) } : {}),
+  };
+  const trades: Trade[] = [first];
+  let summary = entry === "limit" ? `Limit buy $${i.usd} of ${sym} at $${at} or lower`
+    : entry === "stop" ? `Breakout buy $${i.usd} of ${sym} once it rises to $${at}`
+    : entry === "twap" ? `Buy $${i.usd} of ${sym} in slices over ${i.minutes} min (TWAP, ~$${priceStr(price)} now)`
+    : `Buy $${i.usd} of ${sym} at market (~$${priceStr(price)})`;
+  const tokens = qtyStr(i.usd / ref);
+  let kind = entry === "limit" ? "Limit order" : entry === "stop" ? "Breakout order" : entry === "twap" ? "TWAP order" : "Market order";
+  if (i.trail && i.stopPct) {
+    // Flash attaches only a fixed bracket to an entry; a trailing stop is its own order, signed once the entry fills.
+    if (opts.oneOrder) throw new Error("A trailing stop is signed after the entry fills, which MetaMask can't do. Pick a fixed stop.");
+    const activation = i.activation && i.activation > 0 ? priceStr(i.activation) : undefined;
+    trades.push({ ...base, side: "sell", qty: tokens, orderType: i.trail, trailingStop: { trailPercent: String(+(i.stopPct / 100).toFixed(4)), ...(activation ? { activationPrice: activation } : {}) } });
+    summary += `, then a ${i.trail === "trailing-stop-limit" ? "trailing stop limit" : "trailing stop"} ${i.stopPct}% below the peak${activation ? ` from $${activation}` : ""}`;
+    kind += ` + ${i.trail === "trailing-stop-limit" ? "trailing stop limit" : "trailing stop"}`;
+  } else if (i.stopPct || i.tpPct) {
+    const sl = priceStr(ref * (1 - (i.stopPct ?? 0) / 100));
+    const tp = priceStr(ref * (1 + (i.tpPct ?? 0) / 100));
+    // Flash attaches a bracket to market, limit and TWAP entries only; a breakout's exits follow its fill.
+    const attachable = entry !== "stop";
+    if (!attachable && opts.oneOrder) throw new Error("A breakout buy can't carry its stop in the same order, and MetaMask can't sign one later. Use a market or limit buy.");
+    if (attachable && i.stopPct && !i.tpPct && opts.oneOrder) {
+      const far = priceStr(ref * 10);
       trades[0] = { ...trades[0], attach: { tp: far, sl } };
       summary += ` with its stop attached: stop $${sl} (no target)`;
-    } else if (i.stopPct && i.tpPct) {
+      kind = "Bracket order";
+    } else if (attachable && i.stopPct && i.tpPct) {
       // One Flash order: the take-profit / stop-loss pair rides the entry and activates on its fill.
       trades[0] = { ...trades[0], attach: { tp, sl } };
       summary += ` with a bracket attached: take profit $${tp} / stop $${sl}`;
+      kind = "Bracket order";
+    } else if (i.stopPct && i.tpPct) {
+      trades.push({ ...base, side: "sell", qty: tokens, orderType: "bracket", triggers: [{ notionalPrice: tp, triggerType: "upper" }, { notionalPrice: sl, triggerType: "lower" }] });
+      summary += `, then a bracket: take profit $${tp} / stop $${sl}`;
+      kind += " + bracket";
     } else if (i.stopPct) {
       trades.push({ ...base, side: "sell", qty: tokens, orderType: "stop-loss", triggers: [{ notionalPrice: sl, triggerType: "lower" }] });
       summary += `, then a stop-loss at $${sl}`;
+      kind += " + stop-loss";
     } else {
       trades.push({ ...base, side: "sell", qty: tokens, orderType: "take-profit", triggers: [{ notionalPrice: tp, triggerType: "upper" }] });
       summary += `, then a take-profit at $${tp}`;
+      kind += " + take-profit";
     }
   }
   const feeBps = integratorFeeBps();
   const card: Card = {
-    title: `${sym} · Long`, usd: i.usd, fee: (i.usd * feeBps) / 1e4,
-    kind: trades[0].attach ? "Bracket order" : trades.length > 1 ? (trades[1].orderType === "stop-loss" ? "Market + stop-loss" : "Market + take-profit") : "Market order",
-    maxGain: i.tpPct ? (i.usd * i.tpPct) / 100 : undefined, maxLoss: i.stopPct ? (i.usd * i.stopPct) / 100 : undefined,
-    stopPct: i.stopPct, tpPct: i.tpPct, token: sym,
+    title: `${sym} · Long`, usd: i.usd, fee: (i.usd * feeBps) / 1e4, kind: kind.replace("Market order + ", "Market + "),
+    maxGain: i.tpPct && !i.trail ? (i.usd * i.tpPct) / 100 : undefined, maxLoss: i.stopPct ? (i.usd * i.stopPct) / 100 : undefined,
+    stopPct: i.stopPct, tpPct: i.trail ? undefined : i.tpPct, token: sym,
   };
   return { summary, trades, card };
 }

@@ -10,6 +10,7 @@ export const TOKENS: Record<string, string> = {
  * buy ETH 50 | sell ETH 0.01 | limit ETH 100 2000 | stop ETH 0.01 1800 | tp ETH 0.01 5000
  * bracket ETH 0.01 5000 1800 | twap ETH 100 1800 12   (duration seconds, buckets)
  * long ETH 50 5000 1800 (buy $50 with take-profit and stop attached: one Flash order) | stopbuy ETH 50 2600 (breakout buy)
+ * trail ETH 0.01 5 [2600] | traillimit ETH 0.01 5 [2600]   (sell trailing 5% below the peak, armed at $2600 or at once)
  */
 export function parseTrade(args: string[]): Trade {
   const [kind, sym, qty, a, b] = args;
@@ -43,7 +44,11 @@ export function parseTrade(args: string[]): Trade {
       return { ...base, side: "buy", orderType: "market", attach: { tp: a, sl: b }, hasStop: true };
     case "stopbuy":
       return { ...base, side: "buy", orderType: "stop", triggers: [{ notionalPrice: a, triggerType: "upper" }] };
+    case "trail":
+    case "traillimit":
+      if (!(Number(a) >= 0.5 && Number(a) <= 50)) throw new Error(`Usage: /trade ${kind} ETH <qty> <trail %, 0.5 to 50> [activation price]`);
+      return { ...base, side: "sell", orderType: kind === "trail" ? "trailing-stop" : "trailing-stop-limit", trailingStop: { trailPercent: String(Number(a) / 100), ...(b ? { activationPrice: b } : {}) } };
     default:
-      throw new Error("Usage: /trade buy|sell|long|limit|stop|tp|bracket|stopbuy|twap <TOKEN> <qty> [args]");
+      throw new Error("Usage: /trade buy|sell|long|limit|stop|tp|bracket|stopbuy|twap|trail|traillimit <TOKEN> <qty> [args]");
   }
 }

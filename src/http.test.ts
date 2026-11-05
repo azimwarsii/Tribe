@@ -51,7 +51,7 @@ test("pages need a session, public pages do not", async () => {
   assert.equal((await c("/api/pause-all", {})).status, 401);
 });
 
-test("signup, trade through Ask Cat, follow, approve", async () => {
+test("signup, trade through Ask Chief, follow, approve", async () => {
   const lead = client();
   const fol = client();
   assert.ok((await lead("/api/signup", { handle: "leader1", avatar: 1, persona: "Sniper" })).json.redirect);
@@ -62,7 +62,7 @@ test("signup, trade through Ask Cat, follow, approve", async () => {
   const f = await fol("/api/follow", { leader: "leader1", mode: "ask", budget: 100, ratio: 1, max: 20, cap: 80, stop: "0" });
   assert.equal(f.json.redirect, "/copy/leader1?done=1");
 
-  // Leader asks Cat to trade, then confirms.
+  // Leader asks Chief to trade, then confirms.
   const a = await lead("/api/ask", { text: "buy $30 ETH with 5% stop and 12% take profit" });
   assert.ok(a.json.proposalId && a.json.card.maxLoss === 1.5);
   const ok = await lead("/api/confirm", { id: a.json.proposalId });
@@ -248,7 +248,7 @@ test("demo director beats run in order", async () => {
   assert.equal(db.guardEvents(db.userByHandle("traderx")!.id).map((e) => e.kind).join(","), "resume,halt");
 });
 
-test("Cat: persona tone, follow-ups, rules, memory and history", async () => {
+test("Chief: persona tone, follow-ups, rules, memory and history", async () => {
   const c = client();
   await c("/api/signup", { handle: "catfan", persona: "Sniper" });
   const uid = db.userByHandle("catfan")!.id;
@@ -291,7 +291,7 @@ test("Cat: persona tone, follow-ups, rules, memory and history", async () => {
   assert.notEqual(sharp.json.chatId, chill.json.chatId, "a message without a chat starts a new one");
   const home = (await c("/cat")).text;
   assert.match(home, /New chat/);
-  assert.match(home, /Trade with Flash/); // a new chat lists what Cat can do
+  assert.match(home, /Trade with Flash/); // a new chat lists what Chief can do
   assert.match(home, new RegExp(`/cat/chat\\?id=${chill.json.chatId}`)); // past chats in the history
   assert.match((await c(`/cat/chat?id=${chill.json.chatId}`)).text, /make the stop 3%/);
   assert.equal((await c("/cat/chat?id=999999")).status, 200); // an unknown chat opens a new one
@@ -308,7 +308,7 @@ test("Cat: persona tone, follow-ups, rules, memory and history", async () => {
   assert.equal(db.chatsOf(uid).length, 0);
 });
 
-test("Ask Cat about a feed post: verdict, history, worst case, and the way back", async () => {
+test("Ask Chief about a feed post: verdict, history, worst case, and the way back", async () => {
   const lead = client();
   const me = client();
   await lead("/api/signup", { handle: "postlead", persona: "Sniper" });
@@ -343,27 +343,27 @@ test("Ask Cat about a feed post: verdict, history, worst case, and the way back"
   assert.ok(!(await me("/cat")).text.includes('class="ctxbar"'), "unpinned: back to general questions");
   assert.match(await (await fetch(`${base}/cat/ctxbar/${trade}`)).text(), /^$|<title>Sign in · Tribe<\/title>/); // needs a session: signed out lands on sign-in
 
-  // Asked by name from anywhere (Cat home, Telegram, MCP): research their latest entry.
+  // Asked by name from anywhere (Chief home, Telegram, MCP): research their latest entry.
   const named = await me("/api/cat/ask", { text: "Is @postlead worth copying?" });
   assert.equal(named.json.ctx?.id, trade);
   assert.ok(named.json.verdict);
   assert.equal((await me("/api/cat/ask", { text: "Why was @postlead paused?" })).json.ctx, undefined); // Guard questions keep their answer
   assert.equal((await me("/api/cat/ask", { text: "What's the worst case if I copy?", handle: "@postlead" })).json.ctx?.id, trade); // the MCP tool's path
 
-  // CRE CopyGuard verdicts show up in Cat's read once the workflow reports.
+  // CRE CopyGuard verdicts show up in Chief's read once the workflow reports.
   await fetch(`${base}/cre/guard`, { method: "POST", headers: { "content-type": "application/json", "x-cre-secret": "cre-test" }, body: JSON.stringify({ oracle: 2500, dex: 2502, deviationPct: 0.08, verdicts: [{ leader: db.userByHandle("postlead")!.id, severity: "ok", risk: 20, reason: "checks passed" }] }) });
   const cre = await me("/api/cat/ask", { text: "Is this a good trade?", trade });
   assert.ok(cre.json.verdict.checks.some((x: { t: string; ok: boolean }) => /CRE CopyGuard .* clear/.test(x.t) && x.ok));
   assert.ok(cre.json.verdict.checks.some((x: { t: string }) => /Chainlink ETH\/USD \$2500 vs DEX \$2502/.test(x.t)));
 
-  // Research is part of the game: a daily quest, and Cat's read before you copy.
+  // Research is part of the game: a daily quest, and Chief's read before you copy.
   const uid = db.userByHandle("researcher")!.id;
   const { questsOf } = await import("./stats.js");
   assert.equal(questsOf(uid).find((q) => q.id === "d-research")!.done, 1);
-  assert.match((await me("/copy/postlead")).text, /Cat’s read on their latest trade/);
-  assert.match((await me("/u/postlead")).text, /Cat’s read on their latest trade/);
+  assert.match((await me("/copy/postlead")).text, /Chief’s read on their latest trade/);
+  assert.match((await me("/u/postlead")).text, /Chief’s read on their latest trade/);
 
-  // Cat's calls are scored by what the trader did next: the call above, then a green exit.
+  // Chief's calls are scored by what the trader did next: the call above, then a green exit.
   const { catCalls, topicOf } = await import("./research.js");
   const solidOrNot = v.json.verdict.label as string;
   assert.equal(catCalls().find((c) => c.label === solidOrNot)?.closed, 0);
@@ -376,7 +376,7 @@ test("Ask Cat about a feed post: verdict, history, worst case, and the way back"
   prices.setPriceProvider(async () => 2500);
   const scored = catCalls().find((c) => c.label === solidOrNot)!;
   assert.deepEqual([scored.closed, scored.green], [1, 1]);
-  assert.match((await me("/cat")).text, /Cat’s calls/);
+  assert.match((await me("/cat")).text, /Chief’s calls/);
 
   assert.equal(topicOf("What's the worst case if I copy? (the cat agent worth copying?)"), "risk");
   assert.equal(topicOf("Show the agent's history"), "history");
@@ -537,10 +537,10 @@ test("discover deck: one trade at a time, requests first, swipe to skip or copy 
   const t1 = await place("buy $20 ETH with 5% stop and 10% take profit");
   const t2 = await place("buy $30 ETH with 4% stop and 9% take profit");
 
-  // The deck shows each fresh entry as a card with Cat's read and a count of copiers (never who).
+  // The deck shows each fresh entry as a card with Chief's read and a count of copiers (never who).
   let deck = (await me("/feed")).text;
   assert.ok(deck.includes(`data-trade="${t1}"`) && deck.includes(`data-trade="${t2}"`));
-  assert.match(deck, /Cat’s read/);
+  assert.match(deck, /Chief’s read/);
   assert.match(deck, /Copied by<\/div><div class="v" data-live="copiers">0 people/);
   assert.match(deck, /id="swfollow"/); // follow the trader on the top card
   assert.match(deck, /data-open="mytribe"/); // portfolio, quests and the tribe sit behind one button on phones
@@ -550,7 +550,7 @@ test("discover deck: one trade at a time, requests first, swipe to skip or copy 
   const more = (await me(`/api/deck/cards?have=${t1},${t2}`)).json.html as string;
   assert.ok(!more.includes(`data-trade="${t1}"`) && !more.includes(`data-trade="${t2}"`), "cards already on screen aren't sent again");
   assert.ok((await me(`/api/deck/cards?have=${t1}`)).json.html.includes(`data-trade="${t2}"`));
-  assert.ok(deck.includes(`/cat/chat?new=1&trade=${t1}`), "swipe up asks Cat about this trade");
+  assert.ok(deck.includes(`/cat/chat?new=1&trade=${t1}`), "swipe up asks Chief about this trade");
   assert.doesNotMatch(deck, /data-react=/); // no comments or reactions in the deck
 
   // Swipe left: gone for good.
@@ -563,7 +563,7 @@ test("discover deck: one trade at a time, requests first, swipe to skip or copy 
   assert.match(ok.json.toast, /Copied \$20 of @decklead/);
   assert.match((await me("/api/copy-trade", { trade: t2, usd: 20 })).json.error, /already copied/);
   assert.ok(!(await me("/feed")).text.includes(`data-trade="${t2}"`));
-  // The copy shows up in your active trades, and Cat's brief on the trader reads from their fills.
+  // The copy shows up in your active trades, and Chief's brief on the trader reads from their fills.
   const act1 = (await me("/api/deck/active")).json.html as string;
   assert.match(act1, /from @decklead/);
   assert.ok(act1.includes(`class="aslide on" href="/t/${t2}"`), "one live entry per slide, linking to the trade");
@@ -852,6 +852,12 @@ test("Creator studio: trade ticket, bot trial, publish, copies and pay", async (
   const manualId = Number(t.json.redirect.split("/").pop());
   assert.equal(db.tradeById(manualId)!.note, "Range low held");
   assert.equal(copiesOf(manualId), 1, "followers copy a manual trade");
+  // Other order types from the ticket: a limit entry with a trailing stop, and a TWAP.
+  const lim = await c("/api/trade/new", { usd: 10, stop: 4, type: "limit", price: 1900, stopType: "trailing-stop", activation: 2100 });
+  assert.match(lim.json.redirect, /^\/t\/\d+$/);
+  const limTrades = (db.db.prepare("SELECT json_extract(trade,'$.orderType') AS t FROM trades WHERE id >= ? ORDER BY id").all(Number(lim.json.redirect.split("/").pop())) as { t: string }[]).map((r) => r.t);
+  assert.deepEqual(limTrades, ["limit", "trailing-stop"]);
+  assert.match((await c("/api/trade/new", { usd: 10, stop: 4, type: "twap", minutes: 2 })).json.error, /TWAP runs 5 minutes/);
 
   // A bot needs a $100 stake and a stop.
   const spec = { name: "Steady test", template: "dca", usd: 10, perDay: 5, stopPct: 5, tpPct: 0, maxDdPct: 15, p_dca: 4 };
@@ -987,4 +993,14 @@ test("Closing a position asks everyone holding a copy to sell theirs, and their 
   assert.ok(copiedTokens(F, L, weth) < 1e-9, "the copier's copy is sold");
   const open = db.db.prepare("SELECT COUNT(*) AS n FROM orders WHERE trader = ? AND role = 'copy' AND status IN ('open','waiting') AND json_extract(trade,'$.side') = 'sell' AND json_extract(trade,'$.orderType') != 'market'").get(F) as { n: number };
   assert.equal(open.n, 0, "the copy's stop / target were cancelled");
+});
+
+test("Every inline script on the main pages parses (a stray quote breaks a whole page)", async () => {
+  const c = client();
+  await c("/api/signup", { handle: "scriptcheck", persona: "Hodler" });
+  for (const path of ["/cat", "/feed", "/trade/new", "/bots/new", "/creator", "/portfolio", "/settings", "/signals", "/ranks"]) {
+    const html = (await c(path)).text;
+    const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    for (const code of scripts) assert.doesNotThrow(() => new Function(code), `${path}: inline script has a syntax error`);
+  }
 });

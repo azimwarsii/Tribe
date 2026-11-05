@@ -203,7 +203,9 @@ export async function mirror(leader: number, trade: Trade, source: TradeSource =
     // CopyGuard silent or unreadable: nothing signs on its own; the follower decides.
     // Ask instead of auto when CopyGuard is silent or unreadable, or when only the follower can sign (their MetaMask).
     if (d.action === "ask" || gate.stale || isExternal(follower)) {
-      out.pending.push({ pendingId: createPending(tradeId, follower, leader, sized, meta.timerSec * 1000), follower, trade: sized, tradeId });
+      // A new entry is time-sensitive (the price moves); "the leader closed, sell yours too" stays open for a day.
+      const ttl = trade.side === "sell" ? 24 * 3600e3 : meta.timerSec * 1000;
+      out.pending.push({ pendingId: createPending(tradeId, follower, leader, sized, ttl), follower, trade: sized, tradeId });
     } else {
       out.executed.push(`${follower}: ${await execute(tradeId, follower, leader, sized)}`);
     }

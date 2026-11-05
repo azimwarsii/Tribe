@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 /**
- * Definitive's Flash MCP server (@definitive-fi/flash-mcp), read-only, for Ask Cat: live quotes, wallet balances and
+ * Definitive's Flash MCP server (@definitive-fi/flash-mcp), read-only, for Ask Chief: live quotes, wallet balances and
  * order status. It runs as a child process with a bare environment (no wallet key ever reaches it), and only the
  * read-only tools below are offered or allowed; trading stays in Tribe, where the user approves and signs.
  */
@@ -40,7 +40,7 @@ export const flashTools = async () => (await connect()).tools;
 
 /** Call one read-only Flash MCP tool and return its text. Anything that could trade or change settings is refused. */
 export async function callFlashTool(name: string, args: Record<string, unknown>): Promise<string> {
-  if (!READ_ONLY_TOOLS.has(name)) throw new Error(`${name} isn't available to Ask Cat: Tribe only reads from Flash MCP.`);
+  if (!READ_ONLY_TOOLS.has(name)) throw new Error(`${name} isn't available to Ask Chief: Tribe only reads from Flash MCP.`);
   const { client } = await connect();
   const r = (await client.callTool({ name, arguments: args })) as { content?: { type: string; text?: string }[]; isError?: boolean };
   const text = (r.content ?? []).map((c) => c.text ?? "").join("\n").trim();

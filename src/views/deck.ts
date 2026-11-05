@@ -8,7 +8,7 @@ import { copyFee } from "../creator.js";
 
 /**
  * The feed: one live trade at a time. Swipe right to copy it (a confirm sheet shows size and worst case first), left to skip,
- * up to ask Cat, and follow the trader from the button underneath. Copy requests from traders you copy in ask-first
+ * up to ask Chief, and follow the trader from the button underneath. Copy requests from traders you copy in ask-first
  * mode come first. The card's numbers refresh while you look at it, and new trades slide in as they're placed.
  */
 
@@ -47,7 +47,7 @@ ${ladder(c)}
 ${needStop ? `<div class="sm warn row" style="gap:6px">${icon("shield", 13, "currentColor", 2)}No stop-loss: your rules won't copy this one</div>` : ""}
 <div class="grid3"><div class="tile"><div class="k">You'd copy</div><div class="v">${money(usd)}</div></div><div class="tile"><div class="k">Worst case</div><div class="v ${slPct !== null ? "down" : "warn"}">${slPct !== null ? `−${money((usd * slPct) / 100)}` : "No stop"}</div></div><div class="tile"><div class="k">Copied by</div><div class="v" data-live="copiers">${c.copiers} ${c.copiers === 1 ? "person" : "people"}</div></div></div>
 ${await phoneRecord(c)}
-${v ? `<section class="swread" style="border-color:${tone}55"><div class="row sp"><span class="row" style="gap:8px"><span class="orb" aria-hidden="true" style="width:20px;height:20px"><i></i></span><b class="sm">Cat’s read</b></span><span class="pill" style="color:${tone};border:1px solid ${tone}66;background:${tone}14">${esc(v.label)}</span></div><ul class="vchecks" style="margin-top:8px">${checks.map((x) => `<li class="${x.ok ? "ok" : "bad"}"><i aria-hidden="true">${x.ok ? icon("check", 11, "currentColor", 3.2) : "!"}</i>${esc(x.t)}</li>`).join("")}</ul></section>` : ""}
+${v ? `<section class="swread" style="border-color:${tone}55"><div class="row sp"><span class="row" style="gap:8px"><span class="orb" aria-hidden="true" style="width:20px;height:20px"><i></i></span><b class="sm">Chief’s read</b></span><span class="pill" style="color:${tone};border:1px solid ${tone}66;background:${tone}14">${esc(v.label)}</span></div><ul class="vchecks" style="margin-top:8px">${checks.map((x) => `<li class="${x.ok ? "ok" : "bad"}"><i aria-hidden="true">${x.ok ? icon("check", 11, "currentColor", 3.2) : "!"}</i>${esc(x.t)}</li>`).join("")}</ul></section>` : ""}
 </article>`;
 }
 
@@ -102,13 +102,13 @@ export async function deckLive(viewer: number, ids: number[]) {
 }
 
 /**
- * Cat's brief on the trader behind the top card (what matters most in their portfolio, what they hold, their P&L and last
+ * Chief's brief on the trader behind the top card (what matters most in their portfolio, what they hold, their P&L and last
  * three closed trades), and their record (win rate, closed, max drawdown, copiers) for the card under it.
  */
 export async function briefHtml(handle: string): Promise<{ html: string; stats: string }> {
   const u = userByHandle(handle);
   const b = u ? await traderBrief(u.id) : undefined;
-  if (!b) return { html: `<span class="sm mut">Cat couldn't find @${esc(handle)}.</span>`, stats: STATS_EMPTY };
+  if (!b) return { html: `<span class="sm mut">Chief couldn't find @${esc(handle)}.</span>`, stats: STATS_EMPTY };
   const col = { ok: "#34D399", warn: "#FCD34D", bad: "#F87171" };
   const curve = pnlCurve(b.curve, "bcg");
   const holding = b.held.length ? `<div class="bheld"><div class="xs mut">Holding now</div>${b.held.map((h) => `<div class="row sp"><span><b>${esc(h.symbol)}</b> <span class="xs mut">${money(h.value)}</span></span><span class="row" style="gap:10px"><span class="xs ${h.stopPct === null ? "warn" : "mut"}">${h.stopPct === null ? "no stop" : `stop −${h.stopPct.toFixed(1)}%`}</span><b class="${flatCls(h.pnlPct)}">${flatPct(h.pnlPct)}</b></span></div>`).join("")}</div>` : "";
@@ -139,7 +139,7 @@ const statsHtml = (b: Brief) => {
   return `<span><b>${st.winRate === null ? "—" : st.winRate + "%"}</b> win</span><span><b>${st.closed}</b> closed</span><span><b class="${st.maxDd >= 10 ? "warn" : ""}">${st.maxDd.toFixed(1)}%</b> max DD</span><span><b>${st.followers}</b> ${st.followers === 1 ? "copier" : "copiers"}</span>`;
 };
 
-// Cat's brief per trader, kept for a few seconds so a deck of cards from the same few traders builds it once.
+// Chief's brief per trader, kept for a few seconds so a deck of cards from the same few traders builds it once.
 const briefMemo = new Map<number, { at: number; b: Promise<Brief | undefined> }>();
 function briefOf(leader: number) {
   const hit = briefMemo.get(leader);
@@ -150,8 +150,8 @@ function briefOf(leader: number) {
 }
 
 /**
- * Phones only (desktop has the side panel): the trader's record on the card itself, in the room above Cat's read.
- * On shorter phones the chips go first, then the whole section, so Cat's read always fits.
+ * Phones only (desktop has the side panel): the trader's record on the card itself, in the room above Chief's read.
+ * On shorter phones the chips go first, then the whole section, so Chief's read always fits.
  */
 async function phoneRecord(c: TradeCard): Promise<string> {
   const b = await briefOf(c.leader).catch(() => undefined);
@@ -196,7 +196,7 @@ async function deckAside(viewer: number): Promise<string> {
   // One row: the balance, then the quick actions as icons, so the brief and your active trades fit on a laptop screen.
   return `<section class="card row sp" style="gap:10px;padding:12px 14px"><a href="/portfolio" style="color:#F5F5F5;min-width:0"><div class="xs mut">Copy portfolio · Flash</div><div style="font-size:22px;font-weight:700;letter-spacing:-.01em">${meta.hideBalance ? "••••" : money(pf.total)}</div><div class="xs ${signCls(pf.todayUsd)}" style="white-space:nowrap">${pf.todayUsd >= 0 ? "↑" : "↓"} ${money(Math.abs(pf.todayUsd))} today · copying ${followingOf(viewer).length}</div></a>
 <nav class="row" style="gap:6px;flex:none" aria-label="Quick actions">${quick}</nav></section>
-<section class="flat col bcard" style="gap:8px" aria-label="Cat on this trader" aria-live="polite"><h2 class="row" style="font-size:14px;gap:8px"><span class="orb" aria-hidden="true" style="width:16px;height:16px"><i></i></span>Cat on this trader</h2><div id="brief" class="col" style="gap:8px"><span class="sm mut">Swipe a trade to see who's behind it.</span></div></section>
+<section class="flat col bcard" style="gap:8px" aria-label="Chief on this trader" aria-live="polite"><h2 class="row" style="font-size:14px;gap:8px"><span class="orb" aria-hidden="true" style="width:16px;height:16px"><i></i></span>Chief on this trader</h2><div id="brief" class="col" style="gap:8px"><span class="sm mut">Swipe a trade to see who's behind it.</span></div></section>
 <section class="flat col bstatcard" aria-label="Their record"><div class="row sp"><h2 style="font-size:14px">Their record</h2><span class="xs mut" id="bstatwho"></span></div><div class="bstats" id="bstats">${STATS_EMPTY}</div></section>`;
 }
 
@@ -212,9 +212,9 @@ export async function deckPage(viewer: number, tab: DeckTab = "for-you"): Promis
   const body = split(`<main class="main swmain"><header class="hd" style="justify-content:space-between;padding:8px 0 0"><div class="row" style="gap:18px;min-width:0"><h1 class="row only-d" style="font-size:22px;gap:8px;white-space:nowrap"><span class="live" aria-hidden="true"></span>Live trades</h1>${tabs}</div>
 <div class="row" style="gap:8px"><button class="ic only-m" data-open="mytribe" aria-label="Your portfolio and active trades">${icon("wallet", 18)}</button><a class="ic only-m" href="/requests" aria-label="Copy requests, ${pend.length} pending">${icon("inbox", 18)}${pend.length ? `<span class="badge">${pend.length}</span>` : ""}</a></div></header>
 <div class="deck" id="deck" data-tab="${tab}" aria-live="polite">${html}${waiting}</div>
-<div class="swbar" role="toolbar" aria-label="Decide on this trade"><button class="swbtn skip" data-sw="left" aria-label="Skip (left arrow)">${icon("close", 26, "currentColor", 2.6)}</button><button class="swbtn ask" data-sw="up" aria-label="Ask Cat about this trade (up arrow)"><span class="orb" aria-hidden="true" style="width:30px;height:30px"><i></i></span></button><button class="swbtn copy" data-sw="right" aria-label="Copy with Flash (right arrow)">${icon("bolt", 26, "currentColor", 2.2)}</button></div>
+<div class="swbar" role="toolbar" aria-label="Decide on this trade"><button class="swbtn skip" data-sw="left" aria-label="Skip (left arrow)">${icon("close", 26, "currentColor", 2.6)}</button><button class="swbtn ask" data-sw="up" aria-label="Ask Chief about this trade (up arrow)"><span class="orb" aria-hidden="true" style="width:30px;height:30px"><i></i></span></button><button class="swbtn copy" data-sw="right" aria-label="Copy with Flash (right arrow)">${icon("bolt", 26, "currentColor", 2.2)}</button></div>
 <button class="btn swfollow" id="swfollow" type="button" hidden></button>
-<p class="xs mut only-d" style="text-align:center;margin:0">← skip · ↑ ask Cat · → copy with Flash · F follow</p></main>`, await deckAside(viewer), "Trader brief and active trades");
+<p class="xs mut only-d" style="text-align:center;margin:0">← skip · ↑ ask Chief · → copy with Flash · F follow</p></main>`, await deckAside(viewer), "Trader brief and active trades");
   const myTribe = sheet("mytribe", `<div class="row sp"><h2>Your portfolio</h2><button class="ic s" data-close="mytribe" aria-label="Close">${icon("close", 14, "currentColor", 2.4)}</button></div>
 <a class="card" href="/me" style="display:block;color:#F5F5F5;margin-top:12px"><div class="sm mut">Copy portfolio · Flash</div><div class="big" style="font-size:30px;margin-top:4px">${meta.hideBalance ? "••••" : money(pf.total)}</div><div class="${signCls(pf.todayUsd)}" style="font-size:13px">${pf.todayUsd >= 0 ? "↑" : "↓"} ${money(Math.abs(pf.todayUsd))} today · copying ${followingOf(viewer).length}</div></a>
 <div class="grid4" style="margin-top:12px">${([["Add funds", "/funds", "plus"], ["Positions", "/positions", "trend"], ["My traders", "/traders", "people"], ["Portfolio", "/portfolio", "list"]] as const).map(([l, h, i]) => `<a href="${h}" class="col" style="align-items:center;gap:6px;color:#F5F5F5;font-size:12px"><span class="ic" aria-hidden="true">${icon(i, 18)}</span>${l}</a>`).join("")}</div>
@@ -238,7 +238,7 @@ function cards(){return [].slice.call(deck.querySelectorAll('.swcard:not(.gone)'
 function restack(){cards().forEach(function(c,i){c.style.zIndex=50-i;c.classList.toggle('p0',i===0);c.classList.toggle('p1',i===1);c.classList.toggle('pn',i>1)})}
 function top(){return deck.querySelector('.swcard:not(.gone)')}
 function count(){deck.classList.toggle('done',!cards().length);follow();brief();if(cards().length<3)more()}
-// Desktop side panel: Cat's brief on whoever is behind the top card, fetched once per trader per minute.
+// Desktop side panel: Chief's brief on whoever is behind the top card, fetched once per trader per minute.
 var briefs={},shown='';
 // Their record (win rate, closed, max DD, copiers) sits in the card underneath and follows the same trader.
 var stEmpty=(document.getElementById('bstats')||{}).innerHTML||'';
@@ -246,7 +246,7 @@ function put(h,j){document.getElementById('brief').innerHTML=j.html;var s=docume
 function brief(){var box=document.getElementById('brief');if(!box||getComputedStyle(box.closest('.paside')).display==='none')return;var c=top(),h=c?c.dataset.handle:'';if(h===shown)return;shown=h;
  if(!h){put('',{html:'<span class="sm mut">Swipe a trade to see who\\u2019s behind it.</span>',stats:stEmpty});return}
  var hit=briefs[h];if(hit&&Date.now()-hit.at<60000){put(h,hit);return}
- box.classList.add('loading');if(!hit)box.innerHTML='<span class="sm mut">Cat is reading @'+h+'\\u2019s portfolio\\u2026</span>';
+ box.classList.add('loading');if(!hit)box.innerHTML='<span class="sm mut">Chief is reading @'+h+'\\u2019s portfolio\\u2026</span>';
  fetch('/api/deck/brief?h='+encodeURIComponent(h)).then(function(r){return r.json()}).then(function(j){briefs[h]={html:j.html,stats:j.stats,at:Date.now()};if(shown===h)put(h,j)}).catch(function(){}).then(function(){if(shown===h)box.classList.remove('loading')})}
 // Your active trades, in the side panel and the phone sheet; refreshed after a copy and every 15s, keeping your place.
 // One trade at a time: it moves on every 6s unless you're hovering over it or using its buttons; arrows, dots, keys and swipes move it by hand.

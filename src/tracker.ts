@@ -26,7 +26,8 @@ export function applyFill(trader: number, token: string, side: "buy" | "sell", t
 
 export interface Placed { orderId: string; sim: boolean; note?: string }
 
-const PROTECTIVE = new Set(["stop-loss", "take-profit", "bracket"]);
+const PROTECTIVE = new Set(["stop-loss", "take-profit", "bracket", "trailing-stop", "trailing-stop-limit"]);
+const PROTECTIVE_TYPES = "('bracket','stop-loss','take-profit','trailing-stop','trailing-stop-limit')";
 const ENTRY = new Set(["market", "twap", "limit"]);
 
 async function placeLive(trader: number, trade: Trade) {
@@ -136,6 +137,17 @@ export async function pollOrders() {
           }
           continue;
         }
+        if (trade.trailingStop) {
+          // A simulated trailing stop: armed at its activation price (or at once), it follows the best price since
+          // and fires when the price falls trailPercent below that peak (a trailing buy mirrors it from the low).
+          const ts = trade.trailingStop, buy = trade.side === "buy";
+          if (ts.peak === undefined && ts.activationPrice && (buy ? price > Number(ts.activationPrice) : price < Number(ts.activationPrice))) continue;
+          const peak = ts.peak === undefined ? price : buy ? Math.min(ts.peak, price) : Math.max(ts.peak, price);
+          const at = buy ? peak * (1 + Number(ts.trailPercent)) : peak * (1 - Number(ts.trailPercent));
+          if (buy ? price >= at : price <= at) await simFill(o.id, trade, o.trader, price);
+          else if (peak !== ts.peak) db.prepare("UPDATE orders SET trade = ? WHERE id = ?").run(JSON.stringify({ ...trade, trailingStop: { ...ts, peak } }), o.id);
+          continue;
+        }
         const hit = (trade.triggers ?? []).some((t) => (t.triggerType === "upper" ? price >= Number(t.notionalPrice) : price <= Number(t.notionalPrice)));
         if (hit) {
           // A bracket is one order: when one leg fires the order is done.
@@ -227,7 +239,7 @@ export async function cancelFollowerCopies(tradeId: number) {
 
 /** Cancel a trader's open protective orders on a token (before closing the position, or replacing a stop). */
 export async function cancelProtective(trader: number, token: string) {
-  const open = db.prepare("SELECT id, order_id, sim FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit')").all(trader, token) as unknown as { id: number; order_id: string; sim: number }[];
+  const open = db.prepare(`SELECT id, order_id, sim FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ${PROTECTIVE_TYPES}`).all(trader, token) as unknown as { id: number; order_id: string; sim: number }[];
   const live = open.filter((o) => !o.sim).map((o) => o.order_id);
   // One signature for all of them (Flash batch cancel); a single order uses the plain cancel.
   if (live.length === 1) await cancelOrder(live[0], signerOf(trader));
@@ -236,7 +248,7 @@ export async function cancelProtective(trader: number, token: string) {
   return open.length;
 }
 
-const PROTECTIVE_SQL = "json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit')";
+const PROTECTIVE_SQL = `json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ${PROTECTIVE_TYPES}`;
 
 /** Cancel the protective orders (open or waiting for their entry) that came from copying one leader on a token. */
 export async function cancelCopiedProtective(follower: number, leader: number, token: string) {

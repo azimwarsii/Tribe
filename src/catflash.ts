@@ -2,9 +2,9 @@ import { getUser } from "./db.js";
 import { callFlashTool, flashTools } from "./flashmcp.js";
 
 /**
- * Ask Cat answers live Flash questions (quotes, prices, balances, fees, order status) by letting the AI model call the
+ * Ask Chief answers live Flash questions (quotes, prices, balances, fees, order status) by letting the AI model call the
  * read-only Flash MCP tools. Needs an OpenAI-compatible model with tool calling (OPENAI_COMPAT_*). Returns undefined
- * when it can't answer, so Cat falls back to its usual answers. It never trades: those tools aren't offered.
+ * when it can't answer, so Chief falls back to its usual answers. It never trades: those tools aren't offered.
  */
 export const wantsFlash = (q: string) =>
   /\b(quote|prices?|how much|get me|would .{0,30} get|balances?|wallet|holdings?|my orders?|order status|filled|fill|fees?|slippage)\b/i.test(q);
@@ -24,10 +24,10 @@ export async function flashAnswer(uid: number, question: string): Promise<{ repl
     {
       role: "system",
       content: [
-        "You are Cat, the trading assistant in Tribe, a copy-trading app on Base. Answer with the Flash tools, which read live data from Flash (Definitive's trading API).",
+        "You are Chief, the trading assistant in Tribe, a copy-trading app on Base. Answer with the Flash tools, which read live data from Flash (Definitive's trading API).",
         `The user's wallet on Base is ${getUser(uid).address}. Use chain "base". USDC is ${USDC}; ETH trades as WETH ${WETH}.`,
         'For "what would $X of ETH get me": flash_quote with side "buy", targetAsset WETH, contraAsset USDC, qty in USDC (e.g. "50"), orderType "market".',
-        "You can't place, change or cancel orders; if asked, say the user can do it from a trade card or by asking Cat to buy.",
+        "You can't place, change or cancel orders; if asked, say the user can do it from a trade card or by asking Chief to buy.",
         "Answer in at most three short sentences, plain words, with the key numbers. No markdown tables.",
       ].join(" "),
     },

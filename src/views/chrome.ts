@@ -8,7 +8,7 @@ const ITEMS: [string, string, string, string][] = [
   ["feed", "/feed", "home", "Feed"],
   ["signals", "/signals", "rise", "Signals"],
   ["ranks", "/ranks", "bars", "Leaderboard"],
-  ["cat", "/cat", "cat", "Ask Cat"],
+  ["cat", "/cat", "chat", "Ask Chief"],
   ["guard", "/guard", "shield", "Guard"],
   ["portfolio", "/portfolio", "trend", "Portfolio"],
   ["creator", "/creator", "star", "Creator"],
@@ -65,7 +65,7 @@ ${ITEMS.map(([k, href, ic, label]) => `<a class="side-item${k === active ? " on"
 <a class="card row" href="/guard" style="padding:14px;gap:12px;color:#F5F5F5;border-color:${pausedFollowed ? "rgba(248,113,113,.4)" : "rgba(52,211,153,.35)"}">${icon("shield", 22, pausedFollowed ? "#F87171" : "#34D399")}<span class="grow"><b style="display:block;font-size:15px">${pausedFollowed ? `${pausedFollowed} trader${pausedFollowed > 1 ? "s" : ""} paused` : "You're protected"}</b><span class="sm mut">${checked}${halts.length ? ` · ${halts.length} paused` : ""}</span></span>${icon("chev", 14, "#8A8A8A", 2)}</a>
 ${active === "ranks" ? "" : `<section class="card"><div class="row sp"><h2>Top this week</h2><a class="sm" href="/ranks" style="color:#A3A3A3">Leaderboard ›</a></div>
 ${top.map((t, i) => `<a class="row" href="/u/${esc(t.handle)}" style="gap:10px;min-height:44px;color:#F5F5F5"><span style="width:16px;color:${i === 0 ? "#34D399" : "#8A8A8A"};font-weight:600">${i + 1}</span><span class="av sm">${face(t.handle)}</span><span class="grow md">@${esc(t.handle)}</span><b class="${signCls(t.pct)} md">${pct(t.pct)}</b></a>`).join("") || '<div class="sm mut" style="padding-top:8px">No trades this week.</div>'}</section>`}
-<a class="card row" href="/cat/chat?new=1" style="padding:14px;gap:12px;color:#F5F5F5"><span class="orb" style="width:30px;height:30px"><i></i></span><span class="grow mut md">Ask Cat anything…</span><span class="kbd">⌘K</span></a></aside>`;
+<a class="card row" href="/cat/chat?new=1" style="padding:14px;gap:12px;color:#F5F5F5"><span class="orb" style="width:30px;height:30px"><i></i></span><span class="grow mut md">Ask Chief anything…</span><span class="kbd">⌘K</span></a></aside>`;
 
   // Split pages bring their own aside, so the global rail would duplicate it.
   const ownAside = /<body class="norail[ "]/.test(html);

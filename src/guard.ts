@@ -40,7 +40,13 @@ export const riskOf = async (leader: number) => riskScore(await riskInputs(leade
 /** Per-trader risk inputs consumed by the CRE CopyGuard workflow (GET /guard/snapshot). */
 /** When the CRE workflow last pulled a snapshot (null until the first check). */
 export let lastCheckAt: number | null = null;
-export const markCheck = () => (lastCheckAt = Date.now());
+export const markCheck = () => {
+  lastCheckAt = Date.now();
+  // Kept in the database too, so a restart doesn't show "Waiting for the first CRE check" until the next run.
+  db.prepare("INSERT OR REPLACE INTO app_flags (key, value, at) VALUES ('guard_check', '1', ?)").run(lastCheckAt);
+  return lastCheckAt;
+};
+const storedCheck = () => (db.prepare("SELECT at FROM app_flags WHERE key = 'guard_check'").get() as { at: number } | undefined)?.at ?? 0;
 
 /** The latest price check the CRE workflow reported: Chainlink ETH/USD Data Feed vs the DEX price Flash quotes. */
 export let lastOracleCheck: { oracle: number; dex: number; deviationPct: number; at: number } | null = null;
@@ -92,7 +98,7 @@ export async function guardGate(leader: number): Promise<GuardGate> {
 }
 
 /** When CRE last checked: this process saw a snapshot pull, or the last stored report (survives restarts). */
-export const lastGuardCheck = () => Math.max(lastCheckAt ?? 0, guardHeartbeat().last ?? 0) || null;
+export const lastGuardCheck = () => Math.max(lastCheckAt ?? 0, storedCheck(), guardHeartbeat().last ?? 0) || null;
 
 /** Is CopyGuard alive? For the Guard page: last report and whether auto-copy is currently held. */
 export function guardHeartbeat() {

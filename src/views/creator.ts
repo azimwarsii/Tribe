@@ -34,7 +34,7 @@ function walletLine(uid: number): string {
 
 // ---------- Trade ticket ----------
 
-/** Post a trade by hand: amount, a required stop, an optional target and why. Ask Cat can pre-fill it (?usd=&stop=&tp=&note=). */
+/** Post a trade by hand: amount, a required stop, an optional target and why. Ask Chief can pre-fill it (?usd=&stop=&tp=&note=). */
 export async function tradeTicketPage(uid: number, q: Record<string, unknown>): Promise<string> {
   // Any Base token Flash can trade (?token=0x… pre-picks one); ETH to start.
   const picked = typeof q.token === "string" && /^0x[0-9a-fA-F]{40}$/.test(q.token) ? await tradableToken(q.token).catch(() => undefined) : undefined;
@@ -44,6 +44,12 @@ export async function tradeTicketPage(uid: number, q: Record<string, unknown>): 
   const free = await freeBalanceOf(uid);
   // Never suggest more than the wallet holds (live: real USDC on Base).
   const usd = Math.min(num(q.usd, 25), Math.max(1, Math.floor(free))), stop = num(q.stop, 5), tp = q.tp === "0" ? 0 : num(q.tp, 10);
+  // MetaMask (live) signs only the entry: exits that must be signed after the fill (breakout, trailing) aren't offered.
+  const oneOrder = isExternal(uid) && !isDry();
+  const types = [{ v: "market", l: "Market" }, { v: "limit", l: "Limit" }, ...(oneOrder ? [] : [{ v: "stop", l: "Breakout" }]), { v: "twap", l: "TWAP" }];
+  const stopTypes = [{ v: "fixed", l: "Fixed" }, ...(oneOrder ? [] : [{ v: "trailing-stop", l: "Trailing" }, { v: "trailing-stop-limit", l: "Trailing limit" }])];
+  const type = types.some((t) => t.v === q.type) ? String(q.type) : "market";
+  const stopType = stopTypes.some((t) => t.v === q.stopType) ? String(q.stopType) : "fixed";
   const followers = (db.prepare("SELECT COUNT(*) AS n FROM follows WHERE leader = ?").get(uid) as { n: number }).n;
   const body = `${header("New trade", "Placed through Flash, always with a stop", "/creator")}
 <main class="main tkmain" data-scope id="tk">
@@ -52,8 +58,12 @@ ${field("Token", `<input type="hidden" name="token" value="${esc(tok.address)}">
 <button type="button" class="tkpick" id="tk-pick" aria-expanded="false" aria-controls="tk-list"><span class="tkimg" id="tk-img">${tok.image ? `<img src="${esc(tok.image)}" alt="">` : esc(tok.symbol.slice(0, 1))}</span><span class="grow"><b id="tk-sym">${esc(tok.symbol)}</b><span class="xs mut" id="tk-name" style="display:block">${esc(tok.name)}</span></span><span class="sm mut">Now <b style="color:#F5F5F5" id="tk-px" data-px="${price}">${esc(fmtPx(price))}</b></span><span class="chip" style="height:30px">Change</span></button>
 <div class="tklist" id="tk-list" hidden><input class="f" id="tk-q" placeholder="Search any token on Base (name, symbol or address)" autocomplete="off" aria-label="Search tokens"><div id="tk-res" class="col" style="gap:4px" role="listbox" aria-label="Tokens"></div><div class="xs mut">Prices and routes from Flash. Tokens Flash flags as risky, or with under $${(MIN_LIQUIDITY() / 1000).toFixed(0)}k of liquidity, can't be picked.</div></div>`, "Any token Flash trades on Base")}
 ${field("Amount", chips("usd", [1, 2, 5, 10, 25, 50, 100].filter((v) => v <= Math.max(1, free)).slice(-4).map((v) => ({ v, l: `$${v}` })), usd, { ph: "Custom", unit: "" }), `$${free.toFixed(2)} USDC available`)}
-${field("Stop", chips("stop", [2, 3, 5, 8, 10].map((v) => ({ v, l: `−${v}%` })), stop, { ph: "%" }), "Required: every trade on Tribe has one")}
-${field("Target", chips("tp", [{ v: 0, l: "None" }, ...[5, 10, 20].map((v) => ({ v, l: `+${v}%` }))], tp, { ph: "%" }))}
+${field("Order type", chips("type", types, type), "How it buys")}
+<div id="tk-atf" hidden>${field('<span id="tk-atl">Price</span>', `<label class="chip cust" style="width:100%;height:40px"><span>$</span><input class="tkat" name="price" type="number" inputmode="decimal" step="any" min="0" aria-label="Order price in dollars" style="width:100%"${Number(q.price) > 0 ? ` value="${esc(String(q.price))}"` : ""}></label>`, '<span id="tk-ath"></span>')}</div>
+<div id="tk-twf" hidden>${field("Spread over", chips("minutes", [15, 30, 60, 240].map((v) => ({ v, l: v < 60 ? `${v} min` : `${v / 60} h` })), num(q.minutes, 30), { ph: "min" }), "Smaller slices, less price impact")}</div>
+${field("Stop", chips("stopType", stopTypes, stopType) + chips("stop", [2, 3, 5, 8, 10].map((v) => ({ v, l: `−${v}%` })), stop, { ph: "%" }) + '<div class="xs mut" id="tk-stopnote"></div>', "Required: every trade on Tribe has one")}
+<div id="tk-actf" hidden>${field("Start trailing at", `<label class="chip cust" style="width:100%;height:40px"><span>$</span><input name="activation" type="number" inputmode="decimal" step="any" min="0" placeholder="Right away" aria-label="Price that arms the trailing stop" style="width:100%"></label>`, "Optional: it trails once the price gets there")}</div>
+<div id="tk-tpf">${field("Target", chips("tp", [{ v: 0, l: "None" }, ...[5, 10, 20].map((v) => ({ v, l: `+${v}%` }))], tp, { ph: "%" }))}</div>
 ${field("Why", `<textarea name="note" rows="2" maxlength="200" class="tkta" placeholder="One line on why: copiers see it on the trade card">${esc(String(q.note ?? ""))}</textarea>`, "Optional")}
 </section>
 <section class="card col tksum" aria-live="polite" style="gap:10px"><div class="row sp"><b>Your order</b><span class="pill flash">${icon("bolt", 11)}Flash</span></div><div class="md" id="tk-line"></div>
@@ -74,11 +84,24 @@ function row(t){var b=document.createElement('button');b.type='button';b.classNa
 function load(term){res.innerHTML='<div class="sm mut" style="padding:8px">Loading…</div>';fetch('/api/tokens?q='+encodeURIComponent(term)).then(function(r){return r.json()}).then(function(j){res.innerHTML='';if(j.error){res.innerHTML='<div class="sm warn" style="padding:8px">'+e(j.error)+'</div>';return}if(!j.tokens.length){res.innerHTML='<div class="sm mut" style="padding:8px">No tokens found on Base.</div>';return}j.tokens.forEach(function(t){res.appendChild(row(t))})}).catch(function(){res.innerHTML='<div class="sm warn" style="padding:8px">Network error</div>'})}
 pick.onclick=function(){var open=list.hidden;list.hidden=!open;pick.setAttribute('aria-expanded',open?'true':'false');if(open){q.value='';load('');q.focus()}};
 q.oninput=function(){clearTimeout(tm);tm=setTimeout(function(){load(q.value.trim())},300)};
-function upd(){var u=v('usd'),s=v('stop'),t=v('tp'),sl=px*(1-s/100),tg=px*(1+t/100);
- document.getElementById('tk-line').innerHTML='Buy <b>'+f(u)+'</b> of '+e(document.getElementById('tk-sym').textContent)+' at about '+f(px)+(s?' · stop <b>'+f(sl)+'</b>':'')+(t?' · target <b>'+f(tg)+'</b>':'');
- document.getElementById('tk-loss').textContent=s?'−'+f(u*s/100):'—';document.getElementById('tk-gain').textContent=t?'+'+f(u*t/100):'No target';
- var b=document.getElementById('tk-go');b.disabled=!(u>=1&&s>=0.5)}
-sc.addEventListener('change',upd);upd()})()</script>`;
+function sv(n){var i=sc.querySelector('input[name="'+n+'"]');return i?i.value:''}
+var lastType='';
+function upd(){var u=v('usd'),s=v('stop'),ty=sv('type'),st=sv('stopType'),trail=st!=='fixed',at=v('price'),m=v('minutes'),pi=sc.querySelector('input[name=price]');
+ // Limit and breakout need a price: switching to one suggests 2% below (limit) or above (breakout) the price now.
+ if(ty!==lastType&&(ty==='limit'||ty==='stop')&&pi&&(lastType||!pi.value)){pi.value=String(+(px*(ty==='limit'?0.98:1.02)).toPrecision(6));at=Number(pi.value)}
+ lastType=ty;
+ document.getElementById('tk-atf').hidden=!(ty==='limit'||ty==='stop');document.getElementById('tk-twf').hidden=ty!=='twap';
+ document.getElementById('tk-atl').textContent=ty==='limit'?'Limit price':'Breakout price';
+ document.getElementById('tk-ath').textContent=ty==='limit'?'Buys at this price or lower':'Buys once the price rises to it';
+ document.getElementById('tk-actf').hidden=!trail;document.getElementById('tk-tpf').hidden=trail;
+ document.getElementById('tk-stopnote').textContent=st==='trailing-stop'?'Follows the price up and sells at market once it falls '+(s||'…')+'% from its peak. It replaces a fixed target.':st==='trailing-stop-limit'?'Like a trailing stop, but sells with a limit at the trigger price: no slippage, though it may not fill in a fast drop.':'';
+ var ref=(ty==='limit'||ty==='stop')&&at>0?at:px,t=trail?0:v('tp'),sl=ref*(1-s/100),tg=ref*(1+t/100),sym=e(document.getElementById('tk-sym').textContent);
+ var how=ty==='limit'?'Limit buy <b>'+f(u)+'</b> of '+sym+' at <b>'+f(ref)+'</b> or lower':ty==='stop'?'Breakout buy <b>'+f(u)+'</b> of '+sym+' once it rises to <b>'+f(ref)+'</b>':ty==='twap'?'Buy <b>'+f(u)+'</b> of '+sym+' in slices over '+(m>=60?(m/60)+' h':m+' min')+' (about '+f(px)+' now)':'Buy <b>'+f(u)+'</b> of '+sym+' at about '+f(px);
+ document.getElementById('tk-line').innerHTML=how+(s?(trail?' · trailing stop <b>'+s+'%</b> below the peak'+(v('activation')?' from '+f(v('activation')):''):' · stop <b>'+f(sl)+'</b>'):'')+(t?' · target <b>'+f(tg)+'</b>':'');
+ document.getElementById('tk-loss').textContent=s?'−'+f(u*s/100)+(trail?' at most':''):'—';document.getElementById('tk-gain').textContent=trail?'Rides the trend':t?'+'+f(u*t/100):'No target';
+ var ok=u>=1&&s>=0.5&&(!trail||s<=50)&&(ty==='market'||(ty==='twap'?m>=5&&m<=1440:at>0&&(ty!=='stop'||at>px)));
+ var b=document.getElementById('tk-go');b.disabled=!ok}
+sc.addEventListener('change',upd);sc.addEventListener('input',function(ev){var n=ev.target.name;if(n==='price'||n==='activation')upd()});upd()})()</script>`;
   return page({ title: "New trade", body, nav: "me" });
 }
 

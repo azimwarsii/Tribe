@@ -1,7 +1,7 @@
 import { catReadsSince, creRuns, db, getFollowRules, getMeta, haltOf, userByHandle } from "./db.js";
 import { ago, money, openPositions, pct, profile, RISK_LINE, sourceSplit, symOf, tradeCard, type SideRecord, type TradeCard } from "./data.js";
 
-/** Ask Cat about one feed post: is it a good trade, the trader's record, what copying it would risk. Grounded in fills, Guard and the viewer's own copy rules; no LLM, so every number is checkable. */
+/** Ask Chief about one feed post: is it a good trade, the trader's record, what copying it would risk. Grounded in fills, Guard and the viewer's own copy rules; no LLM, so every number is checkable. */
 
 export type Topic = "verdict" | "history" | "risk";
 export interface Check { ok: boolean | null; t: string; key?: boolean } // ok null = not enough data to judge; key = failing it caps the verdict at Mixed
@@ -27,7 +27,7 @@ export function subjectTrade(text: string): number | undefined {
 }
 
 /**
- * Cat's track record: each call (the first read per entry) scored by what the trader did next. A call is "closed" once the
+ * Chief's track record: each call (the first read per entry) scored by what the trader did next. A call is "closed" once the
  * trader sells after it, and green if that sell made money. Price moves alone would score every call the same in a
  * one-token market, so outcomes are the honest measure.
  */
@@ -55,8 +55,8 @@ export const handleEntry = (h: string) => {
 export const latestEntry = (leader: number) =>
   (db.prepare("SELECT id FROM trades WHERE leader = ? AND private = 0 ORDER BY json_extract(trade,'$.side') = 'buy' DESC, id DESC LIMIT 1").get(leader) as { id: number } | undefined)?.id;
 
-/** Cat's read as plain text, for Telegram and MCP where there is no card. */
-export const verdictText = (v: Verdict) => `Cat's read: ${v.label}\n${v.checks.map((c) => `${c.ok === true ? "✅" : c.ok === false ? "⚠️" : "▫️"} ${c.t}`).join("\n")}`;
+/** Chief's read as plain text, for Telegram and MCP where there is no card. */
+export const verdictText = (v: Verdict) => `Chief's read: ${v.label}\n${v.checks.map((c) => `${c.ok === true ? "✅" : c.ok === false ? "⚠️" : "▫️"} ${c.t}`).join("\n")}`;
 
 const verbOf = (c: TradeCard) => c.trade.side === "buy" ? (c.trade.orderType === "twap" ? "Accumulating" : c.trade.attach ? "Bracket long" : "Long") : c.realisedPct !== null ? (c.realisedPct > 0 ? "Took profit" : "Closed") : "Protective order";
 
@@ -137,9 +137,9 @@ export interface Brief {
 }
 
 /**
- * Cat's brief on a trader, for the panel beside the deck: their last three closed trades, then the few facts from their
+ * Chief's brief on a trader, for the panel beside the deck: their last three closed trades, then the few facts from their
  * portfolio that matter most right now (a Guard pause, their worst recent hit, a position riding without a stop, a streak,
- * bot vs manual), ranked so the riskiest surface first. Built from fills like the rest of Cat's reads, so every line is checkable.
+ * bot vs manual), ranked so the riskiest surface first. Built from fills like the rest of Chief's reads, so every line is checkable.
  */
 export async function traderBrief(leader: number): Promise<Brief | undefined> {
   const p = await profile(leader).catch(() => undefined);

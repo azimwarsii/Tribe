@@ -333,3 +333,45 @@ test("a Telegram sign-in link works once and is never a session by itself", () =
   const session = /tribe=([^;]+)/.exec(cookies[0])![1];
   assert.equal(auth.sessionOf(session)?.user, 8);
 });
+
+test("a trailing stop follows the peak and sells when the price falls its trail from it", async () => {
+  price = 2000;
+  const u = 401;
+  db.getUser(u); db.setMeta(u, { simBalance: 1000 });
+  const p = await askMod.buildProposal({ side: "buy", usd: 100, token: "ETH", stopPct: 5, trail: "trailing-stop" });
+  assert.deepEqual(p.trades.map((t) => t.orderType), ["market", "trailing-stop"]);
+  assert.deepEqual(p.trades[1].trailingStop, { trailPercent: "0.05" });
+  for (const t of p.trades) await tracker.placeAndTrack(0, u, u, "own", t);
+  assert.ok(Math.abs(tracker.heldTokens(u, WETH) - 0.05) < 1e-9);
+  price = 2400; await tracker.pollOrders(); // a new peak
+  price = 2300; await tracker.pollOrders(); // −4.2% from the peak: holds
+  assert.ok(tracker.heldTokens(u, WETH) > 0);
+  price = 2270; await tracker.pollOrders(); // −5.4% from the peak: sells
+  assert.equal(tracker.heldTokens(u, WETH), 0);
+  price = 2000;
+});
+
+test("a breakout buy waits for its price, and its stop follows the fill", async () => {
+  price = 2000;
+  const u = 402;
+  db.getUser(u); db.setMeta(u, { simBalance: 1000 });
+  await assert.rejects(askMod.buildProposal({ side: "buy", usd: 100, token: "ETH", stopPct: 5, entry: "stop", price: 1900 }), /above the price now/);
+  await assert.rejects(askMod.buildProposal({ side: "buy", usd: 100, token: "ETH", stopPct: 5, entry: "stop", price: 2100 }, { oneOrder: true }), /MetaMask/);
+  const p = await askMod.buildProposal({ side: "buy", usd: 100, token: "ETH", stopPct: 5, tpPct: 10, entry: "stop", price: 2100 });
+  assert.deepEqual(p.trades.map((t) => t.orderType), ["stop", "bracket"]);
+  assert.deepEqual(p.trades[1].triggers, [{ notionalPrice: "2310.00", triggerType: "upper" }, { notionalPrice: "1995.00", triggerType: "lower" }]);
+  for (const t of p.trades) await tracker.placeAndTrack(0, u, u, "own", t);
+  assert.equal(tracker.heldTokens(u, WETH), 0, "not bought below the breakout");
+  price = 2100; await tracker.pollOrders(); // triggers the buy
+  await tracker.pollOrders(); // then the bracket is placed on what was bought
+  assert.ok(tracker.heldTokens(u, WETH) > 0);
+  assert.equal(tracker.stopOf(u, WETH), 1995);
+  price = 2000;
+});
+
+test("a trailing stop's quote carries trailingStop and no Tribe-only peak", async () => {
+  const { quoteBody } = await import("./flash.js");
+  const b = quoteBody({ chain: "base", target: WETH, contra: parse.USDC, side: "sell", qty: "0.05", orderType: "trailing-stop-limit", trailingStop: { trailPercent: "0.03", activationPrice: "2500", peak: 2600 } }, "0xabc");
+  assert.deepEqual(b.trailingStop, { trailPercent: "0.03", activationPrice: "2500" });
+  assert.equal(b.orderType, "trailing-stop-limit");
+});

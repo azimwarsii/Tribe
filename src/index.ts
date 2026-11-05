@@ -73,10 +73,10 @@ async function notifyPending(list: PendingNotice[], leader: number) {
     if (!getMeta(p.follower).aReq) continue;
     const chat = chatIdOf(p.follower);
     if (!chat) continue;
-    // Cat's read on the leader's trade, so the decision is made with the same checks as in the app.
+    // Chief's read on the leader's trade, so the decision is made with the same checks as in the app.
     const v = (await researchTrade(p.follower, p.tradeId, "Is this a good trade?").catch(() => undefined))?.verdict;
     const kb = new InlineKeyboard().text("Approve", `ok:${p.pendingId}`).text("Skip", `no:${p.pendingId}`);
-    if (linkable()) kb.row().url("Ask Cat more", `${baseUrl()}/cat/chat?new=1&trade=${p.tradeId}&q=${encodeURIComponent("Is this a good trade?")}`);
+    if (linkable()) kb.row().url("Ask Chief more", `${baseUrl()}/cat/chat?new=1&trade=${p.tradeId}&q=${encodeURIComponent("Is this a good trade?")}`);
     await bot.api.sendMessage(chat, `@${getUser(leader).handle} just traded. Your copy: ${describe(p.trade)}${v ? `\n\n${verdictText(v)}` : ""}\n\nApprove within ${getMeta(p.follower).timerSec}s (or use the web inbox).`, { reply_markup: kb }).catch(() => undefined);
   }
 }
@@ -101,8 +101,8 @@ if (bot) {
     }
     return c.reply(
       `Tribe: social trading on Flash.\nTrading wallet (fund with USDC on Base): ${u.address}\nHandle: ${u.handle} (change with /handle name)\n\n` +
-        `/web: open the app (feed, Ask Cat, leaderboard)\n/follow <handle> [auto|ask]\n/rules <handle> max=50 cap=200 ratio=1 tokens=ETH types=bracket,stop-loss protective=on\n` +
-        `/trade long ETH 50 2600 2300 (buy with take-profit and stop attached) | buy ETH 50 | stop ETH 0.01 1800 | tp ETH 0.01 5000 | bracket ETH 0.01 5000 1800 | limit ETH 100 2000 | stopbuy ETH 50 2600 | twap ETH 100 1800 12\n/board\n\nOr just talk to Cat: "buy $50 ETH with a 5% stop and 12% target".`,
+        `/web: open the app (feed, Ask Chief, leaderboard)\n/follow <handle> [auto|ask]\n/rules <handle> max=50 cap=200 ratio=1 tokens=ETH types=bracket,stop-loss protective=on\n` +
+        `/trade long ETH 50 2600 2300 (buy with take-profit and stop attached) | buy ETH 50 | stop ETH 0.01 1800 | tp ETH 0.01 5000 | bracket ETH 0.01 5000 1800 | limit ETH 100 2000 | stopbuy ETH 50 2600 | twap ETH 100 1800 12\n/board\n\nOr just talk to Chief: "buy $50 ETH with a 5% stop and 12% target".`,
     );
   });
 
@@ -160,7 +160,7 @@ if (bot) {
     }
   });
 
-  // Free text goes to Cat: the same Cat, chats and memory as the app.
+  // Free text goes to Chief: the same Chief, chats and memory as the app.
   bot.on("message:text", async (c) => {
     if (c.message.text.startsWith("/")) return;
     const uid = c.from!.id;
@@ -195,7 +195,7 @@ const app = express();
 if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY) || true);
 // CRE endpoints (src/cre-api.ts). express.json is applied per route there, so the web router keeps its own body parsing.
 app.use(creRouter({ pending: notifyPending, halt: notifyHalt }));
-// Per IP and minute: Ask Cat calls a paid model; sign-in links are guessable only by brute force; the rest is headroom
+// Per IP and minute: Ask Chief calls a paid model; sign-in links are guessable only by brute force; the rest is headroom
 // for the deck's polling (about 16 requests a minute per open tab).
 app.use("/api/cat", rateLimit(20, 60_000));
 app.use(["/signin", "/login", "/demo"], rateLimit(20, 60_000));
