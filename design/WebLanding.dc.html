@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tribe — Tribe · web</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0A}
+a{color:#34D399}a:hover{color:#6EE7B7}
+button,input{font-family:inherit;cursor:pointer}
+@keyframes tr-fade{from{opacity:0}to{opacity:1}}
+@keyframes tr-push{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes tr-step{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes tr-sheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes tr-backdrop{from{opacity:0}to{opacity:1}}
+@keyframes tr-toast{from{opacity:0;transform:translateY(-16px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes tr-banner{from{opacity:0;transform:translateY(-120%)}to{opacity:1;transform:none}}
+@keyframes tr-pop{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes tr-pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.45)}70%{box-shadow:0 0 0 8px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+@keyframes tr-flash{0%,100%{border-color:rgba(248,113,113,.35)}40%{border-color:rgba(248,113,113,1)}}
+button,a{transition:transform 120ms ease,background-color 180ms ease,color 180ms ease,border-color 180ms ease,opacity 180ms ease}
+button:active,a:active{transform:scale(.97)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition:none!important}}
+@keyframes orb-breathe{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.06);filter:brightness(1.15)}}
+@keyframes orb-spin{to{transform:rotate(360deg)}}
+@keyframes wave{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+@keyframes caret{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+.web{container-type:inline-size;container-name:web}
+@container web (max-width: 1279px){.rail{display:none!important}.cols{grid-template-columns:minmax(0,1fr)!important}}
+@container web (max-width: 1099px){.side{width:76px!important;padding-left:12px!important;padding-right:12px!important}.side-label,.side-extra{display:none!important}.side-item{justify-content:center!important}}
+@container web (max-width: 899px){.side{display:none!important}.grid2,.grid3{grid-template-columns:minmax(0,1fr)!important}.hide-sm{display:none!important}}
+@container web (max-width: 1099px){.hero{grid-template-columns:minmax(0,1fr)!important}.feat{grid-template-columns:minmax(0,1fr)!important}.steps{grid-template-columns:repeat(2,minmax(0,1fr))!important}.navlinks{display:none!important}}
+</style>
+</helmet>
+<div class="web" style="position: relative; width: 1440px; height: 2050px; box-sizing: border-box; background-color: #0A0A0A; background-image: radial-gradient(ellipse 60% 35% at 50% 0%, rgba(52,211,153,0.10), rgba(255,255,255,0) 70%); color: #F5F5F5; font-family: 'Geist', system-ui, sans-serif; overflow: hidden; animation: tr-fade 300ms ease-out both">
+  <header style="display: flex; align-items: center; gap: 28px; padding: 24px 64px">
+    <span style="font-size: 26px; font-weight: 700; letter-spacing: -0.05em">tribe<span style="color: #34D399">.</span></span>
+    <nav aria-label="Site" class="navlinks" style="display: flex; gap: 24px; font-size: 14px"><a href="#how" style="color: #C4C4C4; text-decoration: none">How it works</a><a href="#guard" style="color: #C4C4C4; text-decoration: none">Guard</a><a href="WebLeaderboard.dc.html" style="color: #C4C4C4; text-decoration: none">Leaderboard</a><a href="#creators" style="color: #C4C4C4; text-decoration: none">Creators</a></nav>
+    <span style="flex: 1"></span>
+    <a href="WebFeed.dc.html" style="color: #F5F5F5; font-size: 14px; text-decoration: none">Sign in</a>
+    <a href="WebFeed.dc.html" style="height: 42px; padding: 0 18px; border-radius: 21px; background: #F5F5F5; color: #0A0A0A; font-size: 14px; font-weight: 600; display: flex; align-items: center; text-decoration: none">Get started</a>
+  </header>
+  <section class="hero" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center; padding: 60px 64px 80px">
+    <div style="animation: tr-step 500ms cubic-bezier(.2,.8,.2,1) both">
+      <span style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 16px; border: 1px solid rgba(52,211,153,0.4); color: #34D399; font-size: 13px"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 3px; background: #34D399; animation: tr-pulse 2s ease-out infinite"></span>342 people copied @nightowl this week</span>
+      <h1 style="margin: 22px 0 0; font-size: 68px; line-height: 1.02; font-weight: 600; letter-spacing: -0.035em">Copy great traders.<br><span style="color: #8A8A8A">With a safety net onchain.</span></h1>
+      <p style="margin: 22px 0 0; font-size: 19px; color: #B5B5B5; line-height: 1.55; max-width: 540px">Every trade copies with its stop and target. A Chainlink-powered Guard pauses risky traders before you copy them. Your wallet stays yours.</p>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, auto)); gap: 10px; margin-top: 32px; justify-content: start">
+        <a href="WebFeed.dc.html" style="height: 52px; border-radius: 26px; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; padding: 0 24px; background: #34D399; color: #052E1C"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Start with email</a>
+        <a href="WebFeed.dc.html" style="height: 52px; border-radius: 26px; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; padding: 0 22px; border: 1px solid rgba(255,255,255,0.14); color: #F5F5F5">Google</a>
+        <a href="WebFeed.dc.html" style="height: 52px; border-radius: 26px; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; padding: 0 22px; border: 1px solid rgba(255,255,255,0.14); color: #F5F5F5">Connect wallet</a>
+      </div>
+      <div style="font-size: 13px; color: #737373; margin-top: 14px">Non-custodial wallets by Privy · Flash orders · Chainlink CRE</div>
+    </div>
+    <div aria-hidden="true" style="position: relative; height: 520px">
+      <div style="position: absolute; left: 30px; top: 20px; width: 400px; padding: 20px; border-radius: 22px; background: linear-gradient(180deg, #262626 0%, #171717 100%); border: 1px solid rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); animation: tr-step 600ms cubic-bezier(.2,.8,.2,1) 150ms both">
+        <div style="display: flex; align-items: center; gap: 10px"><span style="width: 40px; height: 40px; border-radius: 20px; background: #F5F5F5; color: #0A0A0A; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center">NO</span><span style="flex: 1; font-weight: 600">@nightowl</span><span style="font-size: 22px; font-weight: 600; color: #34D399">+8.4%</span></div>
+        <div style="font-size: 26px; font-weight: 600; margin-top: 14px">ETH long</div>
+        <div style="display: flex; gap: 6px; margin-top: 10px"><span style="font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: #F5F5F5; color: #0A0A0A">FLASH BRACKET</span><span style="font-size: 11px; padding: 3px 7px; border-radius: 6px; background: rgba(248,113,113,0.12); color: #F87171">SL −5%</span><span style="font-size: 11px; padding: 3px 7px; border-radius: 6px; background: rgba(52,211,153,0.12); color: #34D399">TP +12%</span></div>
+        <div style="height: 46px; border-radius: 23px; background: #34D399; color: #052E1C; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 18px"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Copy with Flash</div>
+      </div>
+      <div style="position: absolute; right: 10px; top: 230px; width: 330px; padding: 18px; border-radius: 22px; background: linear-gradient(180deg, #241818, #151313); border: 1px solid rgba(248,113,113,0.4); box-shadow: 0 30px 60px rgba(0,0,0,0.5); animation: tr-step 600ms cubic-bezier(.2,.8,.2,1) 350ms both">
+        <div style="display: flex; justify-content: space-between"><span style="font-weight: 600">@traderx</span><span style="font-size: 12px; color: #F87171; border: 1px solid rgba(248,113,113,0.5); border-radius: 8px; padding: 2px 8px">Paused by Guard</span></div>
+        <div style="position: relative; height: 6px; border-radius: 3px; background: #262626; margin-top: 14px"><div style="width: 91%; height: 6px; border-radius: 3px; background: #F87171"></div><span style="position: absolute; left: 65%; top: -4px; width: 2px; height: 14px; background: #F5F5F5"></span></div>
+        <div style="font-size: 13px; color: #C4C4C4; margin-top: 10px">Your $15 copy was blocked. Proof onchain ↗</div>
+      </div>
+      <div style="position: absolute; left: 60px; bottom: 10px; display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 26px; background: #161616; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 20px 40px rgba(0,0,0,0.5); animation: tr-step 600ms cubic-bezier(.2,.8,.2,1) 550ms both"><span aria-hidden="true" style="position: relative; display: inline-block; width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 34% 28%, #FFFFFF 0%, #D1FAE5 16%, #34D399 42%, #065F46 72%, #052016 100%); box-shadow: 0 0 15px rgba(52,211,153,0.35), inset 0 -2px 6px rgba(0,0,0,0.45); flex-shrink: 0"><span style="position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.35) 40deg, rgba(255,255,255,0) 90deg); animation: orb-spin 6s linear infinite; mix-blend-mode: overlay"></span></span><span style="font-size: 15px; color: #E5E5E5">“buy $50 ETH with a 5% stop”</span></div>
+    </div>
+  </section>
+  <section id="guard" class="feat" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 0 64px 80px">
+    <article style="border-radius: 22px; background: linear-gradient(180deg, #262626 0%, #171717 100%); border: 1px solid rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); padding: 24px"><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 14px; background: #262626; color: #34D399; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></span><h3 style="margin: 16px 0 0; font-size: 20px; font-weight: 600">Flash copy trading</h3><p style="margin: 8px 0 0; font-size: 15px; color: #A3A3A3; line-height: 1.55">Entry, stop and target copy together as one Flash order, at the size you choose. Approve each trade or let it run.</p></article>
+    <article style="border-radius: 22px; background: linear-gradient(180deg, #262626 0%, #171717 100%); border: 1px solid rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); padding: 24px"><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 14px; background: #262626; color: #34D399; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-3.5 7-9V6l-7-3-7 3v6c0 5.5 7 9 7 9z"/></svg></span><h3 style="margin: 16px 0 0; font-size: 20px; font-weight: 600">CRE Guard</h3><p style="margin: 8px 0 0; font-size: 15px; color: #A3A3A3; line-height: 1.55">Every 5 minutes Chainlink CRE checks each trader. Risky ones are paused onchain, and anyone can verify why.</p></article>
+    <article style="border-radius: 22px; background: linear-gradient(180deg, #262626 0%, #171717 100%); border: 1px solid rgba(255,255,255,0.07); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06); padding: 24px"><span aria-hidden="true" style="width: 44px; height: 44px; border-radius: 14px; background: #262626; color: #F5F5F5; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l2.5 3.5h9L19 5v9a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6zM9.5 13h.01M14.5 13h.01"/></svg></span><h3 style="margin: 16px 0 0; font-size: 20px; font-weight: 600">Ask Cat</h3><p style="margin: 8px 0 0; font-size: 15px; color: #A3A3A3; line-height: 1.55">Trade in plain words, ask who’s best this week, or why someone was paused. In the app, on the web and in Telegram.</p></article>
+  </section>
+  <section id="how" style="padding: 0 64px 80px">
+    <h2 style="margin: 0; font-size: 36px; font-weight: 600; letter-spacing: -0.02em">How copying works</h2>
+    <ol class="steps" style="list-style: none; margin: 24px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px">
+      <li style="padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08)"><div style="font-size: 13px; color: #34D399; font-weight: 600">01</div><div style="font-size: 17px; font-weight: 600; margin-top: 6px">Pick a trader</div><div style="font-size: 14px; color: #A3A3A3; margin-top: 4px; line-height: 1.5">Real onchain results, Guard record and copy slippage.</div></li><li style="padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08)"><div style="font-size: 13px; color: #34D399; font-weight: 600">02</div><div style="font-size: 17px; font-weight: 600; margin-top: 6px">Set your limits</div><div style="font-size: 14px; color: #A3A3A3; margin-top: 4px; line-height: 1.5">Budget, size per trade, stops required.</div></li><li style="padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08)"><div style="font-size: 13px; color: #34D399; font-weight: 600">03</div><div style="font-size: 17px; font-weight: 600; margin-top: 6px">They trade</div><div style="font-size: 14px; color: #A3A3A3; margin-top: 4px; line-height: 1.5">Guard checks them, then your filters.</div></li><li style="padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08)"><div style="font-size: 13px; color: #34D399; font-weight: 600">04</div><div style="font-size: 17px; font-weight: 600; margin-top: 6px">You copy</div><div style="font-size: 14px; color: #A3A3A3; margin-top: 4px; line-height: 1.5">Approve in a tap, or let it run. Stops come along.</div></li>
+    </ol>
+  </section>
+  <section id="creators" style="margin: 0 64px 80px; padding: 40px; border-radius: 28px; background: linear-gradient(180deg, #1C1C1C, #121212); border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; gap: 40px">
+    <div style="flex: 1"><h2 style="margin: 0; font-size: 32px; font-weight: 600; letter-spacing: -0.02em">Good trader? Get paid when people copy you.</h2><p style="margin: 10px 0 0; font-size: 16px; color: #A3A3A3; line-height: 1.55">Publish your trades or a bot you build with Cat. Every copy earns you a share of the Flash fee, paid onchain.</p></div>
+    <a href="WebCreator.dc.html" style="height: 52px; border-radius: 26px; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; padding: 0 26px; background: #F5F5F5; color: #0A0A0A">Become a creator</a>
+  </section>
+  <footer style="padding: 30px 64px; border-top: 1px solid #1A1A1A; display: flex; justify-content: space-between; gap: 30px; font-size: 13px; color: #8A8A8A"><span>Copy trading is risky. Past results don't predict future ones. Guard reduces but can't remove losses. Not financial advice.</span><span style="white-space: nowrap">Terms · Privacy · Risk disclosure</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2050}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
+

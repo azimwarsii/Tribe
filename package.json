@@ -1,0 +1,45 @@
+{
+  "name": "tribe-app",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "flash:check": "tsx src/flash-check.ts",
+    "test": "node --import tsx --test src/rules.test.ts src/app.test.ts src/http.test.ts src/guard-contract.test.ts src/guard-gate.test.ts",
+    "demo:reset": "node -e \"require('fs').rmSync('demo.db',{force:true})\" && cross-env DEMO=true DB_PATH=demo.db npm run seed",
+    "demo": "cross-env DEMO=true DB_PATH=demo.db CRE_SHARED_SECRET=demo PORT=8787 tsx src/index.ts",
+    "guard:deploy": "tsx src/deploy-guard.ts",
+    "cre:test": "cd cre-workflow/guard-workflow && bun test && cd ../agent-workflow && bun test && cd ../board-workflow && bun test",
+    "cre:build": "cd cre-workflow/guard-workflow && bun x cre-compile main.ts ../guard.wasm && cd ../agent-workflow && bun x cre-compile main.ts ../agent.wasm && cd ../board-workflow && bun x cre-compile main.ts ../board.wasm",
+    "cre:simulate": "cd cre-workflow && cre workflow simulate guard-workflow --target staging-settings --non-interactive --trigger-index 0",
+    "cre:broadcast": "cd cre-workflow && cre workflow simulate guard-workflow --target staging-settings --non-interactive --trigger-index 0 --broadcast",
+    "cre:install": "cd cre-workflow/guard-workflow && bun install && cd ../agent-workflow && bun install && cd ../board-workflow && bun install",
+    "cre:preview": "tsx src/cre-preview.ts",
+    "demo:reset:live": "node -e \"require('fs').rmSync('demo.db',{force:true})\" && cross-env DEMO=true DEMO_PRICES=false DB_PATH=demo.db npm run seed",
+    "demo:live": "cross-env DEMO=true DEMO_PRICES=false DRY_RUN=false DB_PATH=demo.db CRE_SHARED_SECRET=demo PORT=8787 tsx src/index.ts",
+    "demo:cre": "cross-env CRE_SHARED_SECRET=demo tsx src/cre-preview.ts --post"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@resvg/resvg-js": "^2.6.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "grammy": "^1.30.0",
+    "viem": "^2.21.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "cross-env": "^10.1.0",
+    "ganache": "^7.9.2",
+    "solc": "^0.8.28",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

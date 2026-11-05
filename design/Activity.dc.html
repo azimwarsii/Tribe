@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tribe — Activity</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0A0A0A}
+a{color:#34D399}a:hover{color:#6EE7B7}
+button,input{font-family:inherit;cursor:pointer}
+@keyframes tr-fade{from{opacity:0}to{opacity:1}}
+@keyframes tr-push{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+@keyframes tr-step{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes tr-sheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes tr-backdrop{from{opacity:0}to{opacity:1}}
+@keyframes tr-toast{from{opacity:0;transform:translateY(-16px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes tr-banner{from{opacity:0;transform:translateY(-120%)}to{opacity:1;transform:none}}
+@keyframes tr-pop{0%{opacity:0;transform:scale(.6)}60%{opacity:1;transform:scale(1.06)}100%{transform:scale(1)}}
+@keyframes tr-pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.45)}70%{box-shadow:0 0 0 8px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+@keyframes tr-flash{0%,100%{border-color:rgba(248,113,113,.35)}40%{border-color:rgba(248,113,113,1)}}
+button,a{transition:transform 120ms ease,background-color 180ms ease,color 180ms ease,border-color 180ms ease,opacity 180ms ease}
+button:active,a:active{transform:scale(.97)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition:none!important}}
+</style>
+</helmet>
+<div style="animation: tr-push 300ms cubic-bezier(.2,.8,.2,1) both; position: relative; width: 390px; height: 844px; box-sizing: border-box; background-color: #0A0A0A; background-image: radial-gradient(ellipse 70% 32% at 50% 0%, rgba(255,255,255,0.09), rgba(255,255,255,0) 100%); color: #F5F5F5; font-family: 'Geist', system-ui, sans-serif; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; overflow: hidden">  <header style="display: flex; align-items: center; gap: 12px; padding: 18px 20px 12px">
+    <a href="Me.dc.html" aria-label="Back" style="width: 44px; height: 44px; border-radius: 22px; background: #1F1F1F; border: 1px solid rgba(255,255,255,0.07); color: #F5F5F5; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></a>
+    <div style="flex: 1"><h1 style="margin: 0; font-size: 16px; font-weight: 600">Activity</h1><div style="font-size: 13px; color: #A3A3A3">Every copy, skip, pause and payout</div></div>
+  </header>
+  <div role="tablist" aria-label="Filter activity" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 20px; padding: 4px; border-radius: 22px; background: #151515; border: 1px solid rgba(255,255,255,0.05)">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><button role="tab" aria-selected="{{t.sel}}" onClick="{{t.pick}}" style="height: 36px; border-radius: 18px; border: 0; background: {{t.bg}}; color: {{t.fg}}; font-size: 13px">{{t.label}}</button></sc-for>
+  </div>
+  <main style="flex: 1; overflow: hidden; padding: 12px 20px 0">
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+      <section aria-label="{{g.day}}" style="margin-bottom: 8px">
+        <h2 style="margin: 8px 0 2px; font-size: 13px; font-weight: 600; color: #A3A3A3">{{g.day}}</h2>
+        <sc-for list="{{g.items}}" as="i" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 12px; min-height: 62px; border-bottom: 1px solid #1C1C1C">
+            <span aria-hidden="true" style="width: 36px; height: 36px; border-radius: 18px; background: {{i.iconBg}}; color: {{i.iconFg}}; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="{{i.icon}}"/></svg></span>
+            <span style="flex: 1; min-width: 0"><span style="display: block; font-size: 14px; font-weight: 600">{{i.title}}</span><span style="display: block; font-size: 12px; color: #A3A3A3; line-height: 1.4">{{i.sub}}</span></span>
+            <span style="text-align: right; flex-shrink: 0"><span style="display: block; font-size: 14px; font-weight: 600; color: {{i.amtColor}}">{{i.amt}}</span><sc-if value="{{i.hasTx}}" hint-placeholder-val="{{ true }}"><a href="#" style="font-size: 12px">Receipt ↗</a></sc-if></span>
+          </div>
+        </sc-for>
+      </section>
+    </sc-for>
+  </main>
+<nav aria-label="Main" style="position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; gap: 4px; padding: 5px; border-radius: 30px; background: rgba(36,36,36,0.78); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 12px 32px rgba(0,0,0,0.55)">
+<a href="Main.dc.html" aria-label="Feed" style="width: 44px; height: 44px; border-radius: 22px; background: transparent; color: #9A9A9A; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg></a>
+<a href="Leaderboard.dc.html" aria-label="Ranks" style="width: 44px; height: 44px; border-radius: 22px; background: transparent; color: #9A9A9A; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20V11M12 20V5M18 20v-6"/></svg></a>
+<a href="AskCat.dc.html" aria-label="Ask Cat" style="width: 44px; height: 44px; border-radius: 22px; background: transparent; color: #9A9A9A; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l2.5 3.5h9L19 5v9a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6z"/><path d="M9.5 13h.01M14.5 13h.01"/></svg></a>
+<a href="Guard.dc.html" aria-label="Guard" style="width: 44px; height: 44px; border-radius: 22px; background: transparent; color: #9A9A9A; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-3.5 7-9V6l-7-3-7 3v6c0 5.5 7 9 7 9z"/></svg></a>
+<a href="Me.dc.html" aria-current="page" aria-label="Me" style="width: 44px; height: 44px; border-radius: 22px; background: #3A3A3A; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { tab: 'All' }; }
+  renderVals() {
+    const I = { copy: 'M13 2L4 14h7l-1 8 9-12h-7z', skip: 'M5 12h14', guard: 'M12 21s7-3.5 7-9V6l-7-3-7 3v6c0 5.5 7 9 7 9z', money: 'M12 5v14M5 12h14', clock: 'M12 8v4l3 2M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z', out: 'M12 19V5M6 11l6-6 6 6' };
+    const ok = { iconBg: 'rgba(52,211,153,0.12)', iconFg: '#34D399' }, mute = { iconBg: '#262626', iconFg: '#A3A3A3' }, bad = { iconBg: 'rgba(248,113,113,0.12)', iconFg: '#F87171' }, warn = { iconBg: 'rgba(252,211,77,0.12)', iconFg: '#FCD34D' };
+    const all = [
+      { day: 'Today', cat: 'Copies', ...ok, icon: I.copy, title: 'Copied ETH long', sub: '@nightowl · Bracket · stop −5%, target +12%', amt: '$25.00', amtColor: '#F5F5F5', hasTx: true },
+      { day: 'Today', cat: 'Guard', ...bad, icon: I.guard, title: 'Blocked PEPE buy', sub: '@traderx paused by Guard · nothing spent', amt: '$0', amtColor: '#A3A3A3', hasTx: true },
+      { day: 'Today', cat: 'Copies', ...mute, icon: I.skip, title: 'Skipped SOL buy', sub: '@kestrel · no stop-loss, your filter', amt: '—', amtColor: '#A3A3A3', hasTx: false },
+      { day: 'Today', cat: 'Copies', ...warn, icon: I.clock, title: 'Request expired', sub: '@mav · ARB limit · 60s passed', amt: '—', amtColor: '#A3A3A3', hasTx: false },
+      { day: 'Yesterday', cat: 'Money', ...ok, icon: I.money, title: 'Added funds', sub: 'Card · [CHAIN A]', amt: '+$200.00', amtColor: '#34D399', hasTx: true },
+      { day: 'Yesterday', cat: 'Money', ...ok, icon: I.money, title: 'Fee-share payout', sub: 'Creator earnings · to your wallet', amt: '+$48.10', amtColor: '#34D399', hasTx: true },
+      { day: 'Yesterday', cat: 'Copies', ...warn, icon: I.copy, title: 'Partly filled ARB', sub: '@mav · $16 of $25 within slippage', amt: '$16.00', amtColor: '#F5F5F5', hasTx: true },
+      { day: 'Yesterday', cat: 'Money', ...mute, icon: I.out, title: 'Withdrew', sub: 'To 0x…[ADDR]', amt: '−$50.00', amtColor: '#F5F5F5', hasTx: true }
+    ];
+    const t = this.state.tab;
+    const list = all.filter((i) => t === 'All' || i.cat === t);
+    const groups = ['Today', 'Yesterday'].map((day) => ({ day, items: list.filter((i) => i.day === day) })).filter((g) => g.items.length);
+    const tabs = ['All', 'Copies', 'Guard', 'Money'].map((label) => ({ label, sel: label === t ? 'true' : 'false', bg: label === t ? '#333333' : 'transparent', fg: label === t ? '#FFFFFF' : '#A3A3A3', pick: () => this.setState({ tab: label }) }));
+    return { tabs, groups };
+  }
+}
+</script>
+</body>
+</html>
+

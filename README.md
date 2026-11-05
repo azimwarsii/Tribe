@@ -1,0 +1,114 @@
+# Tribe: copy trading with a safety net, on Flash and Chainlink CRE
+
+Tribe is a social trading app. Traders post real trades; followers copy them with their own wallets and their own limits; an AI agent run on Chainlink CRE trades in the open so anyone can copy it too. Every trade is a [Flash](https://flash.definitive.fi/docs) advanced order (entries ship with a take-profit / stop-loss bracket attached), and a [Chainlink CRE](https://docs.chain.link/cre) workflow acts as an onchain circuit breaker: it pauses copying of a trader who is blowing up, before the next copy fills.
+
+Mobile-first web app (it reflows to a full desktop layout), plus the same Ask Cat assistant in Telegram.
+
+## Why it wins, in three lines
+- **Social and gamified:** unique usernames with profile photos and bios, public profiles with a portfolio view, free follow or copy with Flash, a feed with story rings, levels, streaks, quests, badges, squads, a Hot pick and share cards. The game rewards safe behaviour: brackets, copying trades with stops, and researching before you copy.
+- **CRE security:** Chainlink CRE checks every trader and writes the verdict onchain. Tribe reads that contract right before every copy, and if CRE goes quiet, auto-copies wait for your OK.
+- **One AI across the app:** Cat trades from plain words or voice, and researches any post or trader ("Is this a good trade?") using the trader's fills, the latest CopyGuard verdict and the Chainlink price check. It does the same in Telegram and over MCP. Anyone can switch on their own bot, which runs on CRE. Its trades post under their name, tagged **Bot**, next to their **Manual** trades.
+
+## How Tribe meets the tracks
+
+### Best Use of Flash Advanced Orders in a Social App
+| Requirement | Where |
+| --- | --- |
+| Working trading flow on Flash advanced orders | `src/flash.ts`: quote → setup (approvals broadcast via Flash's `/setup-transaction`) → EIP-712 sign → order. Market with an **attached bracket** (entry + take-profit + stop-loss as one Flash order), limit, stop-loss, take-profit, standalone bracket, **TWAP**, stop-buy. Gasless signed **cancel**, **batch cancel** (a leader's cancel cancels every follower's resting copy) and **update** (move a live stop). The **orders WebSocket** delivers fills and close reasons live. **Permit2 with minimal allowance** is on by default, so no wallet carries an unlimited approval. **Limit orders with `expireTime`** power the chase limit: a copy never pays more than 1% above the leader's entry. `npm run flash:check` checks 9 order shapes, batch cancel, order listing and the stream against the live API. Full map: [docs/FLASH.md](docs/FLASH.md). |
+| Onchain execution in the demo | `DRY_RUN=false` + `LIVE_WALLET_PRIVATE_KEY`: Ask Cat or a copied trade places a real Flash order on Base; the feed card and Activity link the settlement tx (from Flash fills) on basescan. `npm run flash:check -- --live 5` places a real $5 bracketed buy from the terminal. |
+| Social | Copy trading with per-trader rules (ask-first with Telegram approve buttons, or auto; ratio, max per trade, daily cap, stop-loss required), live feed with reactions and comments, leaderboard (profit, most copied, streaks, safest, squads), squads, quests and badges, share cards for **X** (1200×630) and **TikTok / Reels** (9:16, phone share sheet), a public `/top` leaderboard whose X preview is the rendered board, public profile pages that land new users on "Join and copy". |
+| Agent-run product others follow | **Your own bot**: any user can switch on a bot that runs the CRE strategy (`cre-workflow/agent-workflow`). It trades from their wallet and posts under their username, tagged **Bot** with a one-line thesis, next to their **Manual** trades. People copy that user and get both, by their own rules, and the profile shows the user's Manual vs Bot record side by side (`src/bots.ts`). Also **Ask Cat**: "buy $50 ETH with a 5% stop and 12% target" → a bracketed Flash order, in the app, by voice, or in Telegram. |
+| AI on every post | **Ask Cat** on each feed card opens a research chat about that trade. Cat's read covers the stop, the payoff, whether you'd be chasing, the track record, drawdown, the latest **CRE CopyGuard verdict** and the **Chainlink vs DEX price**. It also gives the trader's history and the worst case under your own copy rules. The post stays pinned with **Copy with Flash** and a way back. The same read appears on profiles and in the copy flow, and "Cat's pick" in the feed surfaces today's best-checked entry. You can ask by name from anywhere: "is @nightowl worth copying?" (`src/research.ts`). Cat is accountable: every call it makes is stored and scored by what the trader did next ("Cat's calls" on the Cat home). |
+| AI-native | **Tribe MCP server** (`src/mcp.ts`): any MCP client (Claude, Cursor) can read the leaderboard, check Guard, **research a trader or post** (`tribe_research`), copy a trader with limits, and propose a bracketed Flash trade that it places only after the user confirms. Setup is on Settings → AI agent access. |
+| Monetized from day 1 | `flashIntegratorFeeBps` on every quote and order. Creators earn a share (`CREATOR_SHARE`) of the integrator fee on copies of their trades, read from Flash fills (`integratorFeeNotional`). |
+
+### Chainlink CRE
+| Requirement | Where |
+| --- | --- |
+| CRE workflow as the orchestration layer | Three workflows, TypeScript, `@chainlink/cre-sdk` 1.23: `guard-workflow` (**CopyGuard**, the circuit breaker), `agent-workflow` (**the bot strategy** users switch on; each user's bot trades under their own name), `board-workflow` (**Season board**, the leaderboard recomputed from Flash fills and attested onchain to `contracts/SeasonBoard.sol`). |
+| Blockchain + external API / LLM | Guard: Tribe's risk API (HTTP, secret-authenticated) + Flash DEX price (HTTP, median across nodes) + **Chainlink ETH/USD Data Feed** (EVM read on Base) + Anthropic LLM for the grey zone (temperature 0, node consensus on identical verdicts) → **signed report written onchain** through the Chainlink Forwarder to `contracts/CopyGuard.sol` (Base Sepolia). Agent: Data Feed + Flash market data + LLM thesis → Flash orders via Tribe. |
+| Simulation | `npm run cre:simulate` (dry run) and `npm run cre:broadcast` (writes the verdict onchain). Both workflows compile to WASM with the SDK's compiler (`npm run cre:build`) and have unit tests (`npm run cre:test`). |
+| Meaningfully used | Every copy is gated by the verdict CRE writes. Right before fan-out, Tribe **reads `CopyGuard.halted(trader)` onchain** (`guardGate` in `src/guard.ts`), so a lagging event watcher or an edited database can't let a paused trader through. Even a "resume" posted to the app's API can't unblock a trader the contract still has halted: the app can only be stricter than the chain, never looser. It fails safe: if the chain can't be read, or CRE hasn't reported for `GUARD_MAX_SILENCE_MIN`, auto-copies are held for the follower's approval. This dead-man's switch shows as the CopyGuard heartbeat on the Guard page. It is tested against the real contract over JSON-RPC (`src/guard-gate.test.ts`). Cat cites the latest verdict and price check in every research answer. The Guard page shows the **Guard log** (each CRE run, trader by trader: rule or AI decision, risk score, onchain proof) and the live Chainlink-vs-DEX price check. Because the verdicts live onchain, `CopyGuard` is also a public risk signal any other copy-trading app can read (`halted(trader)` / `haltedMany`). |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph CRE["Chainlink CRE (DON)"]
+    G[CopyGuard workflow]
+    A[Bot strategy workflow]
+  end
+  T[Tribe app + Telegram bot]
+  F[Flash API]
+  C[CopyGuard.sol on Base Sepolia]
+  D[Chainlink ETH/USD Data Feed on Base]
+  L[LLM]
+  G -- GET /guard/snapshot --> T
+  G -- read --> D
+  G -- price --> F
+  G -- grey zone --> L
+  G -- signed report via Forwarder --> C
+  C -- LeaderHalted / Resumed events --> T
+  A -- read --> D
+  A -- market data --> F
+  A -- thesis --> L
+  A -- POST /cre/signal --> T
+  T -- quote / sign / order / cancel / update --> F
+  F -- fills onchain --> B[(Base)]
+```
+
+| Path | What |
+| --- | --- |
+| `src/flash.ts` | Flash client: quotes, setup transactions, attached brackets, orders, fills, cancel, update, balances |
+| `src/tracker.ts` | Places and tracks orders; turns an attached bracket into the position's protective order once the entry fills; simulated fills in dry-run |
+| `src/copy.ts`, `src/rules.ts` | Fan-out to followers by their rules |
+| `src/guard.ts`, `contracts/CopyGuard.sol` | Risk snapshot for CRE, onchain halt watcher, the CRE receiver contract |
+| `src/cat.ts`, `src/ask.ts` | Ask Cat (rules or Claude), proposals, confirm-to-sign |
+| `src/views/*` | Server-rendered screens (from the Tribe design canvas) |
+| `cre-workflow/` | CRE project: `project.yaml`, `secrets.yaml`, two workflows |
+
+## Run it
+
+Needs Node 22.5+.
+
+```bash
+npm install
+npm run demo:reset     # seeds traders (with bios), followers, squads, and @kestrel's bot
+npm run demo           # http://localhost:8787 → /demo signs you in, /director drives the story
+```
+Offline: simulated prices, fills and balances. See `DEMO.md` for the video script.
+
+### Live Flash orders (Base mainnet)
+```bash
+npm run flash:check                 # quote, sign and submit every order type from an empty wallet (validates format; nothing executes)
+npm run flash:check -- --live 5     # a real $5 WETH buy with take-profit and stop attached
+```
+In the app: `.env` → `DRY_RUN=false`, `DEMO=false`, `LIVE_WALLET_PRIVATE_KEY=` (USDC + a little ETH on Base), then `npm start`.
+
+### CRE
+```bash
+cre login                           # once
+cd cre-workflow && cp .env.example .env   # fill CRE_ETH_PRIVATE_KEY (Base Sepolia test ETH), TRIBE_SECRET_ENV, LLM_API_KEY_ENV
+npm run guard:deploy                # deploys CopyGuard to Base Sepolia, writes the address into the configs
+npm run cre:simulate                # dry run: reads, judges, prepares the report
+npm run cre:broadcast               # writes the verdict to CopyGuard onchain
+```
+The workflows call Tribe over HTTP, so expose it (`cloudflared tunnel --url http://localhost:8787`) and set `snapshotUrl`, `verdictUrl` and `signalUrl` in the workflow configs.
+
+### Tests
+`npm test` (app, copy engine, HTTP integration, CopyGuard on an in-process EVM, and the copy-time gate reading CopyGuard over JSON-RPC) · `npm run cre:test` · `npm run typecheck`.
+
+## Verified
+- All 7 Flash order types quote, sign and **pass Flash's submit validation** against the live API (`npm run flash:check` submits each from a fresh empty wallet; Flash accepts the body and EIP-712 signatures, including the attached bracket's, and refuses only for the zero balance). Cancel and update are built to the documented message formats but not yet exercised on a live order.
+- The Chainlink ETH/USD feed address on Base reads live ($2,337 vs Flash's $2,343 at the time of writing).
+- All three CRE workflows typecheck and compile to WASM with the CRE SDK compiler, within CRE's per-run quotas; 25 workflow unit tests.
+- CopyGuard and SeasonBoard deploy and behave on a real EVM (Ganache): forwarder-only reports, ERC-165, replay protection, halt/resume, batch reads, season attestation.
+- 42 app tests, including attached brackets sized from the fill, Ask Cat research on posts, and the copy-time CopyGuard gate against the contract over JSON-RPC. In that test, a trader halted onchain is blocked; a silent CRE or an unreachable chain means copies are held for approval.
+
+## Not verified yet, or not built
+- A real Flash order submitted and filled (needs a funded wallet; the flow is complete and `flash:check --live` does it).
+- `cre workflow simulate` itself (needs `cre login`), and CopyGuard on Base Sepolia (needs test ETH).
+- Wallets are server-held demo keys (non-custodial signing via Privy is planned, not connected). Fine for a hackathon demo with fresh wallets, not for real users.
+- Alert toggles for fills, stop/target hits, payouts and the weekly summary are saved but have no sender yet. Squad XP is lifetime, not per season.
+
+Copy trading is risky. Nothing in Tribe is financial advice.

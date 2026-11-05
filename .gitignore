@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Secrets and local config (keep the .env.example files)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local databases (recreated by `npm run demo:reset` / `npm run seed`)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Build output and caches
+dist/
+build/
+out/
+coverage/
+.cache/
+*.tsbuildinfo
+*.wasm
+
+# Foundry / Hardhat artifacts (contracts)
+cache/
+artifacts/
+broadcast/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Browser automation output (screenshots, page snapshots, console logs)
+.playwright-mcp/
+playwright-report/
+test-results/
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
