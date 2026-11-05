@@ -12,6 +12,8 @@ import { catReadCard } from "./cat.js";
 import { reactBar, reactBreakdown } from "./reactions.js";
 import { Resvg } from "@resvg/resvg-js";
 import { botsStrip } from "./creator.js";
+import { basketsBy } from "../baskets.js";
+import { basketRow } from "./baskets.js";
 
 /** Render the share card SVG to a 1200x630 PNG so X, Telegram and TikTok show it (they ignore SVG). */
 export const svgToPng = (svg: string): Buffer => Buffer.from(new Resvg(svg, { font: { loadSystemFonts: true, defaultFontFamily: "Segoe UI" } }).render().asPng());
@@ -35,20 +37,24 @@ function splitCard(leader: number): string {
  * A trader's portfolio: their live book (positions they hold and orders still resting), each copyable with Flash,
  * then what they've made month by month. Others see allocation and returns in %; dollar amounts only for the owner.
  */
+/** The baskets a trader built: what you copy from them. */
+async function basketsStrip(owner: number): Promise<string> {
+  const list = await basketsBy(owner);
+  return `<section class="col" style="gap:8px" id="baskets"><h2>Baskets</h2>${list.map(basketRow).join("") || '<div class="sm mut">No baskets yet. Follow to see the first one.</div>'}</section>`;
+}
+
 async function portfolioTab(u: { id: number; handle: string }, me: boolean, viewer: number): Promise<string> {
   const book = await liveBook(u.id);
   const total = book.held.reduce((a, p) => a + p.sizeUsd, 0);
   const max = getMeta(viewer).defaults.max;
-  const copyBtn = (tradeId: number | null, what: string, worst: string) => !me && tradeId
-    ? `<button class="btn sm p" style="width:auto" data-act="/api/copy-trade" data-body='{"trade":${tradeId},"usd":${max}}' data-confirm="${esc(`Copy $${max} of @${u.handle}'s ${what} with Flash? One order from your wallet${worst}. CopyGuard checks them first.`)}">${icon("bolt", 13)}Copy with Flash</button>` : "";
   const held = book.held.map((p) => {
     const alloc = total ? (p.sizeUsd / total) * 100 : 0;
     const worst = p.stopPct !== null ? `, stop ${p.stopPct.toFixed(1)}% below entry: worst case about −$${((max * p.stopPct) / 100).toFixed(2)}` : ", with no stop-loss";
     return `<div class="tile"><div class="row" style="gap:12px"><span class="av sm">${esc(p.symbol.slice(0, 3))}</span><span class="grow" style="min-width:0"><b class="md">${esc(p.symbol)} <span class="pill ok" style="margin-left:4px">Live</span></b><span class="sm mut" style="display:block">${alloc.toFixed(0)}% of portfolio${me ? ` · ${money(p.sizeUsd)}` : ""}${p.from !== "you" ? ` · copied from @${esc(p.from)}` : ""}</span></span><span style="text-align:right"><b class="${signCls(p.pnlPct)}">${pct(p.pnlPct)}</b><span class="xs mut" style="display:block">since entry</span></span></div>
 <div class="bar" style="margin-top:10px" aria-hidden="true"><i style="width:${alloc.toFixed(0)}%"></i></div>
-<div class="row sp" style="margin-top:8px;gap:8px"><span class="xs row" style="gap:10px">${p.stopPct !== null ? `<span class="down">Stop −${p.stopPct.toFixed(1)}%</span>` : '<span class="warn">No stop</span>'}${p.tpPct !== null ? `<span class="up">Target +${p.tpPct.toFixed(1)}%</span>` : '<span class="mut">No target</span>'}</span>${copyBtn(p.tradeId, `${p.symbol} position`, worst)}</div></div>`;
+<div class="row sp" style="margin-top:8px;gap:8px"><span class="xs row" style="gap:10px">${p.stopPct !== null ? `<span class="down">Stop −${p.stopPct.toFixed(1)}%</span>` : '<span class="warn">No stop</span>'}${p.tpPct !== null ? `<span class="up">Target +${p.tpPct.toFixed(1)}%</span>` : '<span class="mut">No target</span>'}</span></div></div>`;
   }).join("");
-  const resting = book.resting.map((r) => `<div class="tile row sp" style="gap:10px"><span class="row" style="gap:12px"><span class="av sm">${esc(r.symbol.slice(0, 3))}</span><span><b class="md">${esc(r.label)} buy · ${esc(r.symbol)}</b><span class="sm mut" style="display:block">${r.price ? `at $${Number(r.price).toFixed(2)} · ` : ""}waiting · placed ${ago(r.at)} ago</span></span></span>${copyBtn(r.tradeId, `${r.symbol} ${r.label.toLowerCase()} order`, ", resting at the same price")}</div>`).join("");
+  const resting = book.resting.map((r) => `<div class="tile row sp" style="gap:10px"><span class="row" style="gap:12px"><span class="av sm">${esc(r.symbol.slice(0, 3))}</span><span><b class="md">${esc(r.label)} buy · ${esc(r.symbol)}</b><span class="sm mut" style="display:block">${r.price ? `at $${Number(r.price).toFixed(2)} · ` : ""}waiting · placed ${ago(r.at)} ago</span></span></span></div>`).join("");
   return `<div class="row sp"><h2 class="row" style="gap:8px"><span class="live" aria-hidden="true"></span>Live now</h2><span class="sm mut">${book.held.length + book.resting.length} open</span></div>
 ${held}${resting}${held || resting ? "" : '<div class="sm mut">Nothing open right now.</div>'}
 ${madeByMonth(monthlyHistory(u.id), me)}`;
@@ -82,13 +88,14 @@ export async function profilePage(viewer: number, handle: string, q: Record<stri
 ${events.map((e) => `<div class="tile"><div class="row sp"><b class="md">${e.kind === "halt" ? "Paused by Guard" : "Cleared by Guard"}</b><span class="sm mut">${ago(e.at)} ago</span></div><div class="sm mut" style="margin-top:4px">${esc(e.reason ?? "Checks passed")}</div>${e.tx ? `<div class="sm up" style="margin-top:4px">tx ${esc(e.tx.slice(0, 18))}…</div>` : ""}</div>`).join("") || '<div class="sm mut">No Guard incidents.</div>'}`
     : tab === "Badges" ? (p.badges.length ? `<div class="grid3">${p.badges.map((b) => `<div class="tile col" style="align-items:center;text-align:center;gap:8px;padding:14px 8px"><span class="medal on" aria-hidden="true">${icon(b.icon, 22)}</span><span class="sm" style="font-weight:600">${esc(b.label)}</span></div>`).join("")}</div>` : '<span class="sm mut">No badges yet.</span>')
     : `<h2>Stats</h2><div class="grid2">${stat("Win rate", p.winRate === null ? "—" : p.winRate + "%")}${stat("Guard pauses", `${p.guardPauses} in ${p.days || 0} days`)}${stat("Copies", String(p.copies))}${stat("Track record", `${p.days} days · ${p.trades} trades`)}</div>
+${await basketsStrip(u.id)}
 ${splitCard(u.id)}
 ${botsStrip(u.id)}
 <div class="tile"><div class="row sp sm mut"><span>Max drawdown</span><span>${riskWord(Math.min(100, dd * 3.5))}</span></div><div style="font-size:18px;font-weight:600;margin-top:4px">${dd ? "−" + dd.toFixed(1) + "pp" : "—"}</div><div class="bar" style="margin-top:8px"><i style="width:${Math.min(100, (dd / 25) * 100)}%"></i></div></div>`;
   const cta = me ? `<a class="btn p" href="/profile/edit" style="flex:2">Edit profile</a>`
     : rules ? `<a class="btn" href="/traders" style="flex:2">Copying · manage</a>`
     : p.halted ? `<a class="btn" href="/guard" style="flex:2">Paused by Guard</a>`
-    : `<a class="btn p only-m" href="/copy/${esc(handle)}" style="flex:2">${icon("bolt", 14)}Copy with Flash</a><button class="btn p only-d" data-open="copymodal" style="flex:2">${icon("bolt", 14)}Copy with Flash</button>`;
+    : `<a class="btn p" href="#baskets" style="flex:2">${icon("list", 14, "currentColor", 2)}See baskets</a>`;
   const count = (n: number, label: string, link?: string) => `<${link ? `a href="${link}"` : "span"} class="pcount"><b>${n}</b><span>${label}</span></${link ? "a" : "span"}>`;
   const botBanner = bot.on
     ? `<a class="card row" href="${me ? "/bot" : href({ tab: "Trades", src: "Bot" })}" style="margin:0 20px 12px;gap:12px;color:#F5F5F5;border-color:rgba(52,211,153,.3);background:linear-gradient(135deg,rgba(52,211,153,.08),#141414 60%)"><span class="ic36" style="color:#34D399;background:rgba(52,211,153,.12)">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">${me ? "Your bot is on" : `@${esc(handle)} runs a bot`}</b><span class="sm mut">Chainlink CRE strategy · $${bot.usd} a trade · up to ${bot.perDay} a day · tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>`
@@ -322,7 +329,7 @@ export async function threadPage(viewer: number, id: number): Promise<string> {
 <form data-form action="/api/comment" class="row" style="gap:8px;position:sticky;bottom:0;padding:10px 0 24px;background:linear-gradient(180deg,rgba(10,10,10,0),#0A0A0A 30%)"><input type="hidden" name="trade" value="${id}"><input class="f" name="text" maxlength="280" placeholder="Add a comment" aria-label="Add a comment" autocomplete="off" required><button class="btn p" style="width:auto">Post</button></form></main>`;
   const aside = `<section class="card col" style="gap:14px"><div class="row" style="gap:12px"><span class="av w lg">${face(c.handle)}</span><div class="grow"><b style="display:block;font-size:16px">@${esc(c.handle)}</b><span class="sm mut">${esc(p.user.persona ?? "Trader")} · Lv ${p.level} · ${p.followers} copier${p.followers === 1 ? "" : "s"}</span></div></div>
 <div class="grid3">${stat("30d", pct(month.pct), signCls(month.pct))}${stat("Win rate", p.winRate === null ? "—" : p.winRate + "%")}${stat("Guard", `${p.guardPauses} pause${p.guardPauses === 1 ? "" : "s"}`)}</div>
-${viewer === c.leader ? "" : `<a class="btn p" href="/copy/${esc(c.handle)}">${icon("bolt", 14)}Copy with Flash</a>`}<a class="btn" href="/u/${esc(c.handle)}">View profile</a></section>
+${viewer === c.leader ? "" : `<a class="btn p" href="/u/${esc(c.handle)}#baskets">${icon("list", 14, "currentColor", 2)}Their baskets</a>`}<a class="btn" href="/u/${esc(c.handle)}">View profile</a></section>
 <section class="flat col" style="gap:6px"><h2 style="font-size:16px">${c.copiers} copied this trade</h2><div class="sm mut" style="line-height:1.5">Each copy carried the same stop and target, sized by each follower's own rules.</div></section>`;
   const body = `${header("Comments", `@${c.handle} · ${c.symbol} ${c.trade.side === "buy" ? "long" : "sell"}`, "/feed")}${split(main, aside, "About this trader")}`;
   return page({ title: "Comments", body, split: true });
@@ -348,9 +355,9 @@ export async function publicPage(handle: string, tradeId?: number): Promise<stri
 <section class="card"><div class="row sp"><span class="sm mut">Total return · from filled orders</span><span class="sm ${signCls(month.pct)}">30 days ${pct(month.pct)}</span></div><div class="big ${signCls(p.pnlPct)}" style="margin-top:4px">${pct(p.pnlPct, 1)}</div>${spark}
 <div class="grid4 pgrid" style="margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">${stat("Win rate", p.winRate === null ? "—" : p.winRate + "%")}${stat("Max drawdown", p.maxDd ? "−" + p.maxDd.toFixed(1) + "pp" : "—")}${stat("Guard pauses", `${p.guardPauses} in ${p.days} days`)}${stat("Trades", String(p.trades))}</div></section>
 ${recent.length ? `<section class="card only-d" style="padding:6px 8px"><h2 style="font-size:16px;padding:12px 12px 4px">Recent trades</h2><table class="tbl"><thead><tr><th>Token</th><th>Flash order</th><th>Chain</th><th>When</th><th class="r">Since entry</th></tr></thead><tbody>${recent.map((c) => `<tr><td><b>${esc(c.symbol)}</b> <span class="mut sm">${c.trade.side === "buy" ? "long" : "sold"}</span></td><td>${esc(c.orderLabel.replace("Flash ", ""))}</td><td class="mut">Base</td><td class="mut">${ago(c.at)} ago</td><td class="r ${c.sincePct === null ? "mut" : signCls(c.sincePct)}"><b>${c.sincePct === null ? "—" : pct(c.sincePct)}</b></td></tr>`).join("")}</tbody></table></section>` : ""}
-<div class="only-m"><div class="col"><h2 style="margin-top:8px">Copy this trader on Tribe</h2>${pitch}${join}</div></div>
+<div class="only-m"><div class="col"><h2 style="margin-top:8px">Copy their baskets on Tribe</h2>${pitch}${join}</div></div>
 <p class="note">Past results don't predict future ones. Not financial advice.</p></main>`;
-  const aside = `<section class="card col" style="gap:14px"><h2>Copy @${esc(handle)} on Tribe</h2>${pitch}${join}<a class="sm" href="/signin" style="text-align:center;color:#A3A3A3">I have an account · Sign in</a></section>
+  const aside = `<section class="card col" style="gap:14px"><h2>Copy @${esc(handle)}'s baskets on Tribe</h2>${pitch}${join}<a class="sm" href="/signin" style="text-align:center;color:#A3A3A3">I have an account · Sign in</a></section>
 <section class="flat col" style="gap:10px"><h2 style="font-size:16px">Share this trader</h2><div class="grid3"><a class="btn sm" style="width:100%" href="https://x.com/intent/post?text=${shareText}&url=${encodeURIComponent(url)}" target="_blank" rel="noopener">Post on X</a><a class="btn sm" style="width:100%" href="https://t.me/share/url?url=${encodeURIComponent(url)}&text=${shareText}" target="_blank" rel="noopener">Telegram</a><button class="btn sm" style="width:100%" data-copy="${esc(url)}">Copy link</button></div></section>`;
   const body = `<style>.app.pub{max-width:1180px}</style><header class="hd" style="gap:24px"><a href="/" style="font-size:22px;font-weight:700;letter-spacing:-.04em;color:#F5F5F5">tribe<span style="color:#34D399">.</span></a><nav class="only-d" aria-label="Site"><span class="row" style="gap:22px;font-size:14px"><a href="/#how" style="color:#C4C4C4">How it works</a><a href="/#guard" style="color:#C4C4C4">Guard</a><a href="/#creators" style="color:#C4C4C4">Creators</a></span></nav><span class="grow"></span><a class="mut md" href="/signin">Sign in</a><a class="btn sm w only-d" href="/onboarding">Get started</a></header>
 <div class="sm mut" style="padding:0 20px 12px">Shared from X · ${esc(url.replace(/^https?:\/\//, ""))}</div>${split(main, aside, `Copy @${handle}`)}`;

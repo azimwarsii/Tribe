@@ -20,6 +20,7 @@ import { catAsk, catConfirm } from "./cat.js";
 import { researchTrade, verdictText } from "./research.js";
 import { latestChat } from "./db.js";
 import { enableDemoPrices } from "./prices.js";
+import { snapshotBaskets } from "./baskets.js";
 import { seedDemoSignals } from "./signals.js";
 import { assertSafeConfig } from "./preflight.js";
 import { rateLimit } from "./ratelimit.js";
@@ -172,7 +173,7 @@ if (bot) {
     const read = r.verdict ? `\n\n${verdictText(r.verdict)}` : "";
     // A research answer links back to the post and to copying it in the app.
     const kb = r.proposalId ? new InlineKeyboard().text("Confirm & sign", `cat:${r.proposalId}`)
-      : r.ctx && linkable() ? new InlineKeyboard().url("Open the post", `${baseUrl()}/t/${r.ctx.id}`).url(r.ctx.copying ? "Manage copy" : "Copy with Flash", `${baseUrl()}${r.ctx.copying ? "/traders" : `/copy/${r.ctx.handle}`}`) : undefined;
+      : r.ctx && linkable() ? new InlineKeyboard().url("Open the post", `${baseUrl()}/t/${r.ctx.id}`).url(r.ctx.copying ? "Manage copy" : "Their baskets", `${baseUrl()}${r.ctx.copying ? "/traders" : `/u/${r.ctx.handle}#baskets`}`) : undefined;
     return c.reply(r.reply + extra + read, kb ? { reply_markup: kb } : undefined);
   });
 
@@ -216,6 +217,8 @@ startLocalCre();
 
 // Creators' bots: record prices and give every running bot a look, once a minute (BOT_TICK_MS to change).
 setInterval(() => void tickBots().catch((e) => console.error("bots:", (e as Error).message)), Number(process.env.BOT_TICK_MS ?? 60_000));
+// Every basket's index value, for its chart.
+setInterval(() => void snapshotBaskets().catch((e) => console.error("baskets:", (e as Error).message)), Number(process.env.BASKET_TICK_MS ?? 300_000));
 
 app.listen(Number(process.env.PORT ?? 8787), () => console.log(`Tribe on ${baseUrl()} (bot ${bot ? "on" : "off: set TELEGRAM_BOT_TOKEN"}, DRY_RUN=${process.env.DRY_RUN !== "false"})`));
 void bot?.start();

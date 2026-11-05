@@ -1,6 +1,10 @@
 import { db } from "./db.js";
 import { searchAsset, type FlashAsset } from "./flash.js";
 import { TOKENS } from "./parse.js";
+import { DEMO_TOKENS, demoToken, type DemoToken } from "./demo-tokens.js";
+import { demoPricesOn } from "./prices.js";
+
+export { priceStr, qtyStr } from "./numfmt.js";
 
 /**
  * Tokens you can trade on Base: anything Flash can route, found through Flash search. Search results include fakes
@@ -28,6 +32,8 @@ export function rememberToken(a: { address: string; symbol: string; name?: strin
     .run(a.address.toLowerCase(), a.symbol, a.name ?? null, a.decimals ?? null, a.imageUrl ?? null, Date.now());
 }
 
+const demoView = (t: DemoToken): TokenView => ({ address: t.address, symbol: t.symbol, name: t.name, price: t.price, change24h: t.change24h, liquidity: t.liquidity, image: null, ok: true });
+
 export const knownSymbol = (address: string) =>
   (db.prepare("SELECT symbol FROM tokens WHERE address = ?").get(address.toLowerCase()) as { symbol: string } | undefined)?.symbol;
 
@@ -36,6 +42,7 @@ const cache = new Map<string, { at: number; out: TokenView[] }>();
 export async function searchTokens(q: string, limit = 8): Promise<TokenView[]> {
   const key = q.trim().toLowerCase().slice(0, 60);
   if (!key) return [];
+  if (demoPricesOn()) return DEMO_TOKENS.filter((t) => t.symbol.toLowerCase().includes(key) || t.name.toLowerCase().includes(key) || t.address === key).map(demoView);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < 60_000) return hit.out;
   const url = `${BASE_SEARCH}?query=${encodeURIComponent(key)}&chain=base&limit=${limit}`;
@@ -54,6 +61,11 @@ export async function searchTokens(q: string, limit = 8): Promise<TokenView[]> {
 /** One token by address, checked: Flash knows it, it isn't flagged, and it's liquid enough. Throws with the reason. */
 export async function tradableToken(address: string): Promise<TokenView> {
   if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error("Pick a token from the list");
+  if (demoPricesOn()) {
+    const t = demoToken(address);
+    if (!t) throw new Error("That token isn't in the demo list");
+    return demoView(t);
+  }
   const a = (await searchAsset(address)) as (FlashAsset & { name?: string; imageUrl?: string; decimals?: number }) | undefined;
   if (!a || a.address.toLowerCase() !== address.toLowerCase()) throw new Error("Flash can't trade that token on Base");
   rememberToken(a);
@@ -66,6 +78,7 @@ const POPULAR = ["WETH", "cbBTC", "AERO", "VIRTUAL", "BRETT", "DEGEN", "TOSHI", 
 let popular: { at: number; out: TokenView[] } | undefined;
 /** A starting list before anything is typed: the most liquid safe match for each well-known Base token. */
 export async function popularTokens(): Promise<TokenView[]> {
+  if (demoPricesOn()) return DEMO_TOKENS.map(demoView);
   if (popular && Date.now() - popular.at < 10 * 60_000) return popular.out;
   const out: TokenView[] = [];
   for (const sym of POPULAR) {
@@ -78,17 +91,3 @@ export async function popularTokens(): Promise<TokenView[]> {
 
 export const WETH = TOKENS.ETH;
 
-/** A USD price as a plain decimal string Flash accepts: cents for $1+, enough significant digits below that. */
-export function priceStr(p: number): string {
-  if (!(p > 0)) return "0";
-  if (p >= 1) return p.toFixed(2);
-  const d = Math.min(18, Math.ceil(-Math.log10(p)) + 4);
-  return p.toFixed(d);
-}
-
-/** A token amount as a plain decimal string (never exponent notation). */
-export function qtyStr(n: number): string {
-  if (!(n > 0)) return "0";
-  if (n >= 1) return n.toFixed(4);
-  return n.toFixed(Math.min(18, Math.ceil(-Math.log10(n)) + 6));
-}

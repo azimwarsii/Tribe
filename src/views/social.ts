@@ -1,3 +1,5 @@
+import { basketBoard } from "../baskets.js";
+import { basketRow } from "./baskets.js";
 import { allHalts, allSquads, creRuns, db, followingOf, getMeta, guardEvents, haltOf, seasonBoard, squadMembers, squadOf, userById, type CreRun, type CreVerdict } from "../db.js";
 import { face, ago, initials, money, pct, profile, rankMin, seasonOf, seasonRange, windowPnl } from "../data.js";
 import { guardHeartbeat, lastGuardCheck, lastOracleCheck, riskOf } from "../guard.js";
@@ -103,7 +105,7 @@ ${guardLog()}
 // ---------- Leaderboard ----------
 
 export async function ranksPage(viewer: number, q: Record<string, unknown>): Promise<string> {
-  const tab = (["Profit", "Copied", "Streaks", "Safest", "New", "Bots", "Squads"].includes(String(q.tab)) ? String(q.tab) : "Profit") as "Profit" | "Copied" | "Streaks" | "Safest" | "New" | "Bots" | "Squads";
+  const tab = (["Baskets", "Profit", "Copied", "Streaks", "Safest", "New", "Bots", "Squads"].includes(String(q.tab)) ? String(q.tab) : q.q ? "Profit" : "Baskets") as "Baskets" | "Profit" | "Copied" | "Streaks" | "Safest" | "New" | "Bots" | "Squads";
   // Explore: find anyone by name, whether or not they're ranked yet.
   const find = String(q.q ?? "").trim().replace(/^@/, "").toLowerCase().slice(0, 40);
   const period = (["Week", "Month", "All"].includes(String(q.period)) ? String(q.period) : "Week") as "Week" | "Month" | "All";
@@ -136,7 +138,7 @@ export async function ranksPage(viewer: number, q: Record<string, unknown>): Pro
     return `<div class="row" style="min-height:64px;border-bottom:1px solid #1C1C1C;gap:12px"><span style="width:22px;text-align:center;font-weight:600;color:${i < 3 ? "#34D399" : "#8A8A8A"}">${i + 1}</span><span class="av ${i === 0 ? "w" : ""}">${face(r.s.handle)}</span>
 <span class="grow"><a href="/u/${esc(r.s.handle)}" style="color:#F5F5F5;font-weight:600">@${esc(r.s.handle)}</a>${mine ? ' <span class="pill">You</span>' : ""}<span class="sm mut" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.p.user.persona ?? "Trader")} · ${r.p.guardPauses ? `${r.p.guardPauses} pauses` : "No pauses"}</span></span>
 <svg width="56" height="22" viewBox="0 0 56 22" aria-hidden="true"><path d="${spark}" fill="none" stroke="#34D399" stroke-width="1.6"/></svg>
-<span style="text-align:right;min-width:62px"><b class="${tab === "Profit" ? signCls(value(r)[0]) : ""}">${big}</b><span class="xs mut" style="display:block">${sub}</span></span>${mine ? "" : `<a class="btn sm" href="/copy/${esc(r.s.handle)}" style="height:32px">Copy</a>`}</div>`;
+<span style="text-align:right;min-width:62px"><b class="${tab === "Profit" ? signCls(value(r)[0]) : ""}">${big}</b><span class="xs mut" style="display:block">${sub}</span></span>${mine ? "" : `<a class="btn sm" href="/u/${esc(r.s.handle)}#baskets" style="height:32px">Copy</a>`}</div>`;
   });
   const mySquad = squadOf(viewer);
   let squadRows = "";
@@ -149,7 +151,7 @@ export async function ranksPage(viewer: number, q: Record<string, unknown>): Pro
       })
       .join("");
   }
-  const metricName = { Profit: period === "All" ? "Return" : "Realised", Copied: "Copies", Streaks: "Green days", Safest: "Max drawdown", New: "On Tribe", Bots: "Return", Squads: "" }[tab];
+  const metricName = { Baskets: "Return", Profit: period === "All" ? "Return" : "Realised", Copied: "Copies", Streaks: "Green days", Safest: "Max drawdown", New: "On Tribe", Bots: "Return", Squads: "" }[tab];
   // Bots: creators' published bots, by realised return on what they put in (a bot needs 3+ closed trades to rank).
   const botBoard = tab === "Bots" ? (() => {
     const bots = (db.prepare("SELECT id FROM bots WHERE status = 'live'").all() as { id: number }[]).map(({ id }) => { const b = botById(id)!; return { b, r: botRecord(b), owner: userById(b.owner)! }; })
@@ -163,7 +165,7 @@ export async function ranksPage(viewer: number, q: Record<string, unknown>): Pro
     .map((r, i) => {
       const [, big, sub] = value(r);
       const mine = r.id === viewer;
-      return `<tr><td style="color:${i < 3 ? "#34D399" : "#8A8A8A"};font-weight:600">${i + 1}</td><td><a class="row" href="/u/${esc(r.s.handle)}" style="gap:10px;color:#F5F5F5"><span class="av sm ${i === 0 ? "w" : ""}">${face(r.s.handle)}</span><span><b>@${esc(r.s.handle)}</b>${mine ? ' <span class="pill">You</span>' : ""}<span class="xs mut" style="display:block">${esc(r.p.user.persona ?? "Trader")} · ${r.p.days} days</span></span></a></td><td><b class="${tab === "Profit" ? signCls(value(r)[0]) : ""}">${big}</b> <span class="xs mut">${sub}</span></td><td class="mut">${r.p.maxDd ? "−" + r.p.maxDd.toFixed(1) + "pp" : "—"}</td><td>${r.s.followers}</td><td>${r.p.guardPauses ? `<span class="pill warn">${r.p.guardPauses} pauses</span>` : '<span class="pill ok">No pauses</span>'}</td><td class="r">${mine ? "" : `<a class="btn sm" href="/copy/${esc(r.s.handle)}">Copy</a>`}</td></tr>`;
+      return `<tr><td style="color:${i < 3 ? "#34D399" : "#8A8A8A"};font-weight:600">${i + 1}</td><td><a class="row" href="/u/${esc(r.s.handle)}" style="gap:10px;color:#F5F5F5"><span class="av sm ${i === 0 ? "w" : ""}">${face(r.s.handle)}</span><span><b>@${esc(r.s.handle)}</b>${mine ? ' <span class="pill">You</span>' : ""}<span class="xs mut" style="display:block">${esc(r.p.user.persona ?? "Trader")} · ${r.p.days} days</span></span></a></td><td><b class="${tab === "Profit" ? signCls(value(r)[0]) : ""}">${big}</b> <span class="xs mut">${sub}</span></td><td class="mut">${r.p.maxDd ? "−" + r.p.maxDd.toFixed(1) + "pp" : "—"}</td><td>${r.s.followers}</td><td>${r.p.guardPauses ? `<span class="pill warn">${r.p.guardPauses} pauses</span>` : '<span class="pill ok">No pauses</span>'}</td><td class="r">${mine ? "" : `<a class="btn sm" href="/u/${esc(r.s.handle)}#baskets">Copy</a>`}</td></tr>`;
     })
     .join("") || `<tr><td colspan="7" class="mut">${nobody}</td></tr>`}</tbody></table></div>`;
   const search = `<form class="lbsearch" action="/ranks" method="get" role="search"><span aria-hidden="true">${icon("search", 16, "currentColor", 2)}</span><input name="q" value="${esc(find)}" placeholder="Find a trader by name" aria-label="Find a trader by name" autocomplete="off">${tab !== "Squads" ? `<input type="hidden" name="tab" value="${tab}">` : ""}${find ? `<a class="xs" href="${href({})}">Clear</a>` : ""}</form>`;
@@ -173,9 +175,9 @@ export async function ranksPage(viewer: number, q: Record<string, unknown>): Pro
 <div class="sm mut" style="margin-top:2px">${Math.floor(left / 86400e3)}d ${Math.floor((left % 86400e3) / 3600e3)}h left in the season</div></section>
 ${search}
 ${find ? `<div class="sm mut">Traders matching “${esc(find)}”, sorted by ${metricName.toLowerCase() || "rank"}</div>` : ""}
-${seg((["Profit", "Copied", "Streaks", "Safest", "New", "Bots", "Squads"] as const).map((t) => ({ label: t, href: href({ tab: t }), on: t === tab })), false, "Leaderboard")}
+${seg((["Baskets", "Profit", "Copied", "Streaks", "Safest", "New", "Bots", "Squads"] as const).map((t) => ({ label: t, href: href({ tab: t }), on: t === tab })), false, "Leaderboard")}
 <div class="row sp">${tab === "Squads" ? "<span></span>" : tab === "Profit" ? seg((["Week", "Month", "All"] as const).map((p) => ({ label: p, href: href({ period: p }), on: p === period })), true, "Period") : "<span></span>"}${tab === "Squads" || tab === "Bots" ? "" : `<a class="chip${noPause ? " on" : ""}" href="${href({ guard: noPause ? "0" : "1" })}">${icon("shield", 13, "currentColor", 2)}No pauses</a>`}</div>
-${tab === "Bots" ? `<div>${botBoard}</div><p class="note">Humans vs Bots: published bots trade from their creators' own wallets, with a stop on every trade. Ranked on realised return; a bot needs 3 closed trades before its rank counts.</p>` : tab === "Squads" ? `<div>${squadRows || '<div class="empty"><div class="md" style="font-weight:600">No squads yet</div></div>'}</div><div class="grid2"><a class="btn" href="/squads">${icon("search", 16, "currentColor", 2)}Find a squad</a><a class="btn" href="/squads">${icon("plus", 16, "currentColor", 2)}Create a squad</a></div><p class="note">A squad score is the total XP of its members.</p>` : `<div class="only-m">${rows.join("") || `<div class="empty"><div class="md" style="font-weight:600">${nobody}</div><div class="sm mut">${find ? "Try another name." : "Trade with Ask Chief to get on the board."}</div></div>`}</div>${rankTable}
+${tab === "Baskets" ? `<div class="col" style="gap:8px">${(await basketBoard(25)).map(basketRow).join("") || '<div class="sm mut">No baskets yet.</div>'}</div><p class="note">Ranked on return since launch, from each basket's weights and token prices.</p>` : tab === "Bots" ? `<div>${botBoard}</div><p class="note">Humans vs Bots: published bots trade from their creators' own wallets, with a stop on every trade. Ranked on realised return; a bot needs 3 closed trades before its rank counts.</p>` : tab === "Squads" ? `<div>${squadRows || '<div class="empty"><div class="md" style="font-weight:600">No squads yet</div></div>'}</div><div class="grid2"><a class="btn" href="/squads">${icon("search", 16, "currentColor", 2)}Find a squad</a><a class="btn" href="/squads">${icon("plus", 16, "currentColor", 2)}Create a squad</a></div><p class="note">A squad score is the total XP of its members.</p>` : `<div class="only-m">${rows.join("") || `<div class="empty"><div class="md" style="font-weight:600">${nobody}</div><div class="sm mut">${find ? "Try another name." : "Trade with Ask Chief to get on the board."}</div></div>`}</div>${rankTable}
 <p class="note">Ranked traders have ${min.days}+ days and ${min.trades}+ trades on Tribe. Rankings come from filled Flash orders.</p>`}</main>`;
   return page({ title: "Leaderboard", nav: "ranks", body });
 }

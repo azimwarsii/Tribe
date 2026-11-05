@@ -79,7 +79,7 @@ function contextBar(c: TradeCtx): string {
   const act = c.own ? `<a class="btn sm" href="/u/${esc(c.handle)}">Your trade</a>`
     : c.paused ? ""
     : c.copying ? `<a class="btn sm" href="/traders">Copying</a>`
-    : `<a class="btn sm p" href="/t/${c.id}#copy">${icon("bolt", 13)}Copy with Flash</a>`;
+    : `<a class="btn sm p" href="/u/${esc(c.handle)}#baskets">${icon("list", 13, "currentColor", 2)}Their baskets</a>`;
   return `<div class="ctxbar" role="region" aria-label="Asking about this post">${av}<a class="grow" href="/t/${c.id}" style="min-width:0;color:#F5F5F5"><span class="xs mut" style="display:block">Asking about · back to post ↗</span><b style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">@${esc(c.handle)} · ${c.bot ? "Bot · " : ""}${esc(c.verb)} ${esc(c.symbol)}${c.sincePct === null ? "" : Math.abs(c.sincePct) < 0.05 ? ' <span class="mut">flat</span>' : ` <span class="${c.sincePct >= 0 ? "up" : "down"}">${pct(c.sincePct)}</span>`}</b></a>${act}<button type="button" class="ic s" id="unpin" aria-label="Stop asking about this post" title="Back to general questions">${icon("close", 14, "currentColor", 2)}</button></div>`;
 }
 

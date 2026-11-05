@@ -65,7 +65,7 @@ ${onPage ? `<button type="button" class="chip" data-open="comments" aria-label="
 <a class="chip askcat" href="/cat/chat?new=1&trade=${c.id}&q=${encodeURIComponent(c.trade.side === "buy" ? "Is this a good trade?" : "Show their track record")}" aria-label="Ask Chief about this trade"><span class="orb" aria-hidden="true"><i></i></span>Ask Chief</a>
 ${own && !c.copiers ? '<span class="grow"></span>' : copiedBy(c)}</div>
 ${onPage ? "" : `<div style="display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px">
-${own ? `<a class="btn" href="/u/${esc(c.handle)}">Your trade</a>` : paused ? `<a class="btn" href="/cat/chat?new=1&q=${encodeURIComponent("why was @" + c.handle + " paused?")}">${icon("chat", 15, "currentColor", 1.9)}Ask Chief why</a>` : copying ? `<a class="btn" href="/traders">Copying · manage</a>` : c.trade.side === "buy" ? `<a class="btn p" href="/t/${c.id}#copy">${icon("bolt", 14)}Copy with Flash</a>` : `<button class="btn" data-act="/api/watch" data-body='{"leader":"${esc(c.handle)}"}'>Follow @${esc(c.handle)}</button>`}
+${own ? `<a class="btn" href="/u/${esc(c.handle)}">Your trade</a>` : paused ? `<a class="btn" href="/cat/chat?new=1&q=${encodeURIComponent("why was @" + c.handle + " paused?")}">${icon("chat", 15, "currentColor", 1.9)}Ask Chief why</a>` : copying ? `<a class="btn" href="/traders">Copying · manage</a>` : c.trade.side === "buy" ? `<a class="btn p" href="/u/${esc(c.handle)}#baskets">${icon("list", 14, "currentColor", 2)}Their baskets</a>` : `<button class="btn" data-act="/api/watch" data-body='{"leader":"${esc(c.handle)}"}'>Follow @${esc(c.handle)}</button>`}
 <a class="btn" style="padding:0" href="/t/${c.id}#share" aria-label="Share">${icon("share", 16, "currentColor", 2)}</a></div>`}</article>`;
 }
 

@@ -1,17 +1,16 @@
-import { commentsOf, db, getMeta, isWatching } from "../db.js";
+import { commentsOf, db, isWatching } from "../db.js";
 import { ago, face, money, pct, profile, tradeCard, windowPnl } from "../data.js";
 import { txUrl } from "../flash.js";
 import { esc, header, icon, notFound, page, sheet, signCls, split, stat } from "../ui.js";
 import { tradeCardHtml } from "./feed.js";
 import { commentHtml } from "./trader.js";
-import { copyFee } from "../creator.js";
 
 const BASE_URL = () => process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`;
 export const tradeUrl = (id: number) => `${BASE_URL()}/t/${id}`;
 
 /**
- * One trade's own page at /t/<id>, open to anyone with the link: the trade card, every detail of the order, copying
- * it, sharing it, reactions and comments, and the trader's record. Signed out, it reads the same and invites sign-in.
+ * One trade's own page at /t/<id>, open to anyone with the link: the trade card, every detail of the order, sharing
+ * it, reactions and comments, and the trader's record. Signed out, it reads the same and invites sign-in.
  */
 export async function tradePage(id: number, viewer: number | undefined): Promise<string> {
   const c = await tradeCard(id, viewer);
@@ -24,9 +23,8 @@ export async function tradePage(id: number, viewer: number | undefined): Promise
   const month = windowPnl(c.leader, Date.now() - 30 * 86400e3);
   const side = c.trade.side === "buy" ? "long" : "sell";
   const url = tradeUrl(id);
-  const shareText = `@${c.handle}'s ${c.symbol} ${side} on Tribe${c.sincePct !== null ? ` (${pct(c.sincePct)} since entry)` : ""}. Copy it with one tap, guarded onchain.`;
+  const shareText = `@${c.handle}'s ${c.symbol} ${side} on Tribe${c.sincePct !== null ? ` (${pct(c.sincePct)} since entry)` : ""}. Guarded onchain.`;
   const img = `${BASE_URL()}/og/t/${id}.png`;
-  const copyable = c.trade.side === "buy" && c.guard !== "paused" && !own;
 
   // Details as small tiles, three to a row. The card's price ladder already shows entry, stop and target on open
   // longs, so those tiles appear only when it doesn't.
@@ -47,50 +45,15 @@ export async function tradePage(id: number, viewer: number | undefined): Promise
   const settled = c.tx ? `<a class="xs" href="${txUrl(c.tx)}" target="_blank" rel="noopener">Settlement onchain ↗</a>` : `<span class="xs dim">Simulated fill (practice mode)</span>`;
   const details = `<section aria-label="Trade details" class="col tdetails" style="gap:6px"><div class="grid3" style="gap:6px">${tiles}</div><div class="row">${settled}</div></section>`;
 
-  // Copy this one trade at a size you pick, or follow the trader to see their next trades (following never copies).
+  // A trade is part of the trader's record: what people copy is their baskets. Following them stays free.
   const watching = signedIn && !own && isWatching(viewer!, c.leader);
   const followBtn = `<button class="btn" data-act="/api/watch" data-body='{"leader":"${esc(c.handle)}"}'>${watching ? `${icon("check", 14, "currentColor", 2)}Following` : "Follow"}</button>`;
-  // Each amount opens a confirm sheet (like the feed's): the size, the worst and best case, then Confirm & sign.
-  const max = signedIn ? getMeta(viewer!).defaults.max : 25;
-  const needStop = signedIn && getMeta(viewer!).defaults.stop && !c.hasStop;
-  const ref = c.mark ?? c.entry;
-  const slPct = c.stopPrice !== null && ref ? (1 - c.stopPrice / ref) * 100 : null;
-  const tpPct = c.targetPrice !== null && ref ? (c.targetPrice / ref - 1) * 100 : null;
-  const amounts = [10, 25, 50].map((usd) => `<button type="button" class="btn${usd === 25 ? " p" : ""}" data-copyamt="${usd}">${icon("bolt", 13)}$${usd}</button>`).join("");
-  const opts = [...new Set([10, 25, 50, 100].filter((v) => v < max).concat(max))].slice(-4);
-  // The sheet describes the follower's own order: the trader's amount becomes the one picked, and follows the picker.
-  const leaderAmt = `$${Number(c.trade.qty).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-  const yourOrder = esc(c.detail).replace(leaderAmt, '<b id="tc-amtlbl"></b>');
-  const fee = copyFee(c.leader, 1);
-  const confirmSheet = copyable && signedIn
-    ? sheet("copyconfirm", `<h2>Copy @${esc(c.handle)}'s ${esc(c.symbol)} trade</h2><p class="sm mut" style="margin:4px 0 12px">Pick how much. Your max per trade is ${money(max)}.</p>
-<div class="chips" id="tc-amt" role="radiogroup" aria-label="Amount">${opts.map((v) => `<button type="button" class="chip" role="radio" data-v="${v}">${money(v)}</button>`).join("")}<label class="chip camt"><span>$</span><input id="tc-custom" type="number" inputmode="decimal" min="1" max="${max}" step="any" placeholder="Custom" aria-label="Custom amount in dollars"></label></div>
-<div class="xs down" id="tc-err" role="alert" hidden></div>
-<div class="grid2" style="margin-top:12px"><div class="tile"><div class="k">If the stop hits</div><div class="v down" id="tc-loss"></div></div><div class="tile"><div class="k">If the target hits</div><div class="v up" id="tc-gain"></div></div></div>
-<div class="ordstrip" style="margin-top:10px"><span class="pill flash">${icon("bolt", 11)}${esc(c.orderLabel)}</span><span class="sm">${yourOrder}</span></div>
-<p class="xs mut" id="tc-fee" style="margin:8px 0 0"></p>
-<p class="xs mut" style="margin:10px 0 0">${needStop ? "This trade has no stop-loss, and your rules only copy trades with one. Change that in Settings." : `One Flash order from your wallet${c.stopPrice !== null ? ", with the stop" + (c.targetPrice !== null ? " and target" : "") + " attached" : ", with no stop-loss"}. CopyGuard checks the trader again right before it's placed.`}</p>
-<div class="grid2" style="margin-top:14px"><button class="btn" data-close="copyconfirm">Not now</button><button class="btn p" id="tc-go"${needStop ? " disabled" : ""}>${icon("bolt", 14)}Confirm &amp; sign</button></div>
-<script>(function(){var fb=${fee.bps},fs=${fee.sharePct},fh=${JSON.stringify(c.handle)};var amt=0,sl=${slPct === null ? "NaN" : slPct.toFixed(3)},tp=${tpPct === null ? "NaN" : tpPct.toFixed(3)},max=${max};
-function fmt(v){return '$'+v.toFixed(2)}
-function pick(v,typed){amt=v;document.getElementById('tc-fee').textContent='Fee about '+fmt(v*fb/1e4)+' ('+(fb/100)+'%), and @'+fh+' gets '+fs+'% of it ('+fmt(v*fb/1e4*fs/100)+') for being copied.';if(!typed){document.getElementById('tc-custom').value='';document.getElementById('tc-err').hidden=true;document.getElementById('tc-go').disabled=${needStop ? "true" : "false"}}var l=document.getElementById('tc-amtlbl');if(l)l.textContent='$'+(v%1?v.toFixed(2):v);document.querySelectorAll('#tc-amt [data-v]').forEach(function(x){var on=!typed&&Number(x.dataset.v)===v;x.classList.toggle('on',on);x.setAttribute('aria-checked',on?'true':'false')});document.getElementById('tc-loss').textContent=isNaN(sl)?'No stop':'\u2212'+fmt(v*sl/100);document.getElementById('tc-gain').textContent=isNaN(tp)?'No target':'+'+fmt(v*tp/100)}
-function open(v){pick(Math.min(v,max));document.getElementById('copyconfirm').classList.add('open');document.getElementById('bd-copyconfirm').classList.add('open')}
-document.querySelectorAll('[data-copyamt]').forEach(function(b){b.onclick=function(){open(Number(b.dataset.copyamt))}});
-document.querySelectorAll('#tc-amt [data-v]').forEach(function(x){x.onclick=function(){pick(Number(x.dataset.v))}});
-// A typed amount: $1 up to the max per trade (the server checks the same), to the cent.
-document.getElementById('tc-custom').oninput=function(){var v=Math.round(parseFloat(this.value)*100)/100,e=document.getElementById('tc-err'),ok=v>=1&&v<=max;
- e.hidden=ok||!this.value;e.textContent=v>max?'Your max per trade is '+fmt(max)+'.':'At least $1.';document.getElementById('tc-go').disabled=${needStop ? "true" : "!ok"};if(ok)pick(v,true)};
-document.getElementById('tc-go').onclick=function(){var b=this;b.disabled=true;fetch('/api/copy-trade',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({trade:${id},usd:amt})}).then(function(r){return r.json()}).then(function(j){b.disabled=false;if(j.error){tribe.toast(j.error);return}document.getElementById('copyconfirm').classList.remove('open');document.getElementById('bd-copyconfirm').classList.remove('open');tribe.toast(j.toast||'Copied');setTimeout(function(){location.reload()},900)}).catch(function(){b.disabled=false;tribe.toast('Network error')})};
-})()</script>`)
-    : "";
+  const baskets = `<a class="btn p sm" style="width:auto" href="/u/${esc(c.handle)}#baskets">${icon("list", 14, "currentColor", 2)}Their baskets</a>`;
   const copyPanel = !signedIn
-    ? `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">Copy this trade with its stop and target, at your size.</span><a class="btn p sm" style="width:auto" href="/signin">${icon("wallet", 14)}Sign in to copy</a></section>`
+    ? `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">Part of @${esc(c.handle)}'s record. On Tribe you copy baskets.</span><a class="btn p sm" style="width:auto" href="/signin">${icon("wallet", 14)}Sign in</a></section>`
     : own
-      ? `<section class="card row" style="gap:10px;padding:12px" id="copy"><b class="grow sm">Your trade · ${c.copiers} cop${c.copiers === 1 ? "y" : "ies"}</b><button type="button" class="btn sm" style="width:auto" onclick="document.getElementById('share-btn').click()">${icon("share", 14, "currentColor", 2)}Share</button></section>`
-      : copyable
-        ? `<section class="card col" style="gap:8px;padding:12px" id="copy"><div class="row sp"><b class="sm">Copy this trade</b><span class="xs dim">Same stop and target · your limits apply</span></div>
-<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.2fr);gap:6px">${amounts}${followBtn}</div></section>`
-        : `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">${c.guard === "paused" ? "Guard paused this trader: copies are blocked." : "A sell: nothing to copy. Follow to see their next entry."}</span><div style="width:120px">${followBtn}</div></section>`;
+      ? `<section class="card row" style="gap:10px;padding:12px" id="copy"><b class="grow sm">Your trade</b><button type="button" class="btn sm" style="width:auto" onclick="document.getElementById('share-btn').click()">${icon("share", 14, "currentColor", 2)}Share</button></section>`
+      : `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">${c.guard === "paused" ? "Guard paused this trader: copies are blocked." : "Part of their record. On Tribe you copy baskets."}</span>${baskets}<div style="width:96px">${followBtn}</div></section>`;
 
   // Sharing is one small button in the header: on phones and tablets, the device's own share menu (Instagram, WhatsApp,
   // Messages…); on computers, a small panel with the link and the main apps. Links ending in #share open the panel.
@@ -136,5 +99,5 @@ ${commentsBar}</main>`;
   const head = `<meta property="og:title" content="${esc(`@${c.handle}: ${c.symbol} ${side} on Tribe`)}"><meta property="og:description" content="${esc(shareText)}"><meta property="og:url" content="${esc(url)}"><meta property="og:image" content="${esc(img)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(img)}">`;
   const back = signedIn ? "/feed" : "/";
   const body = `${header(`${c.symbol} ${side}`, `@${c.handle} · ${ago(c.at)}`, back, shareButton)}${split(main, aside, "About this trader")}`;
-  return page({ title: `@${c.handle} · ${c.symbol} ${side}`, body, head, split: true, sheets: commentsSheet + confirmSheet + shareSheet, ...(signedIn ? {} : { extraClass: "pub" }) });
+  return page({ title: `@${c.handle} · ${c.symbol} ${side}`, body, head, split: true, sheets: commentsSheet + shareSheet, ...(signedIn ? {} : { extraClass: "pub" }) });
 }

@@ -7,6 +7,7 @@ import { isExternal } from "./wallet.js";
 import { getPrice } from "./prices.js";
 import { guardGate, riskOf, type GuardGate } from "./guard.js";
 import { db } from "./db.js";
+import { priceStr } from "./numfmt.js";
 
 /** USD of open position cost that came from copying this leader (buys minus sold cost). */
 export function openCostFrom(follower: number, leader: number): number {
@@ -80,50 +81,15 @@ export async function chaseGuard(tradeId: number, leader: number, follower: numb
   const ceiling = entry * (1 + chase / 100);
   if (mark <= ceiling) return { trade };
   return {
-    trade: { ...trade, orderType: "limit", limitNotionalPrice: ceiling.toFixed(2), expireTime: new Date(Date.now() + 30 * 60_000).toISOString() },
-    note: `Limit at $${ceiling.toFixed(2)}: price was ${(((mark / entry) - 1) * 100).toFixed(1)}% above their entry (your chase limit is ${chase}%)`,
+    trade: { ...trade, orderType: "limit", limitNotionalPrice: priceStr(ceiling), expireTime: new Date(Date.now() + 30 * 60_000).toISOString() },
+    note: `Limit at $${priceStr(ceiling)}: price was ${(((mark / entry) - 1) * 100).toFixed(1)}% above their entry (your chase limit is ${chase}%)`,
   };
 }
 
 /** Tokens a follower holds because of this leader: copied buys minus copied sells, never more than they hold. */
 export function copiedTokens(follower: number, leader: number, token: string): number {
-  const r = db.prepare("SELECT COALESCE(SUM(CASE WHEN json_extract(trade,'$.side')='buy' THEN tokens ELSE -tokens END), 0) AS t FROM orders WHERE trader = ? AND leader = ? AND role = 'copy' AND tokens IS NOT NULL AND json_extract(trade,'$.target') = ?").get(follower, leader, token) as { t: number };
+  const r = db.prepare("SELECT COALESCE(SUM(CASE WHEN json_extract(trade,'$.side')='buy' THEN tokens ELSE -tokens END), 0) AS t FROM orders WHERE trader = ? AND leader = ? AND role = 'copy' AND tokens IS NOT NULL AND lower(json_extract(trade,'$.target')) = ?").get(follower, leader, token.toLowerCase()) as { t: number };
   return Math.max(0, Math.min(r.t, heldTokens(follower, token)));
-}
-
-/** How long a trade stays copyable from the deck. */
-export const FRESH_MS = 86400e3;
-
-/**
- * Swipe right: copy one trade now, from the viewer's wallet, at a size they pick. The same guards as auto-copy apply:
- * CopyGuard (onchain when deployed), the viewer's max per trade, daily cap, stop-loss rule and free balance.
- */
-export async function copyOne(viewer: number, tradeId: number, usd: number): Promise<{ handle: string; usd: number; receipt: string }> {
-  const t = tradeById(tradeId);
-  if (!t || t.private) throw new Error("Trade not found"); // a bot's trial trades can't be copied
-  const trade = t.trade as Trade;
-  if (t.leader === viewer) throw new Error("That's your own trade");
-  if (trade.side !== "buy") throw new Error("Only entries can be copied");
-  // Copyable while it's fresh, or for as long as the trader still holds it (their live book) or it's still resting.
-  const live = heldTokens(t.leader, trade.target) > 1e-12 || !!db.prepare("SELECT 1 FROM orders WHERE trade_id = ? AND role = 'own' AND status = 'open'").get(tradeId);
-  if (Date.now() - t.at > FRESH_MS && !live) throw new Error("This trade is closed: the trader no longer holds it");
-  if (trade.attach) {
-    const mark = await getPrice(trade.target).catch(() => 0);
-    if (mark && mark >= Number(trade.attach.tp)) throw new Error("The price is already past their target, so there's nothing left to copy");
-    if (mark && mark <= Number(trade.attach.sl)) throw new Error("The price is already below their stop");
-  }
-  if (db.prepare("SELECT 1 FROM orders WHERE trade_id = ? AND trader = ? AND role = 'copy'").get(tradeId, viewer)) throw new Error("You already copied this trade");
-  const gate = await guardGate(t.leader);
-  if (gate.halted) throw new Error("This trader is paused by CopyGuard");
-  const meta = getMeta(viewer);
-  if (meta.pausedAll) throw new Error("All copying is paused. Resume it in Me first");
-  usd = Math.round(usd * 100) / 100;
-  if (!(usd >= 1 && usd <= meta.defaults.max)) throw new Error(`Pick $1 to $${meta.defaults.max} (your max per trade)`);
-  if (spentToday(viewer) + usd > meta.defaults.cap) throw new Error(`That would pass your $${meta.defaults.cap} daily cap`);
-  if (meta.defaults.stop && !(trade.hasStop || trade.attach)) throw new Error("Your rules only copy trades with a stop-loss");
-  const out = await execute(tradeId, viewer, t.leader, { ...trade, qty: String(usd) });
-  if (out.startsWith("failed")) throw new Error(out.replace(/^failed: /, ""));
-  return { handle: getUser(t.leader).handle, usd, receipt: out };
 }
 
 /**

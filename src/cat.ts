@@ -1,3 +1,4 @@
+import { basketAnswer } from "./baskets.js";
 import { randomUUID } from "node:crypto";
 import { ask, buildProposal, resolveIntent, type Card, type Intent, type Proposal } from "./ask.js";
 import { mirror, type PendingNotice } from "./copy.js";
@@ -104,15 +105,19 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
 
   // Guard questions ("why was @x paused?") get Guard's answer even while a trade is pinned in the chat.
   const guardQ = /\b(paus|halt|guard)/i.test(clean);
-  const research = state.trade && !order && !guardQ && !/\bcompar/i.test(clean) ? await researchTrade(uid, state.trade, clean) : undefined;
+  const basketQ = !order && !guardQ && /\bbaskets?\b/i.test(clean) ? await basketAnswer(clean) : undefined;
+  const research = !basketQ && state.trade && !order && !guardQ && !/\bcompar/i.test(clean) ? await researchTrade(uid, state.trade, clean) : undefined;
   // Live Flash questions (a quote, balances, order status) go to Flash MCP first, so "what would $50 of ETH get me?"
   // gets a quote rather than becoming a buy. If it can't answer, Chief carries on as usual.
   // Everything else: the AI assistant with tools (Flash MCP, token search, portfolio, traders, Guard). If it isn't
   // available (no key, model error), the built-in answers below take over.
-  const agent = research ? undefined : await catAgent(uid, chatId, { live: opts.live, pinned: state.trade }).catch((e) => { console.warn(`Chief agent: ${(e as Error).message}`); return undefined; });
-  const flash = !research && !agent && !order && !guardQ && opts.live !== false && wantsFlash(clean) ? await flashAnswer(uid, clean).catch(() => undefined) : undefined;
-  const intent = research || agent || flash ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
-  if (research) {
+  const agent = research || basketQ ? undefined : await catAgent(uid, chatId, { live: opts.live, pinned: state.trade }).catch((e) => { console.warn(`Chief agent: ${(e as Error).message}`); return undefined; });
+  const flash = !research && !basketQ && !agent && !order && !guardQ && opts.live !== false && wantsFlash(clean) ? await flashAnswer(uid, clean).catch(() => undefined) : undefined;
+  const intent = research || basketQ || agent || flash ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
+  if (basketQ) {
+    reply = basketQ.reply;
+    data = { sources: ["Tribe baskets", "CopyGuard"], verdict: basketQ.read, follow: basketQ.basket ? [{ label: "Open the basket", href: `/b/${basketQ.basket}` }, { label: `More from @${basketQ.handle}`, href: `/u/${basketQ.handle}#baskets` }] : [{ label: "All baskets", href: "/baskets" }] };
+  } else if (research) {
     reply = research.reply;
     data = { steps: research.steps, sources: research.sources, follow: research.follow, verdict: research.verdict, ctx: research.ctx };
     // Chief's call on an entry, priced now, so its track record can be scored honestly later.

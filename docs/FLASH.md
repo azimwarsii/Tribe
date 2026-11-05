@@ -83,6 +83,9 @@ refuses it only for the empty balance. `npm run flash:check -- --live 5` places 
 
 **Auto copies.** These need something that can sign at the moment of the trade, because Flash allows no delegation without a signature. Today that is a server-held demo key. For production the plan is embedded wallets (Privy) or a smart account (Flash supports EIP-1271 signers) with a session key limited to Flash orders and the follower's own caps.
 
+## Baskets on Flash
+Flash has no multi-token order, so a basket copy is one order per token, each with its own attached bracket, sent one after another (`copyBasket` in `src/baskets.ts`). A failed order is recorded on its leg and the others continue, which is why a copy can be partly filled. A rebalance sells first, then buys with what the sells raised. Baskets run in practice mode only: before going live, check Flash's minimum order size, whether it can batch orders, and how many signatures a basket really needs. The 5 requests per second limit means 300 copiers of a 5-token basket take about 5 minutes of quotes.
+
 ## Not used, and why
 
 | Flash feature | Why not |

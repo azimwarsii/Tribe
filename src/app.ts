@@ -6,7 +6,9 @@ import { handleEntry } from "./research.js";
 import { clearSignupTicket, consumeLogin, createSession, currentSession, currentUser, endSession, isAgent, makeLoginToken, revealOnce, revokeSession, revokeSessions, signupTicketOf, startSession } from "./auth.js";
 import { linkWallet, userByWallet } from "./wallet-api.js";
 import { userByPrivy } from "./privy-api.js";
-import { copyOne, execute, mirror, mirrorStopMove, type PendingNotice } from "./copy.js";
+import { execute, mirror, mirrorStopMove, type PendingNotice } from "./copy.js";
+import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, retireBasket, retryCopy, skipRebalance, updateWeights } from "./baskets.js";
+import { basketBuilderPage, basketOgSvg, basketPage, basketsPage } from "./views/baskets.js";
 import { activeHtml, briefHtml, deckCards, deckLive, deckPage, deckTab } from "./views/deck.js";
 import { publicSignalPage, signalCommentHtml, signalsPage, signalTab } from "./views/signals.js";
 import { addSignalComment, postSignal, setSignalReaction, signalById, signalComments, signalExists } from "./signals.js";
@@ -234,6 +236,17 @@ export function appRouter(): Router {
   });
   r.get("/strategy/new", authed((uid) => newStrategyPage(uid)));
   // Every trade has one page, open to anyone: /t/<id>. The older thread and share links forward to it.
+  r.get("/baskets", authed((uid) => basketsPage(uid)));
+  r.get("/baskets/new", authed((uid) => basketBuilderPage(uid)));
+  r.get("/b/:id/edit", authed((uid, req) => basketBuilderPage(uid, Number(req.params.id))));
+  r.get("/b/:id", async (req, res) => {
+    try {
+      html(res, await basketPage(Number(req.params.id), me(req)));
+    } catch (e) {
+      console.error(req.path, e);
+      html(res, notFound("Something went wrong"), 500);
+    }
+  });
   r.get("/t/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (!(await tradeCard(id))) return html(res, notFound("Trade not found"), 404);
@@ -266,6 +279,10 @@ export function appRouter(): Router {
     const s = req.query.f === "story" ? await storySvg(req.params.handle) : await ogSvg(req.params.handle);
     s ? res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(s)) : res.sendStatus(404);
   });
+  r.get("/og/b/:id.png", async (req, res) => {
+    const v = await basketView(Number(req.params.id));
+    v ? res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(basketOgSvg(v))) : res.sendStatus(404);
+  });
   r.get("/og/t/:id.png", async (req, res) => {
     const t = await tradeCard(Number(req.params.id));
     const s = t ? await (req.query.f === "story" ? storySvg : ogSvg)(t.handle, t.id) : undefined;
@@ -278,6 +295,7 @@ export function appRouter(): Router {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
     return { days, traders: topTraders(days, 20).map((t) => ({ handle: t.handle, persona: t.persona, realisedPct: Number(t.pct.toFixed(2)), fills: t.n, guardPaused: !!haltOf(t.id) })) };
   }));
+  r.get("/api/v1/baskets", act(async () => ({ baskets: (await basketBoard(20)).map((v) => ({ id: v.id, name: v.name, creator: v.handle, tokens: v.weights.map((w) => ({ symbol: w.symbol, weight: w.weight })), returnPct: Number(v.returnPct.toFixed(2)), stopPct: v.stopPct, targetPct: v.tpPct, copiers: v.copiers, guardPaused: !!haltOf(v.owner) })) })));
   r.get("/api/v1/traders/:handle", act(async (_uid, req) => {
     const u = userByHandle(String(req.params.handle).replace(/^@/, ""));
     if (!u) throw new Error("Trader not found");
@@ -544,6 +562,11 @@ export function appRouter(): Router {
   // Swipe deck: left skips a trade for good; right copies it once (same Guard, cap and stop rules as auto-copy).
   r.post("/api/signal", json, act((uid, req) => postSignal(uid, req.body ?? {})));
   r.post("/api/swipe", json, act((uid, req) => {
+    // A basket's swipe is kept on its negative id.
+    if (req.body?.basket !== undefined) {
+      recordSwipe(uid, -Number(req.body.basket), "left");
+      return { ok: true };
+    }
     const trade = Number(req.body?.trade);
     if (!tradeById(trade)) throw new Error("Trade not found");
     recordSwipe(uid, trade, req.body?.dir === "right" ? "right" : "left");
@@ -551,14 +574,50 @@ export function appRouter(): Router {
   }));
   // The live deck: new cards as trades are placed, and fresh numbers for the cards on screen.
   const idList = (v: unknown) => String(v ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
-  r.get("/api/deck/cards", act((uid, req) => deckCards(uid, new Set(idList(req.query.have)), deckTab(req.query.tab))));
-  r.get("/api/deck/live", act((uid, req) => deckLive(uid, idList(req.query.ids))));
+  r.get("/api/deck/cards", act((uid, req) => {
+    const have = String(req.query.have ?? "").split(",");
+    return deckCards(uid, new Set(idList(have.filter((x) => !x.startsWith("b")).join(","))), deckTab(req.query.tab), new Set(idList(have.filter((x) => x.startsWith("b")).map((x) => x.slice(1)).join(","))));
+  }));
+  r.get("/api/deck/live", act((_uid, req) => deckLive(idList(req.query.ids))));
   r.get("/api/deck/brief", act((_uid, req) => briefHtml(String(req.query.h ?? ""))));
   r.get("/api/deck/active", act(async (uid) => ({ html: await activeHtml(uid) })));
-  r.post("/api/copy-trade", json, act(async (uid, req) => {
-    const out = await copyOne(uid, Number(req.body?.trade), Number(req.body?.usd));
-    recordSwipe(uid, Number(req.body.trade), "right");
-    return { ok: true, toast: `Copied $${out.usd} of @${out.handle}'s trade with Flash` };
+  // ---- Baskets ----
+  r.post("/api/baskets", json, act(async (uid, req) => {
+    const b = req.body ?? {};
+    const id = await createBasket(uid, { name: b.name, thesis: b.thesis, stopPct: b.stopPct, tpPct: b.tpPct, weights: b.weights });
+    return { redirect: `/b/${id}`, toast: "Basket published" };
+  }));
+  r.post("/api/baskets/:id/weights", json, act(async (uid, req) => {
+    const id = Number(req.params.id);
+    const out = await updateWeights(uid, id, req.body?.weights, String(req.body?.note ?? "").trim() || undefined);
+    return { redirect: `/b/${id}`, toast: `Version ${out.version} published${out.asked ? ` · ${out.asked} copier${out.asked === 1 ? "" : "s"} asked to rebalance` : ""}` };
+  }));
+  r.post("/api/baskets/:id/retire", json, act((uid, req) => {
+    retireBasket(uid, Number(req.params.id));
+    return { reload: true, toast: "Basket retired" };
+  }));
+  r.post("/api/basket-copy", express.urlencoded({ extended: false }), json, act(async (uid, req) => {
+    const basket = Number(req.body?.basket);
+    const out = await copyBasket(uid, basket, Number(req.body?.usd));
+    if (out.status === "failed") throw new Error("None of the tokens could be bought, so nothing was copied");
+    return { redirect: `/b/${basket}#yours`, toast: out.failed ? `${out.placed} of ${out.placed + out.failed} tokens filled. Try the rest from your copy.` : `Copied $${out.usd} across ${out.placed} tokens` };
+  }));
+  r.post("/api/basket-copy/:id/retry", json, act(async (uid, req) => {
+    const out = await retryCopy(uid, Number(req.params.id));
+    return { reload: true, toast: out.failed ? `${out.failed} still didn't fill` : "Every token filled" };
+  }));
+  r.post("/api/basket-copy/:id/close", json, act(async (uid, req) => {
+    const out = await closeCopy(uid, Number(req.params.id));
+    return { redirect: "/baskets", toast: out.failed ? `${out.failed} couldn't be sold. Try closing again.` : `Sold ${out.sold} tokens at market` };
+  }));
+  r.post("/api/basket-rebalance", json, act(async (uid, req) => {
+    const id = Number(req.body?.id);
+    if (req.body?.action === "skip") {
+      skipRebalance(uid, id);
+      return { reload: true, toast: "Kept what you hold" };
+    }
+    const out = await approveRebalance(uid, id);
+    return { reload: true, toast: out.failed ? `${out.failed} order${out.failed === 1 ? "" : "s"} didn't fill. Try again from your copy.` : "Rebalanced" };
   }));
   // One reaction per person per trade; an empty emoji removes it. Returns the re-rendered control.
   r.post("/api/react", json, act((uid, req) => {

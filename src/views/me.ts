@@ -155,7 +155,7 @@ export function activityItems(uid: number): ActivityItem[] {
   const copies = db.prepare("SELECT c.*, t.trade, (SELECT o.tx FROM orders o WHERE o.trade_id = c.trade_id AND o.trader = c.follower AND o.role = 'copy' AND o.tx IS NOT NULL LIMIT 1) AS tx FROM copies c LEFT JOIN trades t ON t.id = c.trade_id WHERE c.follower = ? ORDER BY c.id DESC LIMIT 60").all(uid) as any[];
   for (const c of copies) {
     const tr = c.trade ? JSON.parse(c.trade) : {};
-    const sym = tr.target ? ({ "0x4200000000000000000000000000000000000006": "ETH" } as Record<string, string>)[String(tr.target).toLowerCase()] ?? "token" : "token";
+    const sym = String(c.note ?? "").startsWith("Basket: ") ? String(c.note).slice(8) : tr.target ? ({ "0x4200000000000000000000000000000000000006": "ETH" } as Record<string, string>)[String(tr.target).toLowerCase()] ?? "token" : "token";
     const label = `${tr.orderType ?? ""} ${tr.side ?? ""} ${sym}`.trim();
     const guard = String(c.note ?? "").includes("CopyGuard");
     if (c.status === "skipped") items.push({ at: c.at, cat: guard ? "Guard" : "Copies", icon: guard ? "shield" : "close", tone: guard ? "bad" : "mut", title: `${guard ? "Blocked" : "Skipped"} ${sym} ${tr.side ?? ""}`, sub: `@${names(c.leader)} · ${c.note}`, amt: "—", amtCls: "mut", usd: 0, skip: guard ? undefined : String(c.note ?? "Skipped") });

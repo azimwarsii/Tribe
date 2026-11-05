@@ -88,6 +88,8 @@ button{color:inherit}
 .card{border-radius:22px;background:linear-gradient(180deg,#262626,#171717);border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.06);padding:16px}
 .card.post{background:linear-gradient(180deg,#232323,#151515);padding:14px;display:flex;flex-direction:column;gap:12px}
 .card.bad{border-color:rgba(248,113,113,.35)}.card.good{border-color:rgba(52,211,153,.35)}
+.alloc{display:flex;height:8px;border-radius:99px;overflow:hidden;background:#262626;gap:2px;flex:none}.alloc i{display:block;height:100%;min-width:2px}
+.allockey{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:13px;color:#D4D4D4}.allockey span{display:inline-flex;align-items:center;gap:5px}.allockey i{width:8px;height:8px;border-radius:2px;flex:none}.allockey b{font-weight:600}
 .tile{background:linear-gradient(180deg,#1C1C1C,#141414);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:10px 12px}
 .tile .k{font-size:11px;color:var(--mut)}.tile .v{font-size:14px;font-weight:600;margin-top:2px}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
@@ -483,8 +485,8 @@ button:active,a:active{transform:scale(.97)}
 *{scrollbar-width:none!important}*::-webkit-scrollbar{display:none;width:0;height:0}
 `;
 
-export type NavKey = "feed" | "signals" | "ranks" | "cat" | "guard" | "me";
-const NAV: [NavKey, string, string, string][] = [["feed", "/feed", "home", "Feed"], ["signals", "/signals", "rise", "Signals"], ["ranks", "/ranks", "bars", "Leaderboard"], ["cat", "/cat", "cat", "Ask Chief"], ["guard", "/guard", "shield", "Guard"], ["me", "/me", "user", "Me"]];
+export type NavKey = "feed" | "baskets" | "signals" | "ranks" | "cat" | "guard" | "me";
+const NAV: [NavKey, string, string, string][] = [["feed", "/feed", "home", "Feed"], ["baskets", "/baskets", "list", "Baskets"], ["ranks", "/ranks", "bars", "Leaderboard"], ["cat", "/cat", "cat", "Ask Chief"], ["guard", "/guard", "shield", "Guard"], ["me", "/me", "user", "Me"]];
 
 /** split: the body uses split(); on desktop its aside replaces the global right rail. */
 export interface PageOpts { title: string; body: string; nav?: NavKey; head?: string; bare?: boolean; sheets?: string; extraClass?: string; focus?: boolean; split?: boolean; slim?: boolean }

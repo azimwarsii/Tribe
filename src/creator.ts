@@ -285,7 +285,7 @@ export function tierOf(uid: number, out = copierOutcomes(uid)): Tier {
 export interface Outcomes { copiers: number; inProfit: number; inProfitPct: number; netUsd: number; investedUsd: number; netPct: number | null; following: number; retained30: number | null }
 /** How the people who copied this creator did, from their filled copy orders (since `since`, if given). */
 export function copierOutcomes(uid: number, since = 0, until = Infinity): Outcomes {
-  const rows = db.prepare("SELECT trader, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN json_extract(trade,'$.side') = 'buy' THEN usd END), 0) AS inv FROM orders WHERE leader = ? AND role = 'copy' AND trader != leader AND status = 'filled' AND placed_at >= ? AND placed_at < ? GROUP BY trader").all(uid, since, Number.isFinite(until) ? until : 9e15) as { trader: number; pnl: number; inv: number }[];
+  const rows = db.prepare("SELECT trader, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN json_extract(trade,'$.side') = 'buy' THEN usd END), 0) AS inv FROM orders WHERE leader = ? AND role IN ('copy','basket') AND trader != leader AND status = 'filled' AND placed_at >= ? AND placed_at < ? GROUP BY trader").all(uid, since, Number.isFinite(until) ? until : 9e15) as { trader: number; pnl: number; inv: number }[];
   const netUsd = rows.reduce((a, r) => a + r.pnl, 0);
   const investedUsd = rows.reduce((a, r) => a + r.inv, 0);
   const inProfit = rows.filter((r) => r.pnl > 0).length;

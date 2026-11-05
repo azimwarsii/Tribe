@@ -1,4 +1,5 @@
 import type { Trade } from "./flash.js";
+import { priceStr } from "./numfmt.js";
 
 export interface FollowRules {
   mode: "auto" | "ask";
@@ -87,6 +88,6 @@ export function protectCopy(trade: Trade, rules: FollowRules, mark: number): Tra
   const pct = Number(rules.stopPct);
   if (trade.side !== "buy" || !rules.copyProtective || !(pct > 0 && pct < 90) || !(mark > 0)) return trade;
   const mine = mark * (1 - pct / 100);
-  if (trade.attach) return Number(trade.attach.sl) >= mine ? trade : { ...trade, attach: { ...trade.attach, sl: mine.toFixed(2) }, hasStop: true };
-  return { ...trade, followStop: mine.toFixed(2), hasStop: true };
+  if (trade.attach) return Number(trade.attach.sl) >= mine ? trade : { ...trade, attach: { ...trade.attach, sl: priceStr(mine) }, hasStop: true };
+  return { ...trade, followStop: priceStr(mine), hasStop: true };
 }

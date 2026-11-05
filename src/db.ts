@@ -67,6 +67,34 @@ CREATE TABLE IF NOT EXISTS strategies (
 `);
 
 /** Add a column to an existing table if an older database lacks it. */
+// Baskets: see baskets.ts.
+db.exec(`
+CREATE TABLE IF NOT EXISTS baskets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, owner INTEGER NOT NULL, name TEXT NOT NULL, thesis TEXT, stop_pct REAL NOT NULL DEFAULT 0,
+  tp_pct REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'live', at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS basket_versions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, basket INTEGER NOT NULL, n INTEGER NOT NULL, weights TEXT NOT NULL, prices TEXT NOT NULL,
+  nav_start REAL NOT NULL, note TEXT, at INTEGER NOT NULL, UNIQUE (basket, n)
+);
+CREATE TABLE IF NOT EXISTS basket_copies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, basket INTEGER NOT NULL, follower INTEGER NOT NULL, version INTEGER NOT NULL, usd REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'filling', note TEXT, at INTEGER NOT NULL, closed_at INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS basket_copy_open ON basket_copies (basket, follower) WHERE status IN ('filling','filled','partial');
+CREATE TABLE IF NOT EXISTS basket_legs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, copy_id INTEGER NOT NULL, token TEXT NOT NULL, kind TEXT NOT NULL, trade TEXT NOT NULL,
+  usd REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'open', note TEXT, at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS basket_legs_copy ON basket_legs (copy_id);
+CREATE TABLE IF NOT EXISTS basket_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, copy_id INTEGER NOT NULL, basket INTEGER NOT NULL, version INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS basket_nav (basket INTEGER NOT NULL, at INTEGER NOT NULL, nav REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS basket_nav_by ON basket_nav (basket, at);
+`);
+
 function addCol(table: string, col: string, def: string) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
   if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);

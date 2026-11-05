@@ -227,7 +227,7 @@ export async function researchTrade(viewer: number, tradeId: number, text: strin
     ...(topic !== "verdict" ? [{ label: "Is this a good trade?", text: "Is this a good trade?" }] : []),
     ...(topic !== "history" ? [{ label: c.source === "user" ? "Their track record" : "Bot vs manual record", text: "Show their track record" }] : []),
     ...(topic !== "risk" ? [{ label: "Worst case if I copy", text: "What's the worst case if I copy?" }] : []),
-    ...(!ctx.own && !ctx.copying && !ctx.paused ? [{ label: "Copy with Flash", href: `/copy/${c.handle}`, icon: "bolt" }] : []),
+    ...(!ctx.own && !ctx.copying && !ctx.paused ? [{ label: "Their baskets", href: `/u/${c.handle}#baskets`, icon: "list" }] : []),
     { label: "← Back to the post", href: `/t/${c.id}` },
   ];
   const cre = creEvidence(c.leader);

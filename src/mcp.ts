@@ -1,6 +1,6 @@
 /**
  * Tribe MCP server: use Tribe from any MCP client (Claude Code, Claude Desktop, Cursor).
- * Your agent can read the leaderboard, check a trader and Guard, copy a trader with limits, and propose a bracketed
+ * Your agent can read the leaderboard and baskets, check a trader and Guard, copy a basket, and propose a bracketed
  * Flash trade that it can only place after you confirm. Copy rules, Guard pauses and confirm-to-sign all still apply.
  *
  * Config (Settings → AI agent access shows it with your token filled in):
@@ -60,22 +60,19 @@ server.registerTool("tribe_me", {
   annotations: { readOnlyHint: true },
 }, safe(async () => api("/api/v1/me")));
 
-server.registerTool("tribe_copy", {
-  title: "Copy a trader",
-  description: "Start copying a trader with limits. 'ask' sends you a request to approve for every trade; 'auto' copies within the limits. Guard pauses still block copies.",
-  inputSchema: {
-    handle: z.string(),
-    mode: z.enum(["ask", "auto"]).default("ask"),
-    maxPerTradeUsd: z.number().positive().default(25),
-    dailyCapUsd: z.number().positive().default(100),
-    requireStop: z.boolean().default(true).describe("Only copy entries that come with a stop-loss"),
-    ratio: z.number().positive().max(10).default(1).describe("Multiplier on the trader's size"),
-  },
-  annotations: { destructiveHint: false },
-}, safe(async (a: { handle: string; mode: "ask" | "auto"; maxPerTradeUsd: number; dailyCapUsd: number; requireStop: boolean; ratio: number }) => {
-  await api("/api/follow", { leader: a.handle.replace(/^@/, ""), mode: a.mode, max: a.maxPerTradeUsd, cap: a.dailyCapUsd, stop: a.requireStop ? "1" : "0", ratio: a.ratio, budget: a.dailyCapUsd * 5 });
-  return `Now copying @${a.handle.replace(/^@/, "")} (${a.mode}, max $${a.maxPerTradeUsd} per trade, $${a.dailyCapUsd} a day${a.requireStop ? ", stop-loss required" : ""}).`;
-}));
+server.registerTool("tribe_baskets", {
+  title: "List baskets",
+  description: "The best baskets on Tribe: each creator's tokens and weights, return since launch, stop, target, copiers and whether CopyGuard has the creator paused.",
+  inputSchema: {},
+  annotations: { readOnlyHint: true },
+}, safe(async () => api("/api/v1/baskets")));
+
+server.registerTool("tribe_copy_basket", {
+  title: "Copy a basket",
+  description: "Copy a basket at a size the user picked: one Flash order per token at its weight, inside their max per copy and daily cap. CopyGuard can still block it. Only call after the user explicitly confirms the amount. Baskets run in practice mode for now.",
+  inputSchema: { basket: z.number().int().describe("Basket id, from tribe_baskets"), usd: z.number().positive().describe("Total amount in dollars") },
+  annotations: { destructiveHint: true },
+}, safe(async (a: { basket: number; usd: number }) => api("/api/basket-copy", a)));
 
 server.registerTool("tribe_research", {
   title: "Research a trader or trade",

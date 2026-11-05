@@ -70,7 +70,7 @@ async function run(r){var e=await ready(),p=r.payload,a=S.address;
  if(r.kind==='message')return e.request({method:'personal_sign',params:[hex(p.message),a]});
  if(r.kind==='tx')return e.request({method:'eth_sendTransaction',params:[{from:a,to:p.to,data:p.data,value:p.value?'0x'+BigInt(p.value).toString(16):'0x0'}]});
  throw new Error('Unknown request')}
-async function loop(){for(;;){try{var j=await fetch('/api/sign/wait?tab='+tab).then(function(x){return x.json()});
+async function loop(){for(;;){try{var w=await fetch('/api/sign/wait?tab='+tab);if(w.status===401)return;if(!w.ok)throw new Error('wait '+w.status);var j=await w.json();
   if(j&&j.req){show(j.req.label);var body;try{body={result:await run(j.req)}}catch(x){body={error:(x&&(x.message||String(x.code)))||'rejected'};toast(body.error)}
    await fetch('/api/sign/'+j.req.id,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});hide()}
  }catch(x){hide();await new Promise(function(r){setTimeout(r,3000)})}}}

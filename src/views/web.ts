@@ -1,3 +1,4 @@
+import { basketHoldingsHtml } from "./baskets.js";
 import { statSync } from "node:fs";
 import { allHalts, db, followingOf, getMeta, pendingFor, userById } from "../db.js";
 import { face, copyPnlByLeader, initials, money, monthlyHistory, ORDER_LABEL, openPositions, pct, portfolio, ago, topTraders, type MonthRow } from "../data.js";
@@ -84,6 +85,7 @@ export async function portfolioPage(uid: number): Promise<string> {
 <section class="card" style="padding:0"><div class="row sp" style="padding:16px 16px 8px"><h2>Positions</h2><span class="sm mut">Each keeps its own stop and target</span></div>
 <div class="only-d" style="padding:0 8px 8px;overflow-x:auto"><table class="tbl"><thead><tr><th>Token</th><th>From</th><th>Size</th><th>Stop / target</th><th>PnL</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="mut">Nothing open. Copy a trader or ask Chief.</td></tr>'}</tbody></table></div>
 <div class="only-m" style="padding:0 16px 12px">${cards || '<div class="sm mut" style="padding:8px 0">Nothing open.</div>'}<a class="sm" href="/positions" style="display:block;padding-top:10px">Manage positions ›</a></div></section>
+<section class="card"><div class="row sp"><h2>Baskets</h2><a class="sm" href="/baskets">All baskets ›</a></div>${await basketHoldingsHtml(uid)}</section>
 ${history}
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px;align-items:start">
 <section class="card"><div class="row sp"><h2>Copy requests</h2><span class="sm mut">${pend.length} pending</span></div>

@@ -178,20 +178,20 @@ export async function openPositions(user: number): Promise<Position[]> {
   for (const p of symbolsHeld(user)) {
     const mark = await getPrice(p.token).catch(() => p.cost / p.qty);
     const entry = p.cost / p.qty;
-    const prot = db.prepare("SELECT id, trade, leader FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit','trailing-stop','trailing-stop-limit') ORDER BY id DESC LIMIT 1").get(user, p.token) as { id: number; trade: string } | undefined;
+    const prot = db.prepare("SELECT id, trade, leader FROM orders WHERE trader = ? AND status = 'open' AND lower(json_extract(trade, '$.target')) = lower(?) AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss','take-profit','trailing-stop','trailing-stop-limit') ORDER BY id DESC LIMIT 1").get(user, p.token) as { id: number; trade: string } | undefined;
     const pt = prot ? (JSON.parse(prot.trade) as Trade) : undefined;
     const trig = pt?.triggers ?? [];
     // A trailing stop's level moves with the price: shown as its trail below the peak so far (or the mark).
     const trailAt = pt?.trailingStop ? (pt.trailingStop.peak ?? mark) * (1 - Number(pt.trailingStop.trailPercent)) : undefined;
     const lo = trig.find((t) => t.triggerType === "lower");
     const up = trig.find((t) => t.triggerType === "upper");
-    const src = db.prepare("SELECT leader, trade, role FROM orders WHERE trader = ? AND status = 'filled' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.side') = 'buy' ORDER BY id DESC LIMIT 1").get(user, p.token) as { leader: number; trade: string; role: string } | undefined;
+    const src = db.prepare("SELECT leader, trade, role FROM orders WHERE trader = ? AND status = 'filled' AND lower(json_extract(trade, '$.target')) = lower(?) AND json_extract(trade, '$.side') = 'buy' ORDER BY id DESC LIMIT 1").get(user, p.token) as { leader: number; trade: string; role: string } | undefined;
     const leaderUser = src ? userById(src.leader) : undefined;
     out.push({
       token: p.token, symbol: symOf(p.token), qty: p.qty, entry, mark, value: p.qty * mark, pnlPct: (mark / entry - 1) * 100, pnlUsd: p.qty * mark - p.cost,
       stopPct: lo ? (1 - Number(lo.notionalPrice) / entry) * 100 : trailAt ? (1 - trailAt / entry) * 100 : null, tpPct: up && Number(up.notionalPrice) / entry - 1 <= 5 ? (Number(up.notionalPrice) / entry - 1) * 100 : null, // a 10x target only carries a stop: show no target
-      orderId: prot?.id ?? null, from: src && src.role === "copy" ? leaderUser?.handle ?? "?" : "you", type: src ? ORDER_LABEL[(JSON.parse(src.trade) as Trade).orderType] ?? "Market" : "Market",
-      sizeUsd: p.cost, fromLeader: src?.leader ?? user, fromHalted: !!(src && src.role === "copy" && haltOf(src.leader)),
+      orderId: prot?.id ?? null, from: src && src.role !== "own" ? leaderUser?.handle ?? "?" : "you", type: src ? ORDER_LABEL[(JSON.parse(src.trade) as Trade).orderType] ?? "Market" : "Market",
+      sizeUsd: p.cost, fromLeader: src?.leader ?? user, fromHalted: !!(src && src.role !== "own" && haltOf(src.leader)),
     });
   }
   return out.sort((a, b) => a.symbol.localeCompare(b.symbol));

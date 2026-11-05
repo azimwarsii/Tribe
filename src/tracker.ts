@@ -3,6 +3,7 @@ import { cancelOrder, cancelOrders, closeReasonText, getOrder, placeOrder, updat
 import { getPrice } from "./prices.js";
 import { signerOf } from "./wallet.js";
 import { totalPnlPct } from "./stats.js";
+import { priceStr } from "./numfmt.js";
 
 export const isDry = () => process.env.DRY_RUN !== "false";
 
@@ -47,7 +48,7 @@ const bracketFor = (entry: Trade, tokens: number): Trade => ({
  * Dry-run simulates fills at the live mark price and keeps a simulated USDC balance,
  * so PnL, feed and leaderboard work without funds.
  */
-export async function placeAndTrack(tradeId: number, trader: number, leader: number, role: "own" | "copy", trade: Trade): Promise<Placed> {
+export async function placeAndTrack(tradeId: number, trader: number, leader: number, role: "own" | "copy" | "basket", trade: Trade): Promise<Placed> {
   const sim = isDry();
   const insert = (orderId: string | null, t: Trade, status = "open", setup: string[] = []) =>
     Number(db.prepare("INSERT INTO orders (trade_id, trader, leader, role, order_id, trade, sim, placed_at, status, setup) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -239,7 +240,7 @@ export async function cancelFollowerCopies(tradeId: number) {
 
 /** Cancel a trader's open protective orders on a token (before closing the position, or replacing a stop). */
 export async function cancelProtective(trader: number, token: string) {
-  const open = db.prepare(`SELECT id, order_id, sim FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ${PROTECTIVE_TYPES}`).all(trader, token) as unknown as { id: number; order_id: string; sim: number }[];
+  const open = db.prepare(`SELECT id, order_id, sim FROM orders WHERE trader = ? AND status = 'open' AND lower(json_extract(trade, '$.target')) = lower(?) AND json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') IN ${PROTECTIVE_TYPES}`).all(trader, token) as unknown as { id: number; order_id: string; sim: number }[];
   const live = open.filter((o) => !o.sim).map((o) => o.order_id);
   // One signature for all of them (Flash batch cancel); a single order uses the plain cancel.
   if (live.length === 1) await cancelOrder(live[0], signerOf(trader));
@@ -272,8 +273,8 @@ export function stopOf(trader: number, token: string): number | undefined {
  * re-place for a bracket (Flash can't update one), or a new stop-loss when there is none.
  */
 export async function moveStop(trader: number, token: string, price: number, qty: number, leader = trader, role: "own" | "copy" = "own") {
-  const at = price.toFixed(2);
-  const open = db.prepare("SELECT id, order_id, trade, sim FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.target') = ? AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss') ORDER BY id DESC LIMIT 1").get(trader, token) as { id: number; order_id: string; trade: string; sim: number } | undefined;
+  const at = priceStr(price);
+  const open = db.prepare("SELECT id, order_id, trade, sim FROM orders WHERE trader = ? AND status = 'open' AND lower(json_extract(trade, '$.target')) = lower(?) AND json_extract(trade, '$.orderType') IN ('bracket','stop-loss') ORDER BY id DESC LIMIT 1").get(trader, token) as { id: number; order_id: string; trade: string; sim: number } | undefined;
   if (open && !open.sim) {
     const t = JSON.parse(open.trade) as Trade;
     if (t.orderType === "stop-loss") {

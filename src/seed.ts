@@ -1,9 +1,11 @@
+import { backdateBasket, copyBasket, createBasket } from "./baskets.js";
+import { DEMO_TOKENS } from "./demo-tokens.js";
 import "dotenv/config";
-import { addRule, addComment, addLedger, createSquad, db, getUser, haltLeader, joinSquad, setFollow, setHandle, setMeta, setReaction } from "./db.js";
+import { addRule, addComment, addLedger, createSquad, db, getMeta, getUser, haltLeader, joinSquad, setFollow, setHandle, setMeta, setReaction } from "./db.js";
 import { mirror } from "./copy.js";
 import { runBots } from "./bots.js";
 import type { TradeSource } from "./db.js";
-import { enableDemoPrices, getPrice, nudgeDemoPrice, setDemoPrice } from "./prices.js";
+import { enableDemoPrices, getPrice, nudgeDemoPrice, resetDemoPrices, setDemoPrice } from "./prices.js";
 import { searchAsset } from "./flash.js";
 import { parseTrade, TOKENS } from "./parse.js";
 import { heldTokens, pollOrders } from "./tracker.js";
@@ -135,6 +137,27 @@ const fans: [number, [number, string][]][] = [
 for (const [who, list] of fans) { const t = latest(who); if (t) for (const [u, k] of list) setReaction(t, u, k); }
 addComment(latest(kestrel), nightowl, "Your bot's thesis line is a nice touch. Copied at half size.");
 
+// Baskets: what people copy. Each has a past, and a few copiers. Skipped when recording with real prices, since their
+// starting prices come from the demo price list.
+if (process.env.DEMO_PRICES !== "false") {
+  const T = Object.fromEntries(DEMO_TOKENS.map((t) => [t.symbol, t.address]));
+  resetDemoPrices(); // the server starts from these, so a basket's seeded return is what it shows
+  // The seeded history above counts as today's spending, so give everyone room to copy during a demo.
+  for (const [id] of people) setMeta(id, { defaults: { ...getMeta(id).defaults, cap: 1000 } });
+  const seedBaskets: [number, string, string, number, number, [string, number][], number, number, number[]][] = [
+    [nightowl, "Base Blue Chips", "The names that survive every cycle, weighted by liquidity.", 10, 40, [["ETH", 50], ["cbBTC", 30], ["AERO", 20]], 21, 12.4, [kestrel, mav]],
+    [ember, "Agent Economy", "Betting on the tokens AI agents actually use.", 15, 80, [["VIRTUAL", 40], ["ZORA", 30], ["AERO", 30]], 14, 31.2, [nightowl, kestrel, mav]],
+    [kestrel, "Steady Stack", "Two assets, tight stops, low drama.", 8, 25, [["ETH", 60], ["cbBTC", 40]], 30, 6.2, [ember]],
+    [mav, "Base Memes", "Small size, big swings. Stops on everything.", 20, 100, [["BRETT", 40], ["DEGEN", 30], ["TOSHI", 30]], 9, -8.5, []],
+    [traderx, "All Gas", "High conviction, no stops.", 0, 0, [["ZORA", 70], ["DEGEN", 30]], 6, -14.1, []],
+  ];
+  for (const [owner, name, thesis, stopPct, tpPct, weights, days, ret, copiers] of seedBaskets) {
+    const id = await createBasket(owner, { name, thesis, stopPct, tpPct, weights: weights.map(([s, weight]) => ({ token: T[s], weight })) });
+    for (const c of copiers) await copyBasket(c, id, 20).catch((e) => console.log(`seed: ${name} not copied: ${(e as Error).message}`));
+    backdateBasket(id, days, ret);
+  }
+}
+
 // Squads
 const night = createSquad(nightowl, "Night Shift")!;
 for (const u of [kestrel, you]) joinSquad(u, night);
@@ -147,6 +170,9 @@ await catAsk(you, "who's best this week?", { source: "Telegram" });
 addRule(you, "Never copy memecoins without a stop", "Telegram");
 addRule(you, "Ask me before anything over $50", "app");
 addRule(you, "Explain Guard pauses in plain words", "app");
+
+// The feed opens on baskets: requests left over from the seeded history would sit on top of it.
+db.prepare("UPDATE pending_copies SET status = 'skipped' WHERE status = 'open'").run();
 
 if (process.argv.includes("--halt")) haltLeader(traderx, "drawdown 22pp in 24h, 2 trades without a stop", "0xdemo_copyguard_tx");
 console.log("seeded. Sign in as the demo viewer at /demo (DEMO=true).");

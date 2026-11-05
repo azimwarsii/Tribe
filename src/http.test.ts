@@ -13,6 +13,7 @@ const { appRouter } = await import("./app.js");
 const db = await import("./db.js");
 const { riskScore } = await import("./risk.js");
 
+prices.enableDemoPrices(); // token lookups answer from the demo list, with no network
 prices.setPriceProvider(async () => 2500);
 process.env.CRE_SHARED_SECRET = "cre-test";
 const { creRouter } = await import("./cre-api.js");
@@ -24,6 +25,8 @@ app.use(appRouter());
 const server = app.listen(0);
 const base = `http://localhost:${(server.address() as AddressInfo).port}`;
 after(() => server.close());
+
+const basketWeights = [{ token: "0x4200000000000000000000000000000000000006", weight: 60 }, { token: "0x940181a94a35a4569e4529a3cdfb74e38fd98631", weight: 40 }];
 
 /** Minimal cookie-carrying client. */
 function client() {
@@ -174,7 +177,7 @@ test("CRE endpoints: snapshot, verdicts, agent signal, season board", async () =
   assert.deepEqual((t.trade as { attach?: unknown }).attach, { tp: "2650", sl: "2400" });
   const watcher = client();
   await watcher("/api/signup", { handle: "botwatcher", persona: "Sniper" });
-  assert.match((await watcher("/feed")).text, /class="srctag bot"/); // others see it in their deck, tagged Bot
+  assert.match((await watcher(`/t/${mine.tradeId}`)).text, /class="srctag bot"/); // others see it on the record, tagged Bot
   // Its daily limit holds, and a bot that is off doesn't trade.
   const again = await (await cre("/cre/signal", { args: ["long", "ETH", "10", "2650", "2400"] })).json();
   assert.match(again.skipped.find((x: { handle: string }) => x.handle === "crelead").why, /daily limit/);
@@ -242,8 +245,13 @@ test("demo director beats run in order", async () => {
   db.setFollow(db.userByHandle("you")!.id, db.userByHandle("traderx")!.id, { mode: "auto" });
   const out: string[] = [];
   for (const b of BEATS) out.push(await b.run());
-  assert.match(out[0], /1 copy request/);
-  assert.match(out[2], /1 copy skipped by Guard/);
+  const said = (id: string) => out[BEATS.findIndex((b) => b.id === id)];
+  assert.match(said("basket-launch"), /Night Index 1 published/);
+  assert.match(said("basket-copy"), /Copied \$20 across 3 tokens/);
+  assert.match(said("basket-rebalance"), /Version 2 published\. 1 copier/);
+  assert.match(said("basket-partial"), /1 of 2 tokens filled/);
+  assert.match(said("trade"), /1 copy request/);
+  assert.match(said("guard"), /1 copy skipped by Guard/);
   assert.equal(db.haltOf(db.userByHandle("traderx")!.id), undefined); // cleared by beat 4
   assert.equal(db.guardEvents(db.userByHandle("traderx")!.id).map((e) => e.kind).join(","), "resume,halt");
 });
@@ -318,8 +326,8 @@ test("Ask Chief about a feed post: verdict, history, worst case, and the way bac
   await lead("/api/cat/confirm", { id: a.json.proposalId });
   const trade = (db.db.prepare("SELECT MAX(id) AS id FROM trades WHERE leader = ?").get(db.userByHandle("postlead")!.id) as { id: number }).id;
 
-  // Every feed card links to a research chat about itself.
-  assert.match((await me("/feed")).text, new RegExp(`/cat/chat\\?new=1&amp;trade=${trade}|/cat/chat\\?new=1&trade=${trade}`));
+  // Every post links to a research chat about itself.
+  assert.match((await me(`/t/${trade}`)).text, new RegExp(`/cat/chat\\?new=1&amp;trade=${trade}|/cat/chat\\?new=1&trade=${trade}`));
   const v = await me("/api/cat/ask", { text: "Is this a good trade?", trade });
   assert.ok(v.json.verdict && ["Looks solid", "Mixed", "Risky"].includes(v.json.verdict.label));
   assert.ok(v.json.verdict.checks.some((x: { t: string }) => /Has a stop/.test(x.t)));
@@ -334,10 +342,10 @@ test("Ask Chief about a feed post: verdict, history, worst case, and the way bac
   // A concrete order still becomes an order.
   assert.ok((await me("/api/cat/ask", { text: "buy $20 ETH with 5% stop", chat: v.json.chatId })).json.proposalId);
 
-  // The chat page pins the post with a way back and a Copy with Flash button.
+  // The chat page pins the post with a way back and a link to the trader's baskets.
   const page = await me(`/cat/chat?id=${v.json.chatId}`);
   assert.ok(page.text.includes(`href="/t/${trade}"`), "the pinned post links back to it");
-  assert.ok(page.text.includes(`href="/t/${trade}#copy"`), "Copy with Flash opens this trade's copy panel");
+  assert.ok(page.text.includes(`href="/u/postlead#baskets"`), "copying happens through their baskets");
   assert.ok(page.text.includes('id="unpin"'), "the pinned post can be unpinned");
   await me("/api/cat/unpin", {});
   assert.ok(!(await me("/cat")).text.includes('class="ctxbar"'), "unpinned: back to general questions");
@@ -402,7 +410,7 @@ test("web chrome: shell for signed-in pages, landing and sign-in when logged out
   assert.match((await c("/guard")).text, /class="rail"/);
   assert.equal((await c("/search?q=webuser")).loc, "/u/webuser");
   assert.doesNotMatch(feed.text, /SHELL_(OPEN|CLOSE)/);
-  assert.match((await c("/ranks")).text, /<table class="tbl">/);
+  assert.match((await c("/ranks?tab=Profit")).text, /<table class="tbl">/);
   assert.match((await c("/guard")).text, /Guard/);
   const pf = await c("/portfolio");
   assert.equal(pf.status, 200);
@@ -466,7 +474,8 @@ test("profiles: unique usernames, photos, free follows, portfolio, and Manual vs
   // Free follow: no copying, but their trades show in Following and the count goes up.
   assert.equal((await b("/api/watch", { leader: "photo_gal" })).json.toast, "Following @photo_gal");
   assert.equal(db.isFollowing(db.userByHandle("watcher1")!.id, uid), false, "following is not copying");
-  assert.match((await b("/feed?tab=Following")).text, /@photo_gal/);
+  assert.equal((await b("/feed?tab=following")).status, 200);
+  assert.match((await b("/u/photo_gal")).text, /id="baskets"/);
   const prof = (await b("/u/photo_gal")).text;
   assert.match(prof, /<b>1<\/b><span>follower<\/span>/);
   assert.match(prof, /aria-pressed="true"/);
@@ -475,18 +484,89 @@ test("profiles: unique usernames, photos, free follows, portfolio, and Manual vs
   assert.match((await b("/u/photo_gal?tab=Overview")).text, /Manual vs Bot/);
   const port = (await b("/u/photo_gal?tab=Portfolio")).text;
   assert.match(port, /Live now/);
-  assert.ok(port.includes('data-act="/api/copy-trade"'), "every live position can be copied with Flash");
+  assert.ok(!port.includes("/api/copy-trade"), "a single position can't be copied: people copy baskets");
   assert.match(port, /What they've made/); // past trades: month by month, on the profile portfolio
   assert.match(port, /% of portfolio</);
   assert.match((await a("/u/photo_gal?tab=Portfolio")).text, /% of portfolio · \$/); // the owner sees amounts
-  assert.ok(!(await a("/u/photo_gal?tab=Portfolio")).text.includes('data-act="/api/copy-trade"'), "no copy button on your own portfolio");
-  // Copy a live position straight from the portfolio.
-  db.setMeta(db.userByHandle("watcher1")!.id, { simBalance: 500 });
-  const held = await import("./data.js").then((d) => d.liveBook(uid));
-  const copied = await b("/api/copy-trade", { trade: held.held[0].tradeId, usd: 10 });
-  assert.ok(String(copied.json.toast).startsWith("Copied $10 of @photo_gal"), JSON.stringify(copied.json));
   for (const path of ["/profile/edit", "/bot"]) assert.equal((await a(path)).status, 200, path);
   assert.equal((await b("/api/watch", { leader: "photo_gal" })).json.toast, "Unfollowed @photo_gal");
+});
+
+test("baskets over HTTP: build, copy, change weights, approve, close, and every page renders", async () => {
+  const maker = client(), fan = client(), anon = client();
+  await maker("/api/signup", { handle: "basketmaker", persona: "Sniper" });
+  await fan("/api/signup", { handle: "basketfan", persona: "Sniper" });
+  const F = db.userByHandle("basketfan")!.id;
+  db.setMeta(F, { simBalance: 500 });
+  assert.equal((await maker("/api/baskets", { name: "x", weights: basketWeights })).status, 400);
+  assert.match((await maker("/api/baskets", { name: "Half and Half", weights: [basketWeights[0]] })).json.error, /at least 2/);
+  const made = await maker("/api/baskets", { name: "Half <b>Half", thesis: "Two big names", stopPct: 10, tpPct: 30, weights: basketWeights });
+  const id = Number(made.json.redirect.split("/").pop());
+
+  // Public page, escaped, with no way to copy until you sign in.
+  const pub = (await anon(`/b/${id}`)).text;
+  assert.match(pub, /Half &lt;b&gt;Half/);
+  assert.match(pub, /Sign in to copy/);
+  assert.match(pub, /What's in it/);
+  assert.equal((await anon("/baskets")).loc, "/signin");
+  assert.equal((await anon(`/b/${id + 999}`)).status, 200); // friendly not-found page
+
+  // The creator's page has their controls, the follower's the copy form; the builder only opens for its owner.
+  assert.match((await maker(`/b/${id}`)).text, /Change weights/);
+  assert.match((await fan(`/b/${id}`)).text, /action="\/api\/basket-copy"/);
+  assert.match((await fan(`/b/${id}/edit`)).text, /Basket not found/);
+  assert.match((await maker(`/u/basketmaker`)).text, new RegExp(`href="/b/${id}"`));
+
+  const copied = await fan("/api/basket-copy", { basket: id, usd: 20 });
+  assert.equal(copied.json.redirect, `/b/${id}#yours`);
+  const mine = (await fan(`/b/${id}`)).text;
+  assert.match(mine, /Your copy/);
+  assert.match(mine, /Close this copy/);
+  assert.match((await fan("/baskets")).text, /You copy/);
+  assert.match((await fan("/portfolio")).text, /Half &lt;b&gt;Half/);
+  assert.match((await fan("/activity")).text, /Half &lt;b&gt;Half/);
+
+  // New weights: copiers get a request, and only they can answer it.
+  assert.equal((await fan(`/api/baskets/${id}/weights`, { weights: basketWeights })).status, 400);
+  const next = [{ token: basketWeights[0].token, weight: 30 }, { token: basketWeights[1].token, weight: 70 }];
+  assert.match((await maker(`/api/baskets/${id}/weights`, { weights: next, note: "More AERO" })).json.toast, /1 copier asked to rebalance/);
+  const page = (await fan(`/b/${id}`)).text;
+  assert.match(page, /Rebalance Half/);
+  assert.match(page, /More AERO/);
+  const req = db.db.prepare("SELECT r.id FROM basket_requests r WHERE r.basket = ? AND r.status = 'open'").get(id) as { id: number };
+  assert.equal((await maker("/api/basket-rebalance", { id: req.id, action: "approve" })).status, 400);
+  assert.equal((await fan("/api/basket-rebalance", { id: req.id, action: "approve" })).json.toast, "Rebalanced");
+
+  const c = db.db.prepare("SELECT id FROM basket_copies WHERE follower = ?").get(F) as { id: number };
+  assert.equal((await maker(`/api/basket-copy/${c.id}/close`, {})).status, 400);
+  assert.match((await fan(`/api/basket-copy/${c.id}/close`, {})).json.toast, /Sold 2 tokens/);
+  assert.ok(!(await fan(`/b/${id}`)).text.includes("Your copy"));
+
+  assert.equal((await fan(`/api/baskets/${id}/retire`, {})).status, 400);
+  assert.equal((await maker(`/api/baskets/${id}/retire`, {})).json.toast, "Basket retired");
+  assert.match((await fan(`/b/${id}`)).text, /retired/);
+});
+
+test("the MetaMask bridge stops on a dead session and waits on errors, so a stale tab can't flood the server", async () => {
+  const js = await (await fetch(`${base}/app.js`)).text();
+  assert.match(js, /if\(w\.status===401\)return;/);
+  assert.match(js, /if\(!w\.ok\)throw new Error/);
+  // A wait with no session answers 401, which is what stops the loop.
+  assert.equal((await fetch(`${base}/api/sign/wait?tab=x`)).status, 401);
+});
+
+test("Chief answers about baskets by name, and suggests the best ones otherwise", async () => {
+  const maker = client(), me = client();
+  await maker("/api/signup", { handle: "chiefmaker", persona: "Sniper" });
+  await me("/api/signup", { handle: "chiefasker", persona: "Sniper" });
+  await maker("/api/baskets", { name: "Chief Check Basket", stopPct: 10, weights: basketWeights });
+  const named = (await me("/api/cat/ask", { text: 'Is the basket "Chief Check Basket" worth copying?', newChat: true })).json;
+  assert.match(named.reply, /Chief Check Basket by @chiefmaker holds ETH 60%/);
+  assert.equal(named.verdict.label, "Looks solid");
+  assert.ok(named.follow.some((f: { href?: string }) => /^\/b\/\d+$/.test(String(f.href))));
+  assert.match((await me("/api/cat/ask", { text: "which baskets are best?", newChat: true })).json.reply, /best baskets/);
+  // Agents read the same list.
+  assert.ok((await me("/api/v1/baskets")).json.baskets.some((b: { name: string; creator: string }) => b.name === "Chief Check Basket" && b.creator === "chiefmaker"));
 });
 
 test("reactions: one per person, picked from the bar, replaced or removed", async () => {
@@ -521,7 +601,7 @@ test("reactions: one per person, picked from the bar, replaced or removed", asyn
   assert.match(await (await fetch(`${base}/app.js`)).text(), /data-rx/);
 });
 
-test("discover deck: one trade at a time, requests first, swipe to skip or copy within your limits", async () => {
+test("discover deck: one basket at a time, requests first, swipe to skip or copy within your limits", async () => {
   const lead = client();
   const me = client();
   await lead("/api/signup", { handle: "decklead", persona: "Sniper" });
@@ -534,49 +614,51 @@ test("discover deck: one trade at a time, requests first, swipe to skip or copy 
     await lead("/api/cat/confirm", { id: p.json.proposalId });
     return (db.db.prepare("SELECT MAX(id) AS id FROM trades WHERE leader = ? AND json_extract(trade,'$.side') = 'buy'").get(leadId) as { id: number }).id;
   };
-  const t1 = await place("buy $20 ETH with 5% stop and 10% take profit");
-  const t2 = await place("buy $30 ETH with 4% stop and 9% take profit");
+  const publish = async (name: string, stopPct = 10) => Number((await lead("/api/baskets", { name, stopPct, weights: basketWeights })).json.redirect.split("/").pop());
+  const b1 = await publish("Deck One"), b2 = await publish("Deck Two");
 
-  // The deck shows each fresh entry as a card with Chief's read and a count of copiers (never who).
+  // The deck shows each basket as a card with Chief's read and a count of copiers (never who). Single trades aren't on it.
+  await place("buy $20 ETH with 5% stop and 10% take profit");
   let deck = (await me("/feed")).text;
-  assert.ok(deck.includes(`data-trade="${t1}"`) && deck.includes(`data-trade="${t2}"`));
+  assert.ok(deck.includes(`data-basket="${b1}"`) && deck.includes(`data-basket="${b2}"`));
+  assert.ok(!/class="swcard[^"]*" data-trade=/.test(deck), "no single trades in the deck");
   assert.match(deck, /Chief’s read/);
   assert.match(deck, /Copied by<\/div><div class="v" data-live="copiers">0 people/);
-  assert.match(deck, /id="swfollow"/); // follow the trader on the top card
+  assert.match(deck, /id="swfollow"/); // follow the creator on the top card
   assert.match(deck, /data-open="mytribe"/); // portfolio, quests and the tribe sit behind one button on phones
-  // The page keeps itself current: fresh numbers for the cards on screen, and new cards as trades are placed.
-  const live = (await me(`/api/deck/live?ids=${t1},${t2}`)).json;
-  assert.ok(live[t1] && /people/.test(live[t1].copiers) && "since" in live[t1]);
-  const more = (await me(`/api/deck/cards?have=${t1},${t2}`)).json.html as string;
-  assert.ok(!more.includes(`data-trade="${t1}"`) && !more.includes(`data-trade="${t2}"`), "cards already on screen aren't sent again");
-  assert.ok((await me(`/api/deck/cards?have=${t1}`)).json.html.includes(`data-trade="${t2}"`));
-  assert.ok(deck.includes(`/cat/chat?new=1&trade=${t1}`), "swipe up asks Chief about this trade");
+  // The page keeps itself current: fresh numbers for the cards on screen, and new cards as baskets are published.
+  const live = (await me(`/api/deck/live?ids=${b1},${b2}`)).json;
+  assert.ok(live[b1] && /people/.test(live[b1].copiers) && "since" in live[b1]);
+  const more = (await me(`/api/deck/cards?have=b${b1},b${b2}`)).json.html as string;
+  assert.ok(!more.includes(`data-basket="${b1}"`) && !more.includes(`data-basket="${b2}"`), "cards already on screen aren't sent again");
+  assert.ok((await me(`/api/deck/cards?have=b${b1}`)).json.html.includes(`data-basket="${b2}"`));
+  assert.ok(deck.includes('/cat/chat?new=1&amp;q=Is%20the%20basket'), "swipe up asks Chief about this basket");
   assert.doesNotMatch(deck, /data-react=/); // no comments or reactions in the deck
 
   // Swipe left: gone for good.
-  await me("/api/swipe", { trade: t1, dir: "left" });
-  assert.ok(!(await me("/feed")).text.includes(`data-trade="${t1}"`));
+  await me("/api/swipe", { basket: b1, dir: "left" });
+  assert.ok(!(await me("/feed")).text.includes(`data-basket="${b1}"`));
 
   // Swipe right: one copy, sized by you, inside your limits.
-  assert.match((await me("/api/copy-trade", { trade: t2, usd: 9999 })).json.error, /your max per trade/);
-  const ok = await me("/api/copy-trade", { trade: t2, usd: 20 });
-  assert.match(ok.json.toast, /Copied \$20 of @decklead/);
-  assert.match((await me("/api/copy-trade", { trade: t2, usd: 20 })).json.error, /already copied/);
-  assert.ok(!(await me("/feed")).text.includes(`data-trade="${t2}"`));
-  // The copy shows up in your active trades, and Chief's brief on the trader reads from their fills.
+  assert.match((await me("/api/basket-copy", { basket: b2, usd: 9999 })).json.error, /your max per copy/);
+  const ok = await me("/api/basket-copy", { basket: b2, usd: 20 });
+  assert.match(ok.json.toast, /Copied \$20 across 2 tokens/);
+  assert.match((await me("/api/basket-copy", { basket: b2, usd: 20 })).json.error, /already copy/);
+  assert.ok(!(await me("/feed")).text.includes(`data-basket="${b2}"`));
+  // The copy shows up in your active trades, and Chief's brief on the creator still reads from their fills.
   const act1 = (await me("/api/deck/active")).json.html as string;
-  assert.match(act1, /from @decklead/);
-  assert.ok(act1.includes(`class="aslide on" href="/t/${t2}"`), "one live entry per slide, linking to the trade");
+  assert.match(act1, /ETH/);
   const bj = (await me("/api/deck/brief?h=decklead")).json;
   const brief = bj.html as string;
   assert.match(brief, /@decklead/);
   assert.match(brief, /\d+ fills? read/);
   assert.match(bj.stats, /max DD/); // their record goes in its own card under the brief
   assert.match((await me("/api/deck/brief?h=nobody-here")).json.html, /couldn't find/);
-  assert.equal((await me(`/api/deck/live?ids=${t2}`)).json[t2].copiers, "1 person"); // a count, not names
-  assert.match((await lead("/api/copy-trade", { trade: t2, usd: 5 })).json.error, /your own trade/);
+  assert.equal((await me(`/api/deck/live?ids=${b2}`)).json[b2].copiers, "1 person"); // a count, not names
+  assert.match((await lead("/api/basket-copy", { basket: b2, usd: 5 })).json.error, /your own basket/);
 
   // Ask-first copy requests jump to the front of the deck with their countdown.
+  await publish("Deck Three");
   db.setFollow(meId, leadId, { mode: "ask", maxUsdPerTrade: 15 });
   const t3 = await place("buy $25 ETH with 5% stop and 10% take profit");
   deck = (await me("/feed")).text;
@@ -586,20 +668,17 @@ test("discover deck: one trade at a time, requests first, swipe to skip or copy 
   assert.match(deck, /Copy request from a trader you copy/);
 });
 
-test("social feed: why each trade is here, and the For you / Following / Trending tabs", async () => {
+test("social feed: why each basket is here, and the For you / Following / Trending tabs", async () => {
   const star = client(), friend = client(), me = client();
   await star("/api/signup", { handle: "socstar", persona: "Sniper" });
   await friend("/api/signup", { handle: "socfriend", persona: "Sniper" });
   await me("/api/signup", { handle: "socme", persona: "Sniper" });
-  db.setMeta(db.userByHandle("socstar")!.id, { simBalance: 500 });
-  const p = await star("/api/cat/ask", { text: "buy $20 ETH with 5% stop and 10% take profit" });
-  await star("/api/cat/confirm", { id: p.json.proposalId });
-  const trade = (db.db.prepare("SELECT MAX(id) AS id FROM trades WHERE leader = ?").get(db.userByHandle("socstar")!.id) as { id: number }).id;
-  const card = (html: string) => html.slice(html.indexOf(`data-trade="${trade}"`), html.indexOf("</article>", html.indexOf(`data-trade="${trade}"`)));
+  const basket = Number((await star("/api/baskets", { name: "Social Basket", stopPct: 10, weights: basketWeights })).json.redirect.split("/").pop());
+  const card = (html: string) => html.slice(html.indexOf(`data-basket="${basket}"`), html.indexOf("</article>", html.indexOf(`data-basket="${basket}"`)));
 
   // Nobody in your network trades them yet: a suggestion, and not on Following.
   assert.match(card((await me("/feed")).text), /Suggested for you/);
-  assert.ok(!(await me("/feed?tab=following")).text.includes(`data-trade="${trade}"`));
+  assert.ok(!(await me("/feed?tab=following")).text.includes(`data-basket="${basket}"`));
 
   // You follow @socfriend, who follows @socstar: LinkedIn-style "Followed by".
   await me("/api/watch", { leader: "socfriend" });
@@ -674,7 +753,7 @@ test("signals: post a call, scored by price, and the caller's showcase", async (
   assert.match(page, /aria-label="Signals"/); // in the nav where Leaderboard was
 });
 
-test("leaderboard: back in the nav next to Signals, with search and new traders", async () => {
+test("leaderboard: in the nav next to Baskets, with search and new traders", async () => {
   const fresh = client();
   await fresh("/api/signup", { handle: "freshface", persona: "Sniper" });
   db.setMeta(db.userByHandle("freshface")!.id, { simBalance: 500 });
@@ -685,7 +764,7 @@ test("leaderboard: back in the nav next to Signals, with search and new traders"
 
   const board = (await viewer("/ranks")).text;
   assert.match(board, /aria-label="Leaderboard"/);
-  assert.match(board, /aria-label="Signals"/);
+  assert.match(board, /aria-label="Baskets"/);
   assert.match(board, /name="q"/);
   assert.match((await viewer("/ranks?tab=New")).text, /@freshface/); // new traders show before they qualify for the ranked boards
   const found = (await viewer("/ranks?q=FRESH")).text;
@@ -791,7 +870,7 @@ test("MetaMask followers are always asked: Tribe can't sign for them, so auto ru
   assert.deepEqual([r.executed.length, r.pending.length], [0, 1]);
 });
 
-test("every trade has a public page: details, copy, share, comments; old links forward to it", async () => {
+test("every trade has a public page: details, share, comments; old links forward to it", async () => {
   const c = client();
   await c("/api/signup", { handle: "tradepageuser", persona: "Sniper" });
   const lead = db.userByHandle("tradepageuser")!.id;
@@ -801,23 +880,19 @@ test("every trade has a public page: details, copy, share, comments; old links f
   await c("/api/comment", { trade: tradeId, text: "Tight stop on this one" });
   // Signed out: the page opens for anyone, with the trade, its details, sharing and comments, and invites sign-in.
   const anon = await (await fetch(`${base}/t/${tradeId}`)).text();
-  for (const s of ['aria-label="Trade details"', "2300", "2800", 'aria-label="Share this trade"', `/t/${tradeId}`, "x.com/intent/post", "t.me/share", "wa.me", "Tight stop on this one", "Sign in to copy", "Sign in to react and comment", 'property="og:image"']) {
+  for (const s of ['aria-label="Trade details"', "2300", "2800", 'aria-label="Share this trade"', `/t/${tradeId}`, "x.com/intent/post", "t.me/share", "wa.me", "Tight stop on this one", "On Tribe you copy baskets", "Sign in to react and comment", 'property="og:image"']) {
     assert.ok(anon.includes(s), `signed-out page shows ${s}`);
   }
-  // Signed in as someone else: one-tap copy amounts and the comment box.
+  // Signed in as someone else: the comment box and a way to their baskets, but no copying this one trade.
   const fan = client();
   await fan("/api/signup", { handle: "tradepagefan", persona: "Sniper" });
   const seen = (await fan(`/t/${tradeId}`)).text;
-  // Amounts open a confirm sheet (amount, worst and best case, the Flash order) instead of copying on one tap.
-  assert.ok(seen.includes('data-copyamt="25"') && !seen.includes('data-act="/api/copy-trade"'), "no one-tap copy");
-  assert.ok(seen.includes('id="copyconfirm"') && seen.includes("Confirm &amp; sign"), "the confirm sheet is there");
-  assert.ok(seen.includes("Market buy $40 now · Take-profit $2,800.00 · Stop-loss $2,300.00"), "the Flash order in plain words");
-  assert.ok(seen.includes('Market buy <b id="tc-amtlbl"></b> now'), "the confirm sheet shows the follower's own amount, not the trader's");
+  assert.ok(!seen.includes("data-copyamt") && !seen.includes("/api/copy-trade"), "a single trade can't be copied");
+  assert.ok(seen.includes(`href="/u/tradepageuser#baskets"`), "copying goes through their baskets");
   assert.ok(seen.includes('action="/api/comment"'));
-  assert.ok(seen.indexOf('id="copy"') < seen.indexOf('aria-label="Trade details"'), "the copy panel sits right under the card");
   const { tradeCard: tc } = await import("./data.js");
   const { tradeCardHtml: cardHtml } = await import("./views/feed.js");
-  assert.ok(cardHtml((await tc(tradeId))!, undefined).includes(`href="/t/${tradeId}#copy"`), "elsewhere, a card's Copy with Flash opens this trade's copy panel");
+  assert.ok(cardHtml((await tc(tradeId))!, undefined).includes(`href="/u/tradepageuser#baskets"`), "elsewhere, a card links to their baskets");
   assert.ok(!seen.includes("Copy all of"), "no option to copy all of a trader's trades");
   assert.match(seen, /data-act="\/api\/watch" data-body='\{"leader":"tradepageuser"\}'>Follow</);
   await fan("/api/watch", { leader: "tradepageuser" });
@@ -875,7 +950,7 @@ test("Creator studio: trade ticket, bot trial, publish, copies and pay", async (
   assert.ok(trial.every((x) => x.private === 1 && x.source === "bot"));
   assert.equal(copiesOf(trial[0].id), 0, "nobody copies a trial trade");
   assert.equal((await f(`/t/${trial[0].id}`)).status, 404);
-  assert.equal((await f("/api/copy-trade", { trade: trial[0].id, usd: 5 })).status, 400, "trial trades can't be copied by id");
+  assert.equal((await f("/api/copy-trade", { trade: trial[0].id, usd: 5 })).status, 404, "single trades can't be copied at all");
   assert.equal((await c(`/t/${trial[0].id}`)).status, 200, "the owner sees their trial trades");
   assert.ok(!(await f("/feed")).text.includes(`/t/${trial[0].id}"`), "trial trades stay out of the feed");
 
@@ -975,10 +1050,10 @@ test("Closing a position asks everyone holding a copy to sell theirs, and their 
   await lead("/api/signup", { handle: "closer", persona: "Sniper" });
   await fan("/api/signup", { handle: "onecopy", persona: "Hodler" });
   const L = db.userByHandle("closer")!.id, F = db.userByHandle("onecopy")!.id;
-  const t = await lead("/api/trade/new", { usd: 20, stop: 5, tp: 10 });
-  const tradeId = Number(t.json.redirect.split("/").pop());
-  // Copied once from the trade page: no follow.
-  assert.equal((await fan("/api/copy-trade", { trade: tradeId, usd: 10 })).status, 200);
+  // Copied while following, then unfollowed: they still hold it.
+  db.setFollow(F, L, { mode: "auto" });
+  await lead("/api/trade/new", { usd: 20, stop: 5, tp: 10 });
+  db.unfollow(F, L);
   assert.ok(!db.db.prepare("SELECT 1 FROM follows WHERE follower = ? AND leader = ?").get(F, L));
   const { copiedTokens } = await import("./copy.js");
   const weth = "0x4200000000000000000000000000000000000006";
@@ -998,7 +1073,7 @@ test("Closing a position asks everyone holding a copy to sell theirs, and their 
 test("Every inline script on the main pages parses (a stray quote breaks a whole page)", async () => {
   const c = client();
   await c("/api/signup", { handle: "scriptcheck", persona: "Hodler" });
-  for (const path of ["/cat", "/feed", "/trade/new", "/bots/new", "/creator", "/portfolio", "/settings", "/signals", "/ranks"]) {
+  for (const path of ["/cat", "/feed", "/baskets", "/baskets/new", "/trade/new", "/bots/new", "/creator", "/portfolio", "/settings", "/signals", "/ranks"]) {
     const html = (await c(path)).text;
     const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
     for (const code of scripts) assert.doesNotThrow(() => new Function(code), `${path}: inline script has a syntax error`);
