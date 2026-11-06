@@ -163,8 +163,7 @@ h2{margin:0;font-size:17px;font-weight:600}
 .ck{width:14px;height:14px;border-radius:7px;display:inline-grid;place-items:center;flex:none;background:rgba(52,211,153,.18);color:#34D399;font-style:normal;font-size:9px;font-weight:800}.ck.bad{background:rgba(248,113,113,.18);color:#F87171}
 .chip.flashchip{background:#34D399;color:#052E1C;border-color:#34D399;font-weight:600}.chip.flashchip:hover{color:#052E1C}
 .swmain{gap:14px;padding-bottom:120px}
-.deck{position:relative;height:min(648px,calc(100vh - 296px));min-height:430px}
-@media (min-width:900px) and (max-height:860px){.swcard .soc,.swcard .freshband{display:none}}
+.deck{position:relative;height:min(648px,calc(100vh - 270px));min-height:430px}
 .swcard{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:26px;background:linear-gradient(180deg,#262626,#151515);border:1px solid var(--line);box-shadow:0 18px 40px rgba(0,0,0,.45);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;will-change:transform;transition:transform .45s cubic-bezier(.2,.9,.25,1.05),filter .45s,opacity .35s}
 .swcard:active{cursor:grabbing}
 /* Coverflow: the trade in front (p0), the next one peeking on the right (p1), the rest waiting behind it (pn), and the one
@@ -180,12 +179,9 @@ h2{margin:0;font-size:17px;font-weight:600}
 .soc{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#A3A3A3;min-width:0;margin-bottom:-4px}.soc>span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .soc .socic{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:11px;background:#1F1F1F;color:#D4D4D4;flex:none}.soc.trending .socic{color:#FB923C;background:rgba(251,146,60,.12)}.soc.copying .socic,.soc.following .socic{color:#34D399;background:rgba(52,211,153,.12)}
 .socfaces{display:flex;flex:none;padding-left:7px}.socfaces .av.stack{width:22px;height:22px;font-size:8px;border-color:#202020}.soc.network>span:last-child{color:#D4D4D4}
-@media (max-width:430px){.dtabs a{padding:6px 7px;font-size:13px}.dtabs+div>.ic,.swmain .hd .row>.ic{width:36px;height:36px}.swmain .hd .row{gap:6px!important}}
-.dchief{flex:none;height:30px;padding:0 12px 0 7px;display:inline-flex;align-items:center;gap:6px;border-radius:15px;border:1px solid rgba(52,211,153,.45);background:rgba(52,211,153,.1);color:#F5F5F5;font-size:13px;font-weight:600;white-space:nowrap}
 #chief-new[hidden]{display:none}.chiefbox{display:flex;flex-direction:column;gap:10px;height:min(74vh,640px)}.chiefmsgs{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 2px}.chiefchips{flex:none;max-height:84px;overflow-y:auto}.chiefchips:empty{display:none}.chiefform{display:flex;gap:8px;align-items:center;flex:none}.chiefform input{flex:1;min-width:0;height:44px;padding:0 14px;border-radius:22px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#F5F5F5;font-size:16px;outline:none}.chiefform input:focus{border-color:#34D399}
+@media (min-width:900px){.paside{position:relative;z-index:50}.split:has(.deck){padding-top:14px}.deck{height:max(520px,calc(100vh - 160px))}}
 .mixtags{display:flex;flex-wrap:wrap;gap:5px}.mixtag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;background:#1A1A1A;border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:#D4D4D4;white-space:nowrap}.mixtag i{width:7px;height:7px;border-radius:2px;flex:none}.mixtag b{font-weight:700;color:#F5F5F5}.mixtag.risk{background:none;font-weight:600}
-.dfilter{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:none;margin:-6px -2px 0;padding:2px;-webkit-overflow-scrolling:touch}.dfilter::-webkit-scrollbar{display:none}.dfilter a{flex:none;height:30px;padding:0 12px;display:inline-flex;align-items:center;border-radius:15px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#A3A3A3;font-size:13px;font-weight:600;white-space:nowrap}.dfilter a:hover{color:#F5F5F5}.dfilter a.on{background:#F5F5F5;border-color:#F5F5F5;color:#0A0A0A}
-.dtabs{display:flex;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none}.dtabs::-webkit-scrollbar{display:none}.dtabs a{padding:7px 10px;border-radius:999px;font-size:14px;font-weight:600;color:#A3A3A3;white-space:nowrap}.dtabs a:hover{color:#F5F5F5}.dtabs a.on{color:#0A0A0A;background:#F5F5F5}
 .deskstats{gap:6px}.deskstats div{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:12px;background:#1A1A1A;text-align:center}.deskstats b{font-size:16px}.deskstats span{font-size:11px;color:#A3A3A3}
 .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;counter-reset:st}.steps li{display:flex;flex-direction:column;gap:2px;padding-left:30px;position:relative;font-size:13px}.steps li::before{counter-increment:st;content:counter(st);position:absolute;left:0;top:0;width:20px;height:20px;border-radius:10px;background:rgba(52,211,153,.14);color:#34D399;font-size:11px;font-weight:700;display:grid;place-items:center}.steps span{color:#A3A3A3;font-size:12.5px;line-height:1.4}
 .lbsearch{display:flex;align-items:center;gap:10px;padding:0 14px;height:44px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#A3A3A3}.lbsearch:focus-within{border-color:#34D399}.lbsearch input{flex:1;min-width:0;height:100%;border:0;background:none;color:#F5F5F5;font:inherit;font-size:15px;outline:none}
@@ -195,13 +191,12 @@ h2{margin:0;font-size:17px;font-weight:600}
 @keyframes card-in{from{opacity:0;transform:translateY(40px) scale(.92)}to{opacity:1}}
 [data-live].flash{animation:live-flash .9s ease-out}
 @keyframes live-flash{0%{background:rgba(52,211,153,.25)}100%{background:transparent}}
-.swfollow{max-width:360px;margin:0 auto;height:40px;font-size:14px}
 /* The buttons sit over the card's bottom edge (above every card in the stack), with room left in the card so they cover nothing. */
 .swcard{padding-bottom:52px}.swmain .swbar{position:relative;z-index:60;margin-top:-48px}
 /* Phones are swipes only: following the trader lives on desktop (button or F). */
-@media (max-width:899px){.swfollow{display:none!important}
+@media (max-width:899px){
   /* Phones: the card fills the screen between the header and the tab bar. */
-  .swmain{padding:0 10px}.deck{height:calc(100vh - 226px);height:calc(100dvh - 226px);min-height:430px;margin:0 8px;--peek:16%}
+  .swmain{padding:0 10px}.deck{height:calc(100vh - 190px);height:calc(100dvh - 190px);min-height:430px;margin:0 8px;--peek:16%}
   .swmain .swbar{margin-bottom:-16px}}
 /* Short phones: Chief's read and the worst case stay; the extras give way. */
 @media (max-width:899px) and (max-height:740px){.swcard{gap:7px;padding:12px 14px 50px}.swcard .soc,.swcard .allockey,.swcard .swthesis,.swcard .freshband{display:none}.swcard .swread{padding:9px 11px}.swcard .swread li:nth-child(n+3){display:none}}
@@ -232,13 +227,19 @@ h2{margin:0;font-size:17px;font-weight:600}
 .pcurve{display:flex;flex-direction:column;gap:8px}.pc-plot{position:relative;height:170px;cursor:crosshair;touch-action:pan-y}.pc-plot svg{display:block;width:100%;height:100%;overflow:visible}.pc-dot{position:absolute;width:9px;height:9px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 4px rgba(52,211,153,.15);pointer-events:none}.pc-zero{position:absolute;right:0;transform:translateY(-120%)}
 .mbars{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:10px;height:150px;align-items:end;padding:4px 2px 0}.mbar{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}.mbar i{display:block;width:70%;max-width:46px;border-radius:8px 8px 3px 3px;min-height:4px}.mbar i.pos{background:linear-gradient(180deg,#6EE7B7,#10B981)}.mbar i.neg{background:linear-gradient(180deg,#FCA5A5,#EF4444)}
 .mrow{border-top:1px solid #1F1F1F}.mrow summary{list-style:none;cursor:pointer;min-height:56px;padding:6px 0}.mrow summary::-webkit-details-marker{display:none}.mrow[open] summary{border-bottom:0}
-@media(min-width:900px){.swmain{padding-bottom:16px}.deck{width:100%;max-width:560px;margin:0 auto}.swmain .swbar,.swmain .swfollow{width:100%;max-width:560px;margin-left:auto;margin-right:auto}}
+@media(min-width:900px){.swmain{padding-bottom:16px}.deck{width:100%;max-width:560px;margin:0 auto}.swmain .swbar{width:100%;max-width:560px;margin-left:auto;margin-right:auto}}
 @media(prefers-reduced-motion:reduce){.swcard.arrive,[data-live].flash{animation:none}}
 .reqband{margin:-16px -16px 0;padding:10px 16px;background:rgba(252,211,77,.12);color:#FCD34D;font-size:13px;display:flex;gap:6px;align-items:center}
 .stamp{position:absolute;top:24px;padding:4px 12px;border:3px solid;border-radius:10px;font-weight:800;font-size:22px;letter-spacing:.06em;opacity:0;z-index:5;pointer-events:none;background:rgba(10,10,10,.55)}
 .stamp.copy{left:18px;color:#34D399;border-color:#34D399;transform:rotate(-12deg)}.stamp.skip{right:18px;color:#F87171;border-color:#F87171;transform:rotate(12deg)}
 .stamp.ask{left:50%;top:auto;bottom:28px;transform:translateX(-50%);color:#A7F3D0;border-color:#A7F3D0;white-space:nowrap}
-.swread{border:1px solid;border-radius:16px;padding:12px;background:rgba(255,255,255,.02);margin-top:auto}
+.swread{border:1px solid;border-radius:16px;padding:12px;background:rgba(255,255,255,.02)}
+/* A basket card fills the height it is given: spare room spreads between its sections rather than pooling in one gap. */
+.swcard[data-basket]{justify-content:space-between}
+@media (min-width:900px) and (max-height:760px){.swcard[data-basket] .soc{display:none}}
+/* Tall desktop screens: the content grows with the card, so the card fills up rather than just spreading out. */
+@media (min-width:900px) and (min-height:860px){.swcard[data-basket]>:not(.freshband):not(.stamp){zoom:1.14}}
+@media (min-width:900px) and (min-height:1020px){.swcard[data-basket]>:not(.freshband):not(.stamp){zoom:1.32}}
 .swbar{display:flex;justify-content:center;align-items:center;gap:22px}
 .swbtn{width:64px;height:64px;border-radius:32px;border:1px solid var(--line);background:#1A1A1A;display:grid;place-items:center;box-shadow:0 10px 24px rgba(0,0,0,.4);transition:transform .15s}
 .swbtn:hover{transform:scale(1.08)}.swbtn:active{transform:scale(.94)}

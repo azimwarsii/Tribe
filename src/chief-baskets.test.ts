@@ -100,25 +100,27 @@ test("a basket's tags follow a new version of its weights", async () => {
   await b.retireBasket(creator, id);
 });
 
-// ---------- The feed filter ----------
+// ---------- The feed ----------
 
 const shown = (html: string) => [...html.matchAll(/data-symbol="([^"]+)"/g)].map((m) => m[1]);
 
-test("the feed filter keeps what you're looking for, purest first", async () => {
-  const me = user();
-  const cards = async (f: Parameters<typeof deckCards>[4]) => shown((await deckCards(me, new Set(), "for-you", new Set(), f)).html);
-  assert.ok((await cards("all")).includes("Naked Test"));
-  assert.deepEqual(await cards("stock"), ["Core Test"]);
-  assert.deepEqual(await cards("meme"), ["Meme Test"]);
-  assert.deepEqual(new Set(await cards("steady")), new Set(["Core Test", "Blue Test"]));
-  assert.equal((await cards("major"))[0], "Blue Test", "100% majors comes before 20%");
-  assert.ok(!(await cards("major")).includes("Core Test"), "20% is under the 25% line, so it isn't a majors basket");
+test("a basket only counts for a class from 25% up, so a small sleeve doesn't get it listed", () => {
+  const m = (w: [string, number][]) => { const weights = w.map(([token, weight]) => ({ token, weight })); return { mix: a.basketMix(weights), risk: a.basketRisk(weights, 10) }; };
+  assert.ok(a.matchesFilter(m([[SPX, 80], [ETH, 20]]), "stock"));
+  assert.ok(!a.matchesFilter(m([[SPX, 80], [ETH, 20]]), "major"));
+  assert.ok(!a.matchesFilter(m([[BRETT, 90], [SPX, 10]]), "stock"));
+  assert.ok(a.matchesFilter(m([[ETH, 60], [BTC, 40]]), "steady"));
 });
 
-test("a small sleeve doesn't get a basket into a filter", async () => {
-  const id = await make(creator, "Sleeve Test", [[BRETT, 90], [SPX, 10]]);
-  assert.ok(!shown((await deckCards(user(), new Set(), "for-you", new Set(), "stock")).html).includes("Sleeve Test"));
-  await b.retireBasket(creator, id);
+test("the feed has no filter row and no Basket labels, and an old saved filter has no effect", async () => {
+  const me = user();
+  setMeta(me, { feedAsset: "stock" } as never);
+  const page = await deckPage(me);
+  assert.doesNotMatch(page, /class="dfilter"|data-asset=/);
+  assert.ok(shown((await deckCards(me)).html).includes("Blue Test"), "every basket is dealt");
+  const body = page.replace(/<style>[\s\S]*?<\/style>/g, "").replace(/<script[\s\S]*?<\/script>/g, "");
+  assert.doesNotMatch(body, />Baskets?</);
+  assert.doesNotMatch(body, /Basket · /);
 });
 
 test("active trades from a basket open the basket: its orders have no trade page", async () => {
@@ -128,16 +130,6 @@ test("active trades from a basket open the basket: its orders have no trade page
   const html = await activeHtml(me);
   assert.match(html, new RegExp(`href="/b/${blue}#yours"`));
   assert.doesNotMatch(html, /href="\/t\/-/);
-});
-
-test("an empty filter says so and offers a way out, and tabs keep the filter", async () => {
-  const me = user();
-  await b.copyBasket(me, core, 20); // the only stock basket: already copied, so none left to offer
-  const page = await deckPage(me, "for-you", "stock");
-  assert.match(page, /No more US stocks baskets/);
-  assert.match(page, /href="\/feed\?asset=all">Show all/);
-  assert.match(page, /href="\/feed\?tab=trending&asset=stock"/);
-  assert.match(page, /data-asset="stock"/);
 });
 
 test("Portfolio holds both jobs: Investing by default, Creating as a tab, with one sidebar item", async () => {

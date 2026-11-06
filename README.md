@@ -8,7 +8,7 @@ Mobile-first web app (it reflows to a full desktop layout).
 A basket is what you copy on Tribe (`src/baskets.ts`, `src/views/baskets.ts`).
 
 - **Build:** 1 to 10 tokens, at least 1% each, adding up to 100%, with an optional stop and target per token.
-- **Mix and risk:** every basket shows its share in Major coins, US stocks, Altcoins and Meme coins, plus a Steady, Balanced or Aggressive band (`src/assets.ts`). Classes come from a reviewed list of contract addresses, never a token's name or a creator's tag; anything unreviewed is Unclassified and counts as the riskiest kind. Confirm a token's address with its issuer before adding it (Coinbase's tokenized stocks are listed at base.org/assets). The feed filters on this, with a basket counting for a class from 25% up.
+- **Mix and risk:** every basket shows its share in Major coins, US stocks, Altcoins and Meme coins, plus a Steady, Balanced or Aggressive band (`src/assets.ts`). Classes come from a reviewed list of contract addresses, never a token's name or a creator's tag; anything unreviewed is Unclassified and counts as the riskiest kind. Confirm a token's address with its issuer before adding it (Coinbase's tokenized stocks are listed at base.org/assets). The agent API can filter on this, with a basket counting for a class from 25% up.
 - **Safety read:** every basket shows rule-based checks on its stop, spread, record and creator's Guard status. No AI is involved.
 - **Copy:** Tribe runs your limits and CopyGuard once for the whole amount, then places one Flash order per token at its weight. The tokens sit in your own wallet; nothing is pooled.
 - **Partial fills:** if a token won't fill, the rest still go through. The copy shows as partly filled, and you can try again or close it.

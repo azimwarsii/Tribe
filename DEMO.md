@@ -19,7 +19,6 @@ Reset between takes with `npm run demo:reset` (stop and restart `npm run demo`).
 | # | Say | Do | What the viewer sees |
 | --- | --- | --- | --- |
 | 0 | "Copy trading usually means blind trust in one trade. Tribe lets you copy a whole basket, with a safety net." | Phone: Feed. | A basket card: its mix by asset class, risk band, make-up bar, return since launch, the safety read. |
-| 0a | "Tell it what you're looking for: major coins, US stocks, memes, or just something steady." | Phone: tap **US stocks** in the feed, then **Meme coins**. | The deck re-deals. US Core shows 80% US stocks, Steady. |
 | 1 | "Anyone can build one." | Phone: Portfolio → **Creating** → **New basket**. Add tokens, set weights, pick a stop, publish. | Weights must reach 100% before **Publish basket** unlocks. |
 | 2 | "@nightowl publishes a basket." | Director: **1 · A creator publishes a basket**. | It slides into the feed. |
 | 3 | "One tap copies it. Each token is its own Flash order with its own stop, in my own wallet." | Director: **2 · You copy it**, or swipe right in the Feed and **Confirm & sign**. | Portfolio → Baskets, with each token's value and weight. |

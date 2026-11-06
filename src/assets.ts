@@ -87,7 +87,7 @@ export function basketRisk(weights: { token: string; weight: number }[], stopPct
   return (["steady", "balanced", "aggressive"] as const)[Math.min(2, band + (stopPct > 0 ? 0 : 1))];
 }
 
-/** The feed's filter: what someone is looking to put money into. */
+/** Filtering baskets by what's in them, for the agent API (`/api/v1/baskets?asset=`). */
 export type AssetFilter = "all" | "major" | "stock" | "alt" | "meme" | "steady";
 export const ASSET_FILTERS: [AssetFilter, string][] = [["all", "All"], ["major", "Major coins"], ["stock", "US stocks"], ["alt", "Altcoins"], ["meme", "Meme coins"], ["steady", "Steady"]];
 export const assetFilter = (f: unknown): AssetFilter => ASSET_FILTERS.find(([k]) => k === f)?.[0] ?? "all";

@@ -184,7 +184,6 @@ export interface Meta {
   bot: { on: boolean; usd: number; perDay: number }; // the user's own bot: runs the CRE strategy and trades under their name, tagged Bot
   kyc?: { country: string; at: number }; // creator verified before their first payout
   foundingUntil?: number; // founding creator: the higher fee share until this time
-  feedAsset?: string; // the feed's asset filter, kept between visits
 }
 
 export const DEFAULT_META: Meta = {

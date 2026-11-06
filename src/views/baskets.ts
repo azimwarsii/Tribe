@@ -46,10 +46,10 @@ export async function basketCardHtml(v: BasketView, viewer: number, social = "")
   const following = isWatching(viewer, v.owner);
   return `<article class="swcard" data-basket="${v.id}" data-handle="${esc(v.handle)}" data-symbol="${esc(v.name)}" data-legs="${v.weights.length}" data-usd="${usd}" data-max="${max}" data-needstop="${needStop ? 1 : ""}" data-fee="${fee.bps}" data-share="${fee.sharePct}" data-sl="${v.stopPct || ""}" data-tp="${v.tpPct || ""}" data-following="${following ? 1 : ""}" data-verdict="${esc(read.label)}" data-tone="${read.tone}" data-ini="${initials(v.handle)}" aria-label="${esc(v.name)} by @${esc(v.handle)}, ${tokensText(v.weights.length)}">
 <span class="stamp copy" aria-hidden="true">COPY</span><span class="stamp skip" aria-hidden="true">SKIP</span>
-<div class="freshband" role="status">${icon("list", 13, "currentColor", 2)}Basket · ${tokensText(v.weights.length)} · launched ${ago(v.at)} ago</div>
+<div class="freshband" role="status">${icon("list", 13, "currentColor", 2)}${tokensText(v.weights.length)} · launched ${ago(v.at)} ago</div>
 ${social}
 <div class="row"><a href="/u/${esc(v.handle)}" class="av w">${face(v.handle)}</a><div class="grow" style="min-width:0"><a href="/u/${esc(v.handle)}" style="color:#F5F5F5;font-weight:600">@${esc(v.handle)}</a><div class="sm mut">${v.version > 1 ? `Rebalanced ${ago(v.versionAt)} ago` : "Creator"}</div></div><span class="pill ok">${icon("shield", 11, "currentColor", 2)}Guard passed</span></div>
-<div class="row sp" style="align-items:flex-end;gap:12px"><div style="min-width:0"><div class="mut" style="font-size:14px">Basket</div><div style="font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.15">${esc(v.name)}</div></div>
+<div class="row sp" style="align-items:flex-end;gap:12px"><div style="min-width:0"><div style="font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.15">${esc(v.name)}</div></div>
 <div style="text-align:right;flex:none" data-live="since">${sinceHtml(v.returnPct)}</div></div>
 ${mixTags(v)}${allocBar(v.weights)}${allocKey(v.weights)}
 ${v.thesis ? `<p class="md swthesis" style="margin:0;line-height:1.45;color:#D4D4D4">“${esc(v.thesis)}”</p>` : ""}

@@ -9,7 +9,7 @@ import { execute, mirror, mirrorStopMove, type PendingNotice } from "./copy.js";
 import { assetFilter, matchesFilter } from "./assets.js";
 import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, retireBasket, retryCopy, skipRebalance, tokensText, updateWeights } from "./baskets.js";
 import { basketBuilderPage, basketOgSvg, basketPage } from "./views/baskets.js";
-import { activeHtml, briefHtml, deckCards, deckLive, deckPage, deckTab, feedTopPage } from "./views/deck.js";
+import { activeHtml, briefHtml, deckCards, deckLive, deckPage, feedTopPage } from "./views/deck.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
 import {
@@ -173,12 +173,8 @@ export function appRouter(): Router {
 
   // Pages
   // The feed is the live deck only. Past trades live in Portfolio (yours) and on each trader's profile portfolio.
-  // The asset filter sticks: picking one is what you're looking for until you pick another.
   r.get("/feed", authed((uid, req) => {
-    const asset = assetFilter(req.query.asset ?? getMeta(uid).feedAsset);
-    if (req.query.asset !== undefined) setMeta(uid, { feedAsset: asset });
-    const tab = deckTab(req.query.tab);
-    return tab === "top" ? feedTopPage(uid, req.query as Record<string, unknown>, asset) : deckPage(uid, tab, asset);
+    return req.query.tab === "top" ? feedTopPage(uid, req.query as Record<string, unknown>) : deckPage(uid);
   }));
   // Top-bar search: straight to a trader's profile, else the leaderboard.
   r.get("/search", (req, res) => {
@@ -568,7 +564,7 @@ export function appRouter(): Router {
   const idList = (v: unknown) => String(v ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
   r.get("/api/deck/cards", act((uid, req) => {
     const have = String(req.query.have ?? "").split(",");
-    return deckCards(uid, new Set(idList(have.filter((x) => !x.startsWith("b")).join(","))), deckTab(req.query.tab), new Set(idList(have.filter((x) => x.startsWith("b")).map((x) => x.slice(1)).join(","))), assetFilter(req.query.asset));
+    return deckCards(uid, new Set(idList(have.filter((x) => !x.startsWith("b")).join(","))), new Set(idList(have.filter((x) => x.startsWith("b")).map((x) => x.slice(1)).join(","))));
   }));
   r.get("/api/deck/live", act((_uid, req) => deckLive(idList(req.query.ids))));
   r.get("/api/deck/brief", act((_uid, req) => briefHtml(String(req.query.h ?? ""))));

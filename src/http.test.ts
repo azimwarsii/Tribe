@@ -462,7 +462,6 @@ test("profiles: unique usernames, photos, free follows, portfolio, and Manual vs
   // Free follow: no copying, but their trades show in Following and the count goes up.
   assert.equal((await b("/api/watch", { leader: "photo_gal" })).json.toast, "Following @photo_gal");
   assert.equal(db.isFollowing(db.userByHandle("watcher1")!.id, uid), false, "following is not copying");
-  assert.equal((await b("/feed?tab=following")).status, 200);
   assert.match((await b("/u/photo_gal")).text, /id="baskets"/);
   const prof = (await b("/u/photo_gal")).text;
   assert.match(prof, /<b>1<\/b><span>follower<\/span>/);
@@ -558,10 +557,7 @@ test("Chief answers about baskets by name, and suggests the best ones otherwise"
   assert.equal(named.verdict.label, "Looks solid");
   assert.ok(named.follow.some((f: { href?: string }) => /^\/b\/\d+$/.test(String(f.href))));
   assert.match((await me("/api/cat/ask", { text: "which baskets are best?", newChat: true })).json.reply, /Best protected first/);
-  // The feed's filter sticks between visits, and agents can use the same one.
-  assert.match((await me("/feed?asset=major")).text, /data-asset="major"/);
-  assert.match((await me("/feed")).text, /data-asset="major"/);
-  assert.match((await me("/feed?asset=nonsense")).text, /data-asset="all"/);
+  // Agents can ask for one kind.
   const listed = (await me("/api/v1/baskets?asset=major")).json.baskets.find((b: { name: string }) => b.name === "Chief Check Basket");
   assert.deepEqual(listed.mix[0], { assetClass: "Major coins", pct: 60 });
   assert.equal((await me("/api/v1/baskets?asset=stock")).json.baskets.some((b: { name: string }) => b.name === "Chief Check Basket"), false);
@@ -624,7 +620,7 @@ test("discover deck: one basket at a time, requests first, swipe to skip or copy
   assert.ok(!/class="swcard[^"]*" data-trade=/.test(deck), "no single trades in the deck");
   assert.match(deck, /Safety read/);
   assert.match(deck, /Copied by<\/div><div class="v" data-live="copiers">0 people/);
-  assert.match(deck, /id="swfollow"/); // follow the creator on the top card
+  assert.doesNotMatch(deck, /id="swfollow"|class="dtabs"/); // no follow button, no feed tabs
   assert.match(deck, /data-open="mytribe"/); // portfolio, quests and the tribe sit behind one button on phones
   // The page keeps itself current: fresh numbers for the cards on screen, and new cards as baskets are published.
   const live = (await me(`/api/deck/live?ids=${b1},${b2}`)).json;
@@ -675,21 +671,18 @@ test("social feed: why each basket is here, and the For you / Following / Trendi
   const basket = Number((await star("/api/baskets", { name: "Social Basket", stopPct: 10, weights: basketWeights })).json.redirect.split("/").pop());
   const card = (html: string) => html.slice(html.indexOf(`data-basket="${basket}"`), html.indexOf("</article>", html.indexOf(`data-basket="${basket}"`)));
 
-  // Nobody in your network trades them yet: a suggestion, and not on Following.
+  // Nobody in your network trades them yet: a suggestion.
   assert.match(card((await me("/feed")).text), /Suggested for you/);
-  assert.ok(!(await me("/feed?tab=following")).text.includes(`data-basket="${basket}"`));
 
   // You follow @socfriend, who follows @socstar: LinkedIn-style "Followed by".
   await me("/api/watch", { leader: "socfriend" });
   await friend("/api/watch", { leader: "socstar" });
   assert.match(card((await me("/feed")).text), /Followed by @socfriend/);
 
-  // Follow them yourself and they're on Following too, with the reason.
+  // Follow them yourself and the card says so. Follows still work from their profile.
   await me("/api/watch", { leader: "socstar" });
-  const following = (await me("/feed?tab=following")).text;
-  assert.match(card(following), /You follow @socstar/);
-  assert.match(following, /class="on" aria-current="page">Following</);
-  assert.ok((await me("/api/deck/cards?tab=following")).json.html !== undefined);
+  assert.match(card((await me("/feed")).text), /You follow @socstar/);
+  assert.ok((await me("/api/deck/cards")).json.html !== undefined);
 });
 
 test("leaderboard: in the nav next to Baskets, with search and new traders", async () => {
