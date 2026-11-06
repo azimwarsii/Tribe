@@ -74,7 +74,7 @@ export async function tradableToken(address: string): Promise<TokenView> {
   return v;
 }
 
-const POPULAR = ["WETH", "cbBTC", "AERO", "VIRTUAL", "BRETT", "DEGEN", "TOSHI", "ZORA"];
+const POPULAR = ["WETH", "cbBTC", "deSPXA", "NVDAc", "AAPLc", "AMZNc", "GOOGLc", "AERO", "VIRTUAL", "BRETT", "DEGEN", "TOSHI", "ZORA"];
 let popular: { at: number; out: TokenView[] } | undefined;
 /** A starting list before anything is typed: the most liquid safe match for each well-known Base token. */
 export async function popularTokens(): Promise<TokenView[]> {

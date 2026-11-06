@@ -84,7 +84,7 @@ export async function progressPage(uid: number, tab: string): Promise<string> {
 ${progress(lv.pct, "Progress to next level")}<div class="row sp" style="font-size:13px"><span style="color:#C4C4C4">${lv.toNext.toLocaleString("en-US")} XP to Level ${lv.level + 1}</span><span class="mut">Level ${lv.level + 1} at ${lv.hi.toLocaleString("en-US")}</span></div></section>`;
   const streak = `<section class="flat col" aria-label="Streak" style="gap:12px"><div class="row sp" style="align-items:baseline"><b style="font-size:15px">${st.current ? `${st.current} green day${st.current === 1 ? "" : "s"} in a row` : "No green streak yet"}</b><span class="sm mut">Best ${st.best}</span></div>
 <ul aria-label="Last 7 days" style="list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px">${st.week.map((d) => `<li style="display:flex;flex-direction:column;align-items:center;gap:6px"><span class="daydot${d.green ? " on" : ""}" role="img" aria-label="${d.green ? "Green day" : "No green close"}">${icon(d.green ? "check" : "clock", 14, "currentColor", d.green ? 3 : 2)}</span><span class="xs mut" aria-hidden="true">${d.label}</span></li>`).join("")}</ul>
-<div class="sm mut" style="line-height:1.4">A green day closes with positive realised PnL. Streaks rank on the <a href="/ranks?tab=Streaks">Streaks leaderboard</a>.</div></section>`;
+<div class="sm mut" style="line-height:1.4">A green day closes with positive realised PnL. Streaks rank on the <a href="/feed?tab=top&board=Streaks">Streaks leaderboard</a>.</div></section>`;
   const questSec = `<section class="col" aria-label="Quests" style="gap:10px"><div class="row sp"><h2 style="font-size:16px">Quests</h2>${seg((["Daily", "Weekly"] as const).map((p) => ({ label: p, href: `/progress?tab=${p}`, on: p === period })), true, "Quest period")}</div>
 <div class="sm mut">${reset}</div><div class="d3">${quests.map(questRow).join("")}</div></section>`;
   const earn = [["Each trade", "+10"], ["New follower", "+20"], ["Each copy you make", "+5"], ["Someone copies you", "+3"], ["Bracket order", "+5"], ["Saved by Guard", "+15"]];
@@ -209,12 +209,12 @@ ${standing}<section class="col" aria-label="Members" style="gap:4px"><div class=
   const none = `<div class="empty"><div class="md" style="font-weight:600">No squad yet</div><div class="sm mut">Join a squad or start one. Your XP counts for one squad at a time.</div></div>`;
   const desktopMain = mineHtml || none;
   const head = view === "mine" && mine
-    ? header(mine.name, `Your squad · ${rows.find((r) => r.id === mine.id)!.members.length} members`, "/ranks?tab=Squads", `<button class="btn sm w" data-copy="${esc(`${BASE_URL()}/squads?q=${encodeURIComponent(mine.name)}`)}">Invite</button>`)
-    : header("Squads", "Team up · your XP counts for one squad", "/ranks?tab=Squads");
+    ? header(mine.name, `Your squad · ${rows.find((r) => r.id === mine.id)!.members.length} members`, "/feed?tab=top&board=Squads", `<button class="btn sm w" data-copy="${esc(`${BASE_URL()}/squads?q=${encodeURIComponent(mine.name)}`)}">Invite</button>`)
+    : header("Squads", "Team up · your XP counts for one squad", "/feed?tab=top&board=Squads");
   const main = view === "mine" ? mineHtml : `<div class="only-m"><div class="col" style="gap:14px">${find}</div></div><div class="only-d"><div class="col" style="gap:14px">${desktopMain}</div></div>`;
-  const body = `<div class="only-m">${head}</div><div class="only-d">${header("Squads", `Team up · your XP counts for one squad · Season ${cur}`, "/ranks?tab=Squads")}</div>
+  const body = `<div class="only-m">${head}</div><div class="only-d">${header("Squads", `Team up · your XP counts for one squad · Season ${cur}`, "/feed?tab=top&board=Squads")}</div>
 ${split(`<main class="main" style="gap:14px">${main}<div style="height:90px" class="only-m"></div></main>`, find, "Find a squad")}`;
-  return page({ title: mine && view === "mine" ? mine.name : "Squads", nav: "ranks", body, sheets: leaveSheet, split: true });
+  return page({ title: mine && view === "mine" ? mine.name : "Squads", nav: "feed", body, sheets: leaveSheet, split: true });
 }
 
 // ---------- Level up ----------

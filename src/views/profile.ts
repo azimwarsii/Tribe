@@ -34,7 +34,7 @@ img.onerror=function(){tribe.toast('That file is not an image')};img.src=URL.cre
   return page({ title: "Edit profile", body });
 }
 
-/** Your bot: the CRE strategy trading from your wallet, under your username, tagged Bot. */
+/** Your bot: the CRE strategy trading from your wallet, under your username. */
 export async function botPage(uid: number): Promise<string> {
   const u = getUser(uid);
   const bot = getMeta(uid).bot;
@@ -45,12 +45,12 @@ export async function botPage(uid: number): Promise<string> {
   const body = `${header("Your bot", bot.on ? "On · trading under your name" : "Off", "/me")}
 <main class="main" style="gap:16px">
 <section class="card col" style="gap:12px;${bot.on ? "border-color:rgba(52,211,153,.35);background:linear-gradient(135deg,rgba(52,211,153,.08),#141414 60%)" : ""}"><div class="row" style="gap:12px"><span class="ic36" style="color:#34D399;background:rgba(52,211,153,.12)">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">@${esc(u.handle)}'s bot</b><span class="sm mut">${bot.on ? `$${bot.usd} a trade · up to ${bot.perDay} a day` : "Turn it on to start"}</span></span>${sw(bot.on, "Bot on", `data-act="/api/bot" data-body='{"on":${!bot.on}}'`)}</div>
-<p class="sm" style="margin:0;color:#C4C4C4;line-height:1.5">It runs the Tribe strategy on <b>Chainlink CRE</b>. Every few minutes the workflow reads the Chainlink ETH/USD feed and the DEX price, and buys a pullback only when the two agree, always with a take-profit and a stop attached. Each trade is placed from your wallet, posted under <b>@${esc(u.handle)}</b> and tagged <span class="srctag bot">${icon("bot", 11, "currentColor", 2)}Bot</span>, with the bot's one-line reason. People who copy you copy it by their own rules.</p></section>
+<p class="sm" style="margin:0;color:#C4C4C4;line-height:1.5">It runs the Tribe strategy on <b>Chainlink CRE</b>. Every few minutes the workflow reads the Chainlink ETH/USD feed and the DEX price, and buys a pullback only when the two agree, always with a take-profit and a stop attached. Each trade is placed from your wallet, posted under <b>@${esc(u.handle)}</b>, with the bot's one-line reason. People who copy you copy it by their own rules.</p></section>
 <section class="col" style="gap:8px"><b class="md">Size per trade</b>${pick("usd", [10, 25, 50, 100], bot.usd, (v) => `$${v}`)}</section>
 <section class="col" style="gap:8px"><b class="md">Most bot trades a day</b>${pick("perDay", [1, 2, 3, 5], bot.perDay, (v) => String(v))}<span class="xs mut">${botTradesToday(uid)} today</span></section>
 <div class="grid3"><div class="tile"><div class="k">Bot entries</div><div class="v">${rec.trades}</div></div><div class="tile"><div class="k">Closed green</div><div class="v">${rec.closed ? `${rec.wins}/${rec.closed}` : "—"}</div></div><div class="tile"><div class="k">Return</div><div class="v ${rec.pnlPct === null ? "" : rec.pnlPct >= 0 ? "up" : "down"}">${rec.pnlPct === null ? "—" : pct(rec.pnlPct)}</div></div></div>
 ${recent.length ? `<h2>Recent bot trades</h2>${recent.map((c) => tradeCardHtml(c, uid)).join("")}` : ""}
 <a class="card row" href="/bots/new" style="gap:12px;color:#F5F5F5">${icon("plus", 18, "#34D399", 2.2)}<span class="grow"><b>Build your own bot</b><span class="sm mut" style="display:block">Pick a strategy and limits in Creator Studio. It runs a private trial, then others can copy it.</span></span>${icon("chev", 14, "#8A8A8A", 2)}</a>
-<p class="note">Guard watches your bot too: if CopyGuard pauses you, your bot stops and nobody copies you until it clears. Your manual trades are tagged Manual.</p></main>`;
+<p class="note">Guard watches your bot too: if CopyGuard pauses you, your bot stops and nobody copies you until it clears.</p></main>`;
   return page({ title: "Your bot", body });
 }

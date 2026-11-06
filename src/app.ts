@@ -1,15 +1,15 @@
 import express, { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { getAddress } from "viem";
-import { catAsk, catConfirm } from "./cat.js";
 import { handleEntry } from "./research.js";
 import { clearSignupTicket, consumeLogin, createSession, currentSession, currentUser, endSession, isAgent, makeLoginToken, revealOnce, revokeSession, revokeSessions, signupTicketOf, startSession } from "./auth.js";
 import { linkWallet, userByWallet } from "./wallet-api.js";
 import { userByPrivy } from "./privy-api.js";
 import { execute, mirror, mirrorStopMove, type PendingNotice } from "./copy.js";
-import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, retireBasket, retryCopy, skipRebalance, updateWeights } from "./baskets.js";
-import { basketBuilderPage, basketOgSvg, basketPage, basketsPage } from "./views/baskets.js";
-import { activeHtml, briefHtml, deckCards, deckLive, deckPage, deckTab } from "./views/deck.js";
+import { assetFilter, matchesFilter } from "./assets.js";
+import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, retireBasket, retryCopy, skipRebalance, tokensText, updateWeights } from "./baskets.js";
+import { basketBuilderPage, basketOgSvg, basketPage } from "./views/baskets.js";
+import { activeHtml, briefHtml, deckCards, deckLive, deckPage, deckTab, feedTopPage } from "./views/deck.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
 import {
@@ -23,22 +23,20 @@ import type { Trade } from "./flash.js";
 import { RISK_LINE } from "./rules.js";
 import { creatorEarnings, activityCsv, activityPage, alertsPage, creatorPage, fundsPage, mePage, newStrategyPage, seasonPage, settingsPage, transferPage } from "./views/me.js";
 import { onboardingPage, introPage, splashPage } from "./views/auth.js";
-import { guardPage, ranksPage } from "./views/social.js";
-import { catChatPage, catMemoryPage, catVoicePage, ctxBarHtml } from "./views/cat.js";
+import { guardPage } from "./views/social.js";
 import { svgToPng, storySvg, copyPage, myTradersPage, ogSvg, positionsPage, profilePage, publicPage, requestsPage, sharePage, simulateCopy, threadPage, commentHtml } from "./views/trader.js";
 import { esc, icon, notFound, page, SIDE_JS } from "./ui.js";
 import { finalize } from "./views/chrome.js";
 import { tradePage } from "./views/tradepage.js";
-import { transcribe } from "./transcribe.js";
 import { isExternal } from "./wallet.js";
 import { answerRequest, interactive, nextRequest } from "./browsersign.js";
 import { popularTokens, searchTokens, tradableToken } from "./tokens.js";
 import { trendingTokens } from "./market.js";
 import { answerSignal, botById, controlBot, createBot, fastForwardTrial, publishBot, runBot, updateBot } from "./creator.js";
-import { BLOCKED_COUNTRIES, botBuilderPage, botDetailPage, creatorStudioPage, tradeTicketPage, verifyPage } from "./views/creator.js";
+import { BLOCKED_COUNTRIES, botBuilderPage, botDetailPage, tradeTicketPage, verifyPage } from "./views/creator.js";
 import { buildProposal } from "./ask.js";
 import { botPage, profileEditPage } from "./views/profile.js";
-import { landingPage, portfolioPage, signinPage, topPage, topSvg } from "./views/web.js";
+import { landingPage, portfolioPage, portfolioTab, signinPage, topPage, topSvg } from "./views/web.js";
 import { badgesPage, levelUpPage, progressPage, squadPage } from "./views/game.js";
 import { questsOf, traderStats } from "./stats.js";
 import { BEATS, runBeat } from "./director.js";
@@ -125,7 +123,7 @@ export function appRouter(): Router {
   r.get("/app.js", (_q, res) => res.type("application/javascript").set("Cache-Control", "no-cache").send(`${CLIENT_JS};\n${REACT_JS};\n${SIDE_JS}`));
   r.get("/", (req, res) => (me(req) === undefined ? html(res, landingPage()) : res.redirect("/feed")));
   r.get("/signin", (_q, res) => html(res, signinPage(process.env.DEMO === "true")));
-  r.get("/portfolio", authed((uid) => portfolioPage(uid)));
+  r.get("/portfolio", authed((uid, req) => portfolioPage(uid, portfolioTab(req.query.tab))));
   // New accounts see the splash and the intro right after sign-up, then land on `next` (the feed, or the trader they
   // came to copy). Signed out, the intro ends at sign-in.
   const nextOf = (req: Request) => {
@@ -175,12 +173,18 @@ export function appRouter(): Router {
 
   // Pages
   // The feed is the live deck only. Past trades live in Portfolio (yours) and on each trader's profile portfolio.
-  r.get("/feed", authed((uid, req) => deckPage(uid, deckTab(req.query.tab))));
+  // The asset filter sticks: picking one is what you're looking for until you pick another.
+  r.get("/feed", authed((uid, req) => {
+    const asset = assetFilter(req.query.asset ?? getMeta(uid).feedAsset);
+    if (req.query.asset !== undefined) setMeta(uid, { feedAsset: asset });
+    const tab = deckTab(req.query.tab);
+    return tab === "top" ? feedTopPage(uid, req.query as Record<string, unknown>, asset) : deckPage(uid, tab, asset);
+  }));
   // Top-bar search: straight to a trader's profile, else the leaderboard.
   r.get("/search", (req, res) => {
     const q = String(req.query.q ?? "").trim().replace(/^@/, "");
     const u = q ? userByHandle(q) : undefined;
-    res.redirect(u ? `/u/${encodeURIComponent(u.handle)}` : "/ranks");
+    res.redirect(u ? `/u/${encodeURIComponent(u.handle)}` : "/feed?tab=top");
   });
   r.get("/u/:handle", async (req, res) => {
     const uid = me(req);
@@ -192,17 +196,16 @@ export function appRouter(): Router {
   r.get("/positions", authed((uid, req) => positionsPage(uid, String(req.query.tab ?? "open"))));
   r.get("/traders", authed((uid) => myTradersPage(uid)));
   r.get("/guard", authed((uid) => guardPage(uid)));
-  // Ask Chief: /cat (or /cat/chat) starts a new chat, /cat/chat?id= opens an old one from the history.
-  // ?trade= pins a trade to ask about, ?q= asks something straight away.
-  const catChat = authed((uid, req) => catChatPage(uid, String(req.query.q ?? ""), req.query.trade ? Number(req.query.trade) : undefined, req.query.id && !req.query.new ? Number(req.query.id) : undefined));
-  r.get("/cat", catChat);
-  r.get("/cat/chat", catChat);
+  // Ask Chief is switched off (see chief-api.ts). Old links land on the feed.
+  for (const p of ["/cat", "/cat/chat", "/cat/voice", "/cat/memory", "/settings/chief"]) r.get(p, (_q, res) => res.redirect("/feed"));
   r.get("/profile/edit", authed((uid) => profileEditPage(uid)));
   r.get("/bot", authed((uid) => botPage(uid)));
-  r.get("/cat/ctxbar/:id", authed((uid, req) => ctxBarHtml(uid, Number(req.params.id))));
-  r.get("/cat/voice", authed((uid) => catVoicePage(uid)));
-  r.get("/cat/memory", authed((uid) => catMemoryPage(uid)));
-  r.get("/ranks", authed((uid, req) => ranksPage(uid, req.query as Record<string, unknown>)));
+  // The leaderboard is the feed's Top tab now; old links keep their board, period and search.
+  r.get("/ranks", (req, res) => {
+    const q = new URLSearchParams({ tab: "top" });
+    for (const [from, to] of [["tab", "board"], ["period", "period"], ["guard", "guard"], ["q", "q"]]) if (req.query[from]) q.set(to, String(req.query[from]));
+    res.redirect(`/feed?${q}`);
+  });
   r.get("/season", authed((uid) => seasonPage(uid)));
   r.get("/progress", authed((uid, req) => progressPage(uid, String(req.query.tab ?? "Daily"))));
   r.get("/badges", authed((uid) => badgesPage(uid)));
@@ -220,8 +223,8 @@ export function appRouter(): Router {
     res.type("text/csv").attachment("activity.csv").send(activityCsv(uid, String(req.query.tab ?? "All")));
   });
   r.get("/alerts", authed((uid) => alertsPage(uid, uid < 1e10 ? null : `https://t.me/${BOT()}?start=link_${makeLoginToken(uid)}`, BOT())));
-  // Creator Studio: post trades by hand, build bots, publish them, get paid.
-  r.get("/creator", authed((uid) => creatorStudioPage(uid)));
+  // Creating (a tab of Portfolio): post trades by hand, build bots, publish them, get paid.
+  r.get("/creator", (_q, res) => res.redirect("/portfolio?tab=creating")); // merged into Portfolio; old links keep working
   r.get("/creator/verify", authed((uid) => verifyPage(uid)));
   r.get("/trade/new", authed((uid, req) => tradeTicketPage(uid, req.query as Record<string, unknown>)));
   r.get("/bots/new", authed((uid) => botBuilderPage(uid)));
@@ -233,7 +236,6 @@ export function appRouter(): Router {
   });
   r.get("/strategy/new", authed((uid) => newStrategyPage(uid)));
   // Every trade has one page, open to anyone: /t/<id>. The older thread and share links forward to it.
-  r.get("/baskets", authed((uid) => basketsPage(uid)));
   r.get("/baskets/new", authed((uid) => basketBuilderPage(uid)));
   r.get("/b/:id/edit", authed((uid, req) => basketBuilderPage(uid, Number(req.params.id))));
   r.get("/b/:id", async (req, res) => {
@@ -286,7 +288,7 @@ export function appRouter(): Router {
     const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
     return { days, traders: topTraders(days, 20).map((t) => ({ handle: t.handle, persona: t.persona, realisedPct: Number(t.pct.toFixed(2)), fills: t.n, guardPaused: !!haltOf(t.id) })) };
   }));
-  r.get("/api/v1/baskets", act(async () => ({ baskets: (await basketBoard(20)).map((v) => ({ id: v.id, name: v.name, creator: v.handle, tokens: v.weights.map((w) => ({ symbol: w.symbol, weight: w.weight })), returnPct: Number(v.returnPct.toFixed(2)), stopPct: v.stopPct, targetPct: v.tpPct, copiers: v.copiers, guardPaused: !!haltOf(v.owner) })) })));
+  r.get("/api/v1/baskets", act(async (_uid, req) => ({ baskets: (await basketBoard(50)).filter((v) => matchesFilter(v, assetFilter(req.query.asset))).slice(0, 20).map((v) => ({ id: v.id, name: v.name, creator: v.handle, mix: v.mix.map((m) => ({ assetClass: m.label, pct: m.pct })), risk: v.risk, tokens: v.weights.map((w) => ({ symbol: w.symbol, weight: w.weight })), returnPct: Number(v.returnPct.toFixed(2)), stopPct: v.stopPct, targetPct: v.tpPct, copiers: v.copiers, guardPaused: !!haltOf(v.owner) })) })));
   r.get("/api/v1/traders/:handle", act(async (_uid, req) => {
     const u = userByHandle(String(req.params.handle).replace(/^@/, ""));
     if (!u) throw new Error("Trader not found");
@@ -566,7 +568,7 @@ export function appRouter(): Router {
   const idList = (v: unknown) => String(v ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
   r.get("/api/deck/cards", act((uid, req) => {
     const have = String(req.query.have ?? "").split(",");
-    return deckCards(uid, new Set(idList(have.filter((x) => !x.startsWith("b")).join(","))), deckTab(req.query.tab), new Set(idList(have.filter((x) => x.startsWith("b")).map((x) => x.slice(1)).join(","))));
+    return deckCards(uid, new Set(idList(have.filter((x) => !x.startsWith("b")).join(","))), deckTab(req.query.tab), new Set(idList(have.filter((x) => x.startsWith("b")).map((x) => x.slice(1)).join(","))), assetFilter(req.query.asset));
   }));
   r.get("/api/deck/live", act((_uid, req) => deckLive(idList(req.query.ids))));
   r.get("/api/deck/brief", act((_uid, req) => briefHtml(String(req.query.h ?? ""))));
@@ -590,7 +592,7 @@ export function appRouter(): Router {
     const basket = Number(req.body?.basket);
     const out = await copyBasket(uid, basket, Number(req.body?.usd));
     if (out.status === "failed") throw new Error("None of the tokens could be bought, so nothing was copied");
-    return { redirect: `/b/${basket}#yours`, toast: out.failed ? `${out.placed} of ${out.placed + out.failed} tokens filled. Try the rest from your copy.` : `Copied $${out.usd} across ${out.placed} tokens` };
+    return { redirect: `/b/${basket}#yours`, toast: out.failed ? `${out.placed} of ${tokensText(out.placed + out.failed)} filled. Try the rest from your copy.` : `Copied $${out.usd} across ${tokensText(out.placed)}` };
   }));
   r.post("/api/basket-copy/:id/retry", json, act(async (uid, req) => {
     const out = await retryCopy(uid, Number(req.params.id));
@@ -598,7 +600,7 @@ export function appRouter(): Router {
   }));
   r.post("/api/basket-copy/:id/close", json, act(async (uid, req) => {
     const out = await closeCopy(uid, Number(req.params.id));
-    return { redirect: "/baskets", toast: out.failed ? `${out.failed} couldn't be sold. Try closing again.` : `Sold ${out.sold} tokens at market` };
+    return { redirect: "/portfolio", toast: out.failed ? `${out.failed} couldn't be sold. Try closing again.` : `Sold ${tokensText(out.sold)} at market` };
   }));
   r.post("/api/basket-rebalance", json, act(async (uid, req) => {
     const id = Number(req.body?.id);
@@ -659,57 +661,6 @@ export function appRouter(): Router {
     return { reload: true, toast: `+${q.xp} XP` };
   }));
 
-  // ---- Ask Chief ----
-  r.post("/api/cat/ask", json, act((uid, req) => catAsk(uid, String(req.body?.text ?? ""), { chatId: req.body?.chat ? Number(req.body.chat) : undefined, newChat: !req.body?.chat, source: "App", live: req.body?.live !== false, trade: req.body?.trade ? Number(req.body.trade) : req.body?.handle ? handleEntry(String(req.body.handle)) : undefined })));
-  // A Bearer token means the user's AI agent (the MCP server) confirmed it: the trade is theirs, tagged Bot.
-  r.post("/api/cat/confirm", json, act((uid, req) => catConfirm(uid, String(req.body?.id), (p, l) => notifier?.(p, l), req.headers.authorization?.startsWith("Bearer ") ? "agent" : "user")));
-  // The chat's mic: a short WAV recorded in the browser, transcribed on the server (works in every browser).
-  r.post("/api/cat/transcribe", express.json({ limit: "6mb" }), act(async (_uid, req) => {
-    const audio = String(req.body?.audio ?? "");
-    if (!audio || audio.length > 6_000_000) throw new Error("That recording is empty or too long. Keep it under a minute.");
-    return { text: await transcribe(audio) };
-  }));
-  // Back to general questions: the chat stops being about the pinned trade.
-  r.post("/api/cat/unpin", json, act((uid, req) => {
-    const id = Number(req.body?.chat);
-    const chat = id ? chatById(id, uid) : undefined;
-    if (!chat) return { ok: true }; // a new chat isn't saved until its first message
-    const state = JSON.parse(chat.state || "{}") as { trade?: number };
-    delete state.trade;
-    setChatState(id, state);
-    return { ok: true };
-  }));
-  r.post("/api/cat/chat/delete", json, act((uid, req) => {
-    if (!deleteChat(Number(req.body?.id), uid)) throw new Error("Chat not found");
-    return { ok: true };
-  }));
-  r.post("/api/cat/vote", json, act((uid, req) => { voteMsg(Number(req.body.msg), uid, Math.max(-1, Math.min(1, Number(req.body.vote) || 0))); }));
-  r.post("/api/cat/persona", json, act((uid, req) => {
-    if (!["Sharp", "Chill", "Degen"].includes(String(req.body.persona))) throw new Error("Unknown personality");
-    setMeta(uid, { catPersona: req.body.persona });
-    return { reload: true, toast: `Chief is ${req.body.persona} now. Limits and Guard are unchanged.` };
-  }));
-  r.post("/api/cat/memory", express.urlencoded({ extended: false }), json, act((uid, req) => {
-    const b = req.body as Record<string, unknown>;
-    const m = getMeta(uid);
-    switch (b.op) {
-      case "toggle": setMeta(uid, { catMemory: !m.catMemory }); return { reload: true };
-      case "forget": setMeta(uid, { catForgot: [...new Set([...m.catForgot, String(b.key)])] }); return { reload: true, toast: "Forgot it" };
-      case "rule": {
-        const text = String(b.text ?? "").trim();
-        if (text.length < 3) throw new Error("Write the rule first");
-        addRule(uid, text);
-        return { reload: true, toast: "Chief will remember that" };
-      }
-      case "delrule": deleteRule(uid, Number(b.id)); return { reload: true, toast: "Forgot it" };
-      case "wipe": wipeCat(uid); setMeta(uid, { catForgot: [] }); return { reload: true, toast: "Chief forgot everything" };
-      default: throw new Error("Unknown action");
-    }
-  }));
-  // Older clients and tests: same Chief, single endpoint pair.
-  r.post("/api/ask", json, act((uid, req) => catAsk(uid, String(req.body?.text ?? ""), { source: "App" })));
-  r.post("/api/confirm", json, act((uid, req) => catConfirm(uid, String(req.body?.id), (p, l) => notifier?.(p, l))));
-
   // ---- Money & creator ----
   r.post("/api/demo-funds", json, act((uid, req) => {
     if (!isDry()) throw new Error("Test funds are only available in demo mode.");
@@ -767,15 +718,6 @@ export function appRouter(): Router {
     }
     return { redirect: `/t/${first}`, toast: `Placed${offers ? ` · ${offers} copier${offers === 1 ? "" : "s"} copying or asked` : ""}` };
   }));
-  // Ask Chief's trending row: what's moving on Base right now (GeckoTerminal), cached for two minutes.
-  r.get("/api/trending", async (req, res) => {
-    if (me(req) === undefined) return res.status(401).json({ error: "Sign in first" });
-    try {
-      res.json({ tokens: (await trendingTokens()).slice(0, 10) });
-    } catch (e) {
-      res.status(400).json({ error: (e as Error).message });
-    }
-  });
   // Token picker: popular Base tokens, or Flash search results, each marked tradable or not (and why).
   r.get("/api/tokens", async (req, res) => {
     if (me(req) === undefined) return res.status(401).json({ error: "Sign in first" });
@@ -816,13 +758,13 @@ export function appRouter(): Router {
     if (req.body?.adult !== true || req.body?.honest !== true) throw new Error("Tick both boxes to continue");
     if (BLOCKED_COUNTRIES().includes(country)) throw new Error("Creator payouts aren't available where you live yet. You can still post trades and run bots.");
     setMeta(uid, { kyc: { country, at: Date.now() } });
-    return { redirect: "/creator", toast: "Verified. You can claim payouts now." };
+    return { redirect: "/portfolio?tab=creating", toast: "Verified. You can claim payouts now." };
   }));
   r.post("/api/strategy", json, act((uid, req) => {
     const name = String(req.body.name ?? "").trim();
     if (name.length < 3) throw new Error("Give it a name (3+ characters)");
     addStrategy(uid, name, req.body.kind === "trades" ? "trades" : "bot", String(req.body.description ?? ""));
-    return { redirect: "/creator", toast: `${name} is live` };
+    return { redirect: "/portfolio?tab=creating", toast: `${name} is live` };
   }));
   r.post("/api/strategy-public", json, act((uid, req) => {
     const s = db.prepare("SELECT public FROM strategies WHERE id = ? AND owner = ?").get(Number(req.body.id), uid) as { public: number } | undefined;

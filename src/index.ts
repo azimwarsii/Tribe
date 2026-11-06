@@ -16,7 +16,6 @@ import { creRouter } from "./cre-api.js";
 import { isDry, startTracker } from "./tracker.js";
 import { startOrderStream } from "./stream.js";
 import { ranking } from "./stats.js";
-import { catAsk, catConfirm } from "./cat.js";
 import { researchTrade, verdictText } from "./research.js";
 import { latestChat } from "./db.js";
 import { enableDemoPrices } from "./prices.js";
@@ -71,10 +70,9 @@ async function notifyPending(list: PendingNotice[], leader: number) {
     if (!getMeta(p.follower).aReq) continue;
     const chat = chatIdOf(p.follower);
     if (!chat) continue;
-    // Chief's read on the leader's trade, so the decision is made with the same checks as in the app.
+    // The safety read on the leader's trade, so the decision is made with the same checks as in the app.
     const v = (await researchTrade(p.follower, p.tradeId, "Is this a good trade?").catch(() => undefined))?.verdict;
     const kb = new InlineKeyboard().text("Approve", `ok:${p.pendingId}`).text("Skip", `no:${p.pendingId}`);
-    if (linkable()) kb.row().url("Ask Chief more", `${baseUrl()}/cat/chat?new=1&trade=${p.tradeId}&q=${encodeURIComponent("Is this a good trade?")}`);
     await bot.api.sendMessage(chat, `@${getUser(leader).handle} just traded. Your copy: ${describe(p.trade)}${v ? `\n\n${verdictText(v)}` : ""}\n\nApprove within ${getMeta(p.follower).timerSec}s (or use the web inbox).`, { reply_markup: kb }).catch(() => undefined);
   }
 }
@@ -99,8 +97,8 @@ if (bot) {
     }
     return c.reply(
       `Tribe: social trading on Flash.\nTrading wallet (fund with USDC on Base): ${u.address}\nHandle: ${u.handle} (change with /handle name)\n\n` +
-        `/web: open the app (feed, Ask Chief, leaderboard)\n/follow <handle> [auto|ask]\n/rules <handle> max=50 cap=200 ratio=1 tokens=ETH types=bracket,stop-loss protective=on\n` +
-        `/trade long ETH 50 2600 2300 (buy with take-profit and stop attached) | buy ETH 50 | stop ETH 0.01 1800 | tp ETH 0.01 5000 | bracket ETH 0.01 5000 1800 | limit ETH 100 2000 | stopbuy ETH 50 2600 | twap ETH 100 1800 12\n/board\n\nOr just talk to Chief: "buy $50 ETH with a 5% stop and 12% target".`,
+        `/web: open the app\n/follow <handle> [auto|ask]\n/rules <handle> max=50 cap=200 ratio=1 tokens=ETH types=bracket,stop-loss protective=on\n` +
+        `/trade long ETH 50 2600 2300 (buy with take-profit and stop attached) | buy ETH 50 | stop ETH 0.01 1800 | tp ETH 0.01 5000 | bracket ETH 0.01 5000 1800 | limit ETH 100 2000 | stopbuy ETH 50 2600 | twap ETH 100 1800 12\n/board`,
     );
   });
 
@@ -158,28 +156,8 @@ if (bot) {
     }
   });
 
-  // Free text goes to Chief: the same Chief, chats and memory as the app.
-  bot.on("message:text", async (c) => {
-    if (c.message.text.startsWith("/")) return;
-    const uid = c.from!.id;
-    getUser(uid);
-    const chatId = latestChat(uid, "Telegram", 30 * 60_000)?.id;
-    const r = await catAsk(uid, c.message.text, { chatId, source: "Telegram" });
-    const card = r.card;
-    const extra = card ? `\n\n${card.title} · ${card.kind}: $${card.usd.toFixed(2)}${card.maxLoss !== undefined ? ` · max loss $${card.maxLoss.toFixed(2)}` : ""}${card.maxGain !== undefined ? ` · max gain $${card.maxGain.toFixed(2)}` : ""} · fee $${card.fee.toFixed(2)}` : "";
-    const read = r.verdict ? `\n\n${verdictText(r.verdict)}` : "";
-    // A research answer links back to the post and to copying it in the app.
-    const kb = r.proposalId ? new InlineKeyboard().text("Confirm & sign", `cat:${r.proposalId}`)
-      : r.ctx && linkable() ? new InlineKeyboard().url("Open the post", `${baseUrl()}/t/${r.ctx.id}`).url(r.ctx.copying ? "Manage copy" : "Their baskets", `${baseUrl()}${r.ctx.copying ? "/traders" : `/u/${r.ctx.handle}#baskets`}`) : undefined;
-    return c.reply(r.reply + extra + read, kb ? { reply_markup: kb } : undefined);
-  });
 
   bot.on("callback_query:data", async (c) => {
-    if (c.callbackQuery.data.startsWith("cat:")) {
-      const out = await catConfirm(c.from.id, c.callbackQuery.data.slice(4), (p, l) => void notifyPending(p, l));
-      await c.editMessageText(out.reply).catch(() => undefined);
-      return c.answerCallbackQuery({ text: out.ok ? "Signed" : "Not placed" });
-    }
     const [kind, idStr] = c.callbackQuery.data.split(":");
     const claim = claimPending(Number(idStr), c.from.id, kind === "ok" ? "approved" : "skipped");
     if (!claim) return c.answerCallbackQuery({ text: "Already handled or expired" });
@@ -193,9 +171,8 @@ const app = express();
 if (process.env.TRUST_PROXY) app.set("trust proxy", Number(process.env.TRUST_PROXY) || true);
 // CRE endpoints (src/cre-api.ts). express.json is applied per route there, so the web router keeps its own body parsing.
 app.use(creRouter({ pending: notifyPending, halt: notifyHalt }));
-// Per IP and minute: Ask Chief calls a paid model; sign-in links are guessable only by brute force; the rest is headroom
+// Per IP and minute: sign-in links are guessable only by brute force; the rest is headroom
 // for the deck's polling (about 16 requests a minute per open tab).
-app.use("/api/cat", rateLimit(20, 60_000));
 app.use(["/signin", "/login", "/demo"], rateLimit(20, 60_000));
 app.use("/api", rateLimit(300, 60_000));
 app.get("/api/recent", (_q, r) => r.json(recentTrades()));

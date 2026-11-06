@@ -11,7 +11,8 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 const keys = [generatePrivateKey(), generatePrivateKey()];
 const ganache = createRequire(import.meta.url)("ganache");
 const server = ganache.server({ logging: { quiet: true }, chain: { chainId: 1337 }, wallet: { accounts: keys.map((secretKey) => ({ secretKey, balance: "0x56BC75E2D63100000" })) } });
-await new Promise<void>((ok, fail) => server.listen(0, (e: Error | null) => (e ? fail(e) : ok())));
+// Bind the address we connect to: with no host, port 0 can pick a port another app already holds on 127.0.0.1.
+await new Promise<void>((ok, fail) => server.listen(0, "127.0.0.1", (e: Error | null) => (e ? fail(e) : ok())));
 const rpc = `http://127.0.0.1:${server.address().port}`;
 after(() => server.close());
 

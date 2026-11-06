@@ -24,8 +24,9 @@ export interface Intent {
  * the entry as one Flash order. With no target, the attached target is set far away (10x), where it never triggers.
  */
 export interface BuildOpts { oneOrder?: boolean }
-export interface Card { title: string; usd: number; kind: string; maxGain?: number; maxLoss?: number; fee: number; stopPct?: number; tpPct?: number; token: string }
-export interface Proposal { summary: string; trades: Trade[]; card?: Card }
+export interface Card { title: string; usd: number; kind: string; maxGain?: number; maxLoss?: number; fee: number; stopPct?: number; tpPct?: number; token: string; href?: string }
+/** `basket`: confirming copies this basket instead of placing `trades`. */
+export interface Proposal { summary: string; trades: Trade[]; card?: Card; basket?: { id: number; usd: number } }
 export interface Answer { reply: string; proposal?: Proposal; sources?: string[] }
 
 /** Rule-based parse: "buy $50 ETH with 5% stop and 12% take profit". Used when no LLM key is set or the LLM fails. */

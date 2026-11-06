@@ -1,3 +1,5 @@
+import { basketsBy } from "../baskets.js";
+import { basketRow } from "./baskets.js";
 import { botById, botRecord, botsOf, copierOutcomes, copyLedger, earningsOf, openSignals, publishChecks, STAKE_USD, stakeOf, TEMPLATES, TRIAL_DAYS, type Bot, type TemplateKey } from "../creator.js";
 import { db, getMeta, getUser, guardEvents, strategiesOf, userById } from "../db.js";
 import { ago, freeBalance as freeBalanceOf, money, pct, tradeCard } from "../data.js";
@@ -51,7 +53,7 @@ export async function tradeTicketPage(uid: number, q: Record<string, unknown>): 
   const type = types.some((t) => t.v === q.type) ? String(q.type) : "market";
   const stopType = stopTypes.some((t) => t.v === q.stopType) ? String(q.stopType) : "fixed";
   const followers = (db.prepare("SELECT COUNT(*) AS n FROM follows WHERE leader = ?").get(uid) as { n: number }).n;
-  const body = `${header("New trade", "Placed through Flash, always with a stop", "/creator")}
+  const body = `${header("New trade", "Placed through Flash, always with a stop", "/portfolio?tab=creating")}
 <main class="main tkmain" data-scope id="tk">
 <section class="card col" style="gap:14px">
 ${field("Token", `<input type="hidden" name="token" value="${esc(tok.address)}">
@@ -115,7 +117,7 @@ export async function botBuilderPage(uid: number): Promise<string> {
   const wallet = ext
     ? isDry() ? "Demo mode: trades are simulated, so your bot places them itself. With real money and MetaMask, it asks you to approve each trade." : "Your wallet is MetaMask, which only you can sign for: your bot asks you to approve each trade."
     : "It trades from your wallet within these limits only. It can't send money anywhere.";
-  const body = `${header("New bot", "Pick a strategy, set its limits, run a private trial", "/creator")}
+  const body = `${header("New bot", "Pick a strategy, set its limits, run a private trial", "/portfolio?tab=creating")}
 <main class="main" data-scope id="bb" style="gap:14px">
 <section class="card col" style="gap:14px">
 ${field("Name", `<input class="f" name="name" maxlength="40" placeholder="e.g. Night dip buyer" style="height:44px">`)}
@@ -206,7 +208,7 @@ ${cards ? `<h2>Recent trades</h2>${cards}` : ""}</main>`;
 <div class="col" style="gap:6px">${checks.map((c) => `<div class="row sp sm"><span class="row" style="gap:8px"><i class="ck${c.ok ? "" : " bad"}" aria-hidden="true">${c.ok ? icon("check", 9, "currentColor", 3.4) : "·"}</i>${esc(c.label)}</span><span class="mut">${esc(c.detail)}</span></div>`).join("")}</div>
 <button class="btn ${ready ? "p" : ""}" data-act="/api/bots/${b.id}/publish"${ready ? "" : " disabled"}>${icon("rise", 14)}${ready ? "Publish: let people copy it" : "Publish when every check passes"}</button>
 ${process.env.DEMO === "true" && r.days < TRIAL_DAYS ? `<button class="btn sm" data-act="/api/bots/${b.id}/fastforward" style="align-self:flex-start">Demo: skip the ${TRIAL_DAYS}-day wait</button>` : ""}</section>` : "";
-  const body = `${header(b.name, TEMPLATES[b.template].name, "/creator")}<main class="main" style="gap:14px">
+  const body = `${header(b.name, TEMPLATES[b.template].name, "/portfolio?tab=creating")}<main class="main" style="gap:14px">
 <section class="card col" style="gap:12px"><div class="row sp">${statusPill(b)}<span class="xs mut">${b.last_check ? `checked ${ago(b.last_check)} ago` : "first check within a minute"}</span></div>
 <div class="tile" style="padding:12px"><div class="k">Right now</div><div class="md" style="margin-top:4px">${esc(b.status === "paused" || b.status === "stopped" ? b.reason ?? "Not running" : b.last_why ?? "Starting up")}</div></div>
 <p class="sm mut" style="margin:0;line-height:1.5">${esc(rules(b))}</p>${controls}</section>
@@ -228,22 +230,24 @@ export function botsStrip(owner: number): string {
 
 // ---------- Creator studio ----------
 
-export async function creatorStudioPage(uid: number): Promise<string> {
+/** The Creating tab of Portfolio: build baskets, see what they earn, how copiers are doing. */
+export async function creatingTabHtml(uid: number): Promise<string> {
   const e = earningsOf(uid);
   const o = e.outcomes;
   const meta = getMeta(uid);
   const bots = botsOf(uid);
   const signals = openSignals(uid);
+  const myBaskets = await basketsBy(uid);
   const ledger = copyLedger(uid, 10);
   const guard = guardEvents(uid, 4);
   const manual = strategiesOf(uid).find((s) => s.kind === "trades");
   const days = Math.max(0, Math.ceil((e.seasonEnds - Date.now()) / 86400e3));
   const tile = (k: string, v: string, sub = "", cls = "") => `<div class="tile"><div class="k">${k}</div><div class="v ${cls}">${v}</div>${sub ? `<div class="xs mut" style="margin-top:2px">${sub}</div>` : ""}</div>`;
   const botRow = (b: Bot) => { const r = botRecord(b); const n = signals.filter((s) => s.bot === b.id).length; return `<a class="line" href="/bots/${b.id}" style="color:#F5F5F5;align-items:flex-start;padding:12px 0"><span class="ico">${icon(TEMPLATES[b.template].icon, 16)}</span><span class="grow" style="min-width:0"><span class="t row" style="gap:8px;flex-wrap:wrap">${esc(b.name)} ${statusPill(b)}${n ? `<span class="pill warn">${n} to approve</span>` : ""}</span><span class="s">${r.entries} trade${r.entries === 1 ? "" : "s"}${r.closed ? ` · ${r.wins}/${r.closed} green · ${r.realized >= 0 ? "+" : "−"}${money(Math.abs(r.realized))}` : ""}${r.copiers ? ` · ${r.copiers} copier${r.copiers === 1 ? "" : "s"}` : ""}</span><span class="s" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(b.status === "paused" || b.status === "stopped" ? b.reason ?? "" : b.last_why ?? "Starting up")}</span></span>${icon("chev", 14, "#8A8A8A", 2)}</a>`; };
-  const ledgerRow = (l: (typeof ledger)[number]) => `<tr><td class="mut">${new Date(l.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td><td><a href="/t/${l.id}" style="color:#F5F5F5">${esc(l.label)}</a><span class="xs mut" style="display:block">${l.botName ? `Bot · ${esc(l.botName)}` : "Manual"}${l.private ? " · private trial" : ""}</span></td><td class="up">${l.copied}</td><td>${l.pending}</td><td class="mut">${l.declined}</td><td><span class="${l.skipped ? "warn" : "mut"}">${l.skipped}</span>${l.reasons.length ? `<span class="xs mut" style="display:block;max-width:220px">${esc(l.reasons.join("; "))}</span>` : ""}</td></tr>`;
-  const body = `${header("Creator studio", "Build baskets, run bots, get paid when people copy you", "/me", `<a class="ic" href="/share/me" aria-label="Share your profile">${icon("share", 17, "currentColor", 2)}</a>`)}<main class="main" style="gap:14px">
-<a class="card cnew" href="/baskets/new"><span class="cfi" style="--fc:#FBBF24">${icon("list", 18, "#FBBF24", 2.2)}</span><span><b>New basket</b><span class="sm mut">Pick tokens and weights. Anyone can copy it, and you earn a share of the fee.</span></span></a>
-<div class="grid2 cmake"><a class="card cnew" href="/trade/new"><span class="cfi" style="--fc:#34D399">${icon("bolt", 18, "#34D399", 2.2)}</span><span><b>New trade</b><span class="sm mut">Buy with a stop, by hand. It goes on your record.</span></span></a><a class="card cnew" href="/bots/new"><span class="cfi" style="--fc:#7DD3FC">${icon("bot", 18, "#7DD3FC", 2.2)}</span><span><b>New bot</b><span class="sm mut">Pick a strategy and limits. Private trial first.</span></span></a></div>
+  const ledgerRow = (l: (typeof ledger)[number]) => `<tr><td class="mut">${new Date(l.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td><td><a href="/t/${l.id}" style="color:#F5F5F5">${esc(l.label)}</a><span class="xs mut" style="display:block">${l.botName ? esc(l.botName) : ""}${l.botName && l.private ? " · " : ""}${l.private ? "private trial" : ""}</span></td><td class="up">${l.copied}</td><td>${l.pending}</td><td class="mut">${l.declined}</td><td><span class="${l.skipped ? "warn" : "mut"}">${l.skipped}</span>${l.reasons.length ? `<span class="xs mut" style="display:block;max-width:220px">${esc(l.reasons.join("; "))}</span>` : ""}</td></tr>`;
+  return `<main class="main" style="gap:14px">
+<a class="card cnew" href="/baskets/new"><span class="cfi" style="--fc:#FBBF24">${icon("list", 18, "#FBBF24", 2.2)}</span><span><b>New basket</b><span class="sm mut">One token or several. Anyone can copy it, and you earn a share of the fee.</span></span></a>
+${myBaskets.length ? `<section class="col" style="gap:8px"><h2 style="font-size:16px">Your baskets</h2>${myBaskets.map(basketRow).join("")}</section>` : ""}
 ${signals.length ? `<a class="card row" href="/bots/${signals[0].bot}" style="gap:12px;border-color:rgba(252,211,77,.4);color:#F5F5F5">${icon("bell", 18, "#FCD34D")}<span class="grow"><b>${signals.length} bot trade${signals.length > 1 ? "s" : ""} waiting for you</b><span class="sm mut" style="display:block">${esc(signals[0].name)}: ${esc(signals[0].why)}</span></span>${icon("chev", 14, "#8A8A8A", 2)}</a>` : ""}
 <section class="card col" style="gap:12px" aria-label="Earnings"><div class="row sp"><span class="sm mut">Earned · all time</span><span class="pill ok">${esc(e.tier.label)} · ${e.shareBps}% of the fee</span></div>
 <div class="big">${money2(e.accrued)}</div><div class="up" style="font-size:13px">↑ ${money(e.weekly)} this week</div>
@@ -251,7 +255,7 @@ ${signals.length ? `<a class="card row" href="/bots/${signals[0].bot}" style="ga
 ${e.tier.next ? `<div class="xs mut">Next: ${esc(e.tier.next)}</div>` : ""}
 <div class="row sp" style="padding-top:12px;border-top:1px solid rgba(255,255,255,.07)">${meta.kyc ? `<span class="sm mut">Verified for payouts</span>` : `<a class="sm" href="/creator/verify">Verify to get paid ›</a>`}<button class="btn p sm" data-act="/api/claim" ${e.claimable < 0.01 ? "disabled" : ""}>${e.claimable < 0.01 ? "Nothing to claim" : "Claim"}</button></div>
 <p class="note" style="margin:0">You get ${e.shareBps}% of Tribe's fee on every copy of your trades. Half of each season's share is held until the season ends, then released by how your copiers did: all of it if they're net positive, less the more they lost. Copies made while CopyGuard had you paused earn nothing${e.excludedPaused ? ` (${e.excludedPaused} left out)` : ""}. ${isDry() ? "Demo: claiming credits your simulated balance." : "Estimated from copied volume."}</p></section>
-<section class="card col" style="gap:10px" aria-label="Your bots"><div class="row sp"><h2 style="font-size:16px">Your bots</h2><a class="sm" href="/bots/new">+ New bot</a></div>${bots.length ? bots.map(botRow).join("") : `<p class="sm mut" style="margin:0">No bots yet. A bot trades a simple rule from your wallet, with a stop on every trade, and runs privately for ${TRIAL_DAYS} days before anyone can copy it.</p>`}</section>
+${bots.length ? `<section class="card col" style="gap:10px" aria-label="Your bots"><h2 style="font-size:16px">Your bots</h2>${bots.map(botRow).join("")}</section>` : ""}
 <section class="card col" style="gap:12px" aria-label="Your copiers"><h2 style="font-size:16px">How your copiers are doing</h2>
 <div class="grid4 deskstats">${[[String(o.following), "following"], [String(o.copiers), "copied you"], [o.copiers ? `${o.inProfitPct}%` : "—", "in profit"], [o.retained30 === null ? "—" : `${o.retained30}%`, "still here after 30d"]].map(([v, k]) => `<div><b>${v}</b><span>${k}</span></div>`).join("")}</div>
 <div class="sm mut">Copiers' net result from your trades: <b class="${o.netUsd >= 0 ? "up" : "down"}">${o.netUsd >= 0 ? "+" : "−"}${money(Math.abs(o.netUsd))}${o.netPct !== null ? ` (${pct(o.netPct)})` : ""}</b>. This decides your tier and your held-back pay, not how much they traded.</div></section>
@@ -262,7 +266,6 @@ ${ledger.length ? `<div style="overflow-x:auto"><table class="tbl"><thead><tr><t
 <section class="card col" style="gap:8px"><h2 style="font-size:16px">Guard</h2>${guard.length ? guard.map((g) => `<div class="row sp sm"><span class="${g.kind === "halt" ? "down" : "up"}">${g.kind === "halt" ? "Paused" : "Cleared"}</span><span class="mut" style="flex:1;margin:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(g.reason ?? "")}</span><span class="xs mut">${ago(g.at)} ago</span></div>`).join("") : `<span class="sm mut">Never paused. Chainlink CRE checks you every run; a pause stops copying of you and your bots for everyone.</span>`}</section>
 <p class="note" style="text-align:center;margin:4px 0 90px">Copiers see the fee and your share before every copy. Nothing here is investment advice.</p>
 </main>`;
-  return page({ title: "Creator studio", nav: "me", body });
 }
 
 // ---------- Verify for payouts ----------
@@ -272,7 +275,7 @@ const COUNTRIES: [string, string][] = [["IN", "India"], ["AE", "United Arab Emir
 
 export function verifyPage(uid: number): string {
   const k = getMeta(uid).kyc;
-  const body = `${header("Verify to get paid", "Once, before your first payout", "/creator")}<main class="main" style="gap:14px">
+  const body = `${header("Verify to get paid", "Once, before your first payout", "/portfolio?tab=creating")}<main class="main" style="gap:14px">
 ${k ? `<section class="card good col" style="gap:6px"><b class="up">You're verified</b><span class="sm mut">Since ${new Date(k.at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} · ${esc(COUNTRIES.find((c) => c[0] === k.country)?.[1] ?? k.country)}</span></section>` : `<form class="card col" id="kyc" style="gap:14px">
 <label class="fld"><span>Where you live</span><select name="country" class="f" style="height:44px" required><option value="">Choose…</option>${COUNTRIES.map(([c, n]) => `<option value="${c}">${esc(n)}</option>`).join("")}</select></label>
 <label class="row" style="gap:10px;align-items:flex-start"><input type="checkbox" name="adult" style="margin-top:3px"><span class="sm">I'm 18 or older, and payouts go to my own wallet.</span></label>

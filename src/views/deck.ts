@@ -1,15 +1,17 @@
 import { allHalts, followingOf, getMeta, getUser, isWatching, pendingFor, swipedTrades, userByHandle } from "../db.js";
 import { activeTrades, ago, face, initials, money, pct, portfolio, socialGraph, tradeCard, type ActiveTrade, type Social, type TradeCard } from "../data.js";
-import { liveBaskets, openCopy } from "../baskets.js";
+import { ASSET_FILTERS, exposure, matchesFilter, type AssetFilter } from "../assets.js";
+import { ranksHtml } from "./social.js";
+import { basketOfOrder, copiesOf, liveBaskets, openCopy, type BasketView } from "../baskets.js";
 import { basketCardHtml, basketLive } from "./baskets.js";
 import { researchTrade, traderBrief, type Brief } from "../research.js";
 import { esc, icon, page, sheet, signCls, split } from "../ui.js";
-import { ladder, sourceTag, orderStrip } from "./feed.js";
+import { ladder, orderStrip } from "./feed.js";
 import { copyFee } from "../creator.js";
 
 /**
  * The feed: one basket at a time. Swipe right to copy it (a confirm sheet shows size and worst case first), left to skip,
- * up to ask Chief, and follow the creator from the button underneath. Copy requests from a bot you copy come first. The
+ * and follow the creator from the button underneath. Copy requests from a bot you copy come first. The
  * card's numbers refresh while you look at it, and new baskets slide in as they're published.
  */
 
@@ -33,13 +35,12 @@ async function cardHtml(c: TradeCard, viewer: number, req?: { id: number; expire
   const needStop = meta.defaults.stop && !(c.trade.hasStop || c.trade.attach);
   const fee = copyFee(c.leader, 1);
   const following = c.viewerCopying || isWatching(viewer, c.leader);
-  const ask = `/cat/chat?new=1&trade=${c.id}&q=${encodeURIComponent("Is this a good trade?")}`;
-  return `<article class="swcard${req ? " req" : ""}" data-trade="${c.id}" data-handle="${esc(c.handle)}" data-symbol="${esc(c.symbol)}" data-usd="${usd}" data-max="${max}" data-needstop="${needStop ? 1 : ""}" data-fee="${fee.bps}" data-share="${fee.sharePct}" data-sl="${slPct?.toFixed(2) ?? ""}" data-tp="${tpPct?.toFixed(2) ?? ""}" data-ask="${ask}" data-following="${following ? 1 : ""}" data-copying="${c.viewerCopying ? 1 : ""}" data-verdict="${esc(v?.label ?? "")}" data-tone="${v?.tone ?? ""}" data-ini="${initials(c.handle)}"${req ? ` data-pending="${req.id}"` : ``} aria-label="@${esc(c.handle)} ${esc(verbOf(c))} ${esc(c.symbol)}">
-<span class="stamp copy" aria-hidden="true">${req ? "APPROVE" : "COPY"}</span><span class="stamp skip" aria-hidden="true">SKIP</span><span class="stamp ask" aria-hidden="true">ASK CAT</span>
+  return `<article class="swcard${req ? " req" : ""}" data-trade="${c.id}" data-handle="${esc(c.handle)}" data-symbol="${esc(c.symbol)}" data-usd="${usd}" data-max="${max}" data-needstop="${needStop ? 1 : ""}" data-fee="${fee.bps}" data-share="${fee.sharePct}" data-sl="${slPct?.toFixed(2) ?? ""}" data-tp="${tpPct?.toFixed(2) ?? ""}" data-following="${following ? 1 : ""}" data-copying="${c.viewerCopying ? 1 : ""}" data-verdict="${esc(v?.label ?? "")}" data-tone="${v?.tone ?? ""}" data-ini="${initials(c.handle)}"${req ? ` data-pending="${req.id}"` : ``} aria-label="@${esc(c.handle)} ${esc(verbOf(c))} ${esc(c.symbol)}">
+<span class="stamp copy" aria-hidden="true">${req ? "APPROVE" : "COPY"}</span><span class="stamp skip" aria-hidden="true">SKIP</span>
 ${req ? `<div class="reqband" role="status">${icon("inbox", 14, "currentColor", 2)}Copy request from a trader you copy · <b data-expire="${req.expires}"></b> left</div>`
     : `<div class="freshband" role="status"><span class="live" aria-hidden="true"></span>Live trade · placed ${ago(c.at)} ago</div>`}
 ${soc ? socialLine(soc) : ""}
-<div class="row"><a href="/u/${esc(c.handle)}" class="lvl"><span class="av w">${face(c.handle)}</span><b>${c.level}</b></a><div class="grow" style="min-width:0"><a href="/u/${esc(c.handle)}" style="color:#F5F5F5;font-weight:600">@${esc(c.handle)}</a><div class="sm mut">${sourceTag(c.source)} ${c.persona ? esc(c.persona) + " · " : ""}${c.streak >= 2 ? `${c.streak}-day streak` : "Base"}</div></div><span class="pill ok">${icon("shield", 11, "currentColor", 2)}Guard passed</span></div>
+<div class="row"><a href="/u/${esc(c.handle)}" class="lvl"><span class="av w">${face(c.handle)}</span><b>${c.level}</b></a><div class="grow" style="min-width:0"><a href="/u/${esc(c.handle)}" style="color:#F5F5F5;font-weight:600">@${esc(c.handle)}</a><div class="sm mut">${c.persona ? esc(c.persona) + " · " : ""}${c.streak >= 2 ? `${c.streak}-day streak` : "Base"}</div></div><span class="pill ok">${icon("shield", 11, "currentColor", 2)}Guard passed</span></div>
 <div class="row sp" style="align-items:flex-end"><div><div class="mut" style="font-size:14px">${esc(verbOf(c))}</div><div style="font-size:34px;font-weight:700;letter-spacing:-.02em">${esc(c.symbol)}</div></div>
 <div style="text-align:right" data-live="since">${sinceHtml(c.sincePct)}</div></div>
 ${orderStrip(c)}
@@ -48,7 +49,7 @@ ${ladder(c)}
 ${needStop ? `<div class="sm warn row" style="gap:6px">${icon("shield", 13, "currentColor", 2)}No stop-loss: your rules won't copy this one</div>` : ""}
 <div class="grid3"><div class="tile"><div class="k">You'd copy</div><div class="v">${money(usd)}</div></div><div class="tile"><div class="k">Worst case</div><div class="v ${slPct !== null ? "down" : "warn"}">${slPct !== null ? `−${money((usd * slPct) / 100)}` : "No stop"}</div></div><div class="tile"><div class="k">Copied by</div><div class="v" data-live="copiers">${c.copiers} ${c.copiers === 1 ? "person" : "people"}</div></div></div>
 ${await phoneRecord(c)}
-${v ? `<section class="swread" style="border-color:${tone}55"><div class="row sp"><span class="row" style="gap:8px"><span class="orb" aria-hidden="true" style="width:20px;height:20px"><i></i></span><b class="sm">Chief’s read</b></span><span class="pill" style="color:${tone};border:1px solid ${tone}66;background:${tone}14">${esc(v.label)}</span></div><ul class="vchecks" style="margin-top:8px">${checks.map((x) => `<li class="${x.ok ? "ok" : "bad"}"><i aria-hidden="true">${x.ok ? icon("check", 11, "currentColor", 3.2) : "!"}</i>${esc(x.t)}</li>`).join("")}</ul></section>` : ""}
+${v ? `<section class="swread" style="border-color:${tone}55"><div class="row sp"><span class="row" style="gap:8px">${icon("shield", 15, "#A3A3A3", 2)}<b class="sm">Safety read</b></span><span class="pill" style="color:${tone};border:1px solid ${tone}66;background:${tone}14">${esc(v.label)}</span></div><ul class="vchecks" style="margin-top:8px">${checks.map((x) => `<li class="${x.ok ? "ok" : "bad"}"><i aria-hidden="true">${x.ok ? icon("check", 11, "currentColor", 3.2) : "!"}</i>${esc(x.t)}</li>`).join("")}</ul></section>` : ""}
 </article>`;
 }
 
@@ -58,8 +59,8 @@ ${v ? `<section class="swread" style="border-color:${tone}55"><div class="row sp
  */
 export const deckLoops = () => process.env.DECK_LOOP === "true" || (process.env.DEMO === "true" && process.env.DECK_LOOP !== "false");
 
-export type DeckTab = "for-you" | "following" | "trending";
-export const deckTab = (t: unknown): DeckTab => (t === "following" || t === "trending" ? t : "for-you");
+export type DeckTab = "for-you" | "following" | "trending" | "top";
+export const deckTab = (t: unknown): DeckTab => (t === "following" || t === "trending" || t === "top" ? t : "for-you");
 
 /**
  * The cards on offer: your pending copy requests first, then baskets you haven't swiped or copied, each with why it's
@@ -67,7 +68,7 @@ export const deckTab = (t: unknown): DeckTab => (t === "following" || t === "tre
  * trending); Following keeps only creators you copy or follow; Trending keeps the most copied. `have` and `haveBaskets`
  * skip cards the page already shows.
  */
-export async function deckCards(viewer: number, have = new Set<number>(), tab: DeckTab = "for-you", haveBaskets = new Set<number>()): Promise<{ html: string; count: number }> {
+export async function deckCards(viewer: number, have = new Set<number>(), tab: DeckTab = "for-you", haveBaskets = new Set<number>(), asset: AssetFilter = "all"): Promise<{ html: string; count: number }> {
   const why = socialGraph(viewer);
   // A skipped basket is stored as a swipe on its negative id, next to the swipes on old trades.
   const swiped = deckLoops() ? new Set<number>() : swipedTrades(viewer);
@@ -77,15 +78,18 @@ export async function deckCards(viewer: number, have = new Set<number>(), tab: D
     return c ? cardHtml(c, viewer, { id: p.id, expires: p.expires_at, usd: Number(p.trade.qty) || 0 }, why(c.leader, c.copiers)) : "";
   }))).join("");
   const halted = new Set(allHalts().map((h) => h.leader));
+  await copiesOf(viewer); // closes copies whose stops sold everything, so those baskets can be offered again
   const baskets = (await liveBaskets())
     .filter((v) => v.owner !== viewer && !halted.has(v.owner) && !swiped.has(-v.id) && !haveBaskets.has(v.id) && !openCopy(viewer, v.id))
     .map((v) => ({ v, s: why(v.owner, v.copiers) }))
-    .filter(({ v, s }) => tab === "following" ? s.kind === "copying" || s.kind === "following" : tab === "trending" ? why.isHot(v.owner) || v.copiers >= 2 : true);
+    .filter(({ v, s }) => matchesFilter(v, asset) && (tab === "following" ? s.kind === "copying" || s.kind === "following" : tab === "trending" ? why.isHot(v.owner) || v.copiers >= 2 : true));
   // Baskets your rules would refuse (no stop while you require one) go to the back; otherwise closest to you first
   // (Trending: most copied first), best return first among equals.
   const needStop = getMeta(viewer).defaults.stop;
   const refused = (stop: number) => Number(needStop && !(stop > 0));
-  baskets.sort((a, b) => refused(a.v.stopPct) - refused(b.v.stopPct) || (tab === "trending" ? b.v.copiers - a.v.copiers : b.s.score - a.s.score) || b.v.returnPct - a.v.returnPct);
+  // Filtering by a class puts the purest baskets of it first.
+  const purity = (v: BasketView) => (asset === "all" || asset === "steady" ? 0 : exposure(v.mix, asset));
+  baskets.sort((a, b) => refused(a.v.stopPct) - refused(b.v.stopPct) || purity(b.v) - purity(a.v) || (tab === "trending" ? b.v.copiers - a.v.copiers : b.s.score - a.s.score) || b.v.returnPct - a.v.returnPct);
   const top = baskets.slice(0, 12);
   return { html: reqCards + (await Promise.all(top.map(({ v, s }) => basketCardHtml(v, viewer, socialLine({ ...s, text: s.text.replace(/^You copy/, "You follow") }))))).join(""), count: pend.length + top.length };
 }
@@ -94,13 +98,13 @@ export async function deckCards(viewer: number, have = new Set<number>(), tab: D
 export const deckLive = (ids: number[]) => basketLive(ids);
 
 /**
- * Chief's brief on the trader behind the top card (what matters most in their portfolio, what they hold, their P&L and last
+ * The brief on the trader behind the top card (what matters most in their portfolio, what they hold, their P&L and last
  * three closed trades), and their record (win rate, closed, max drawdown, copiers) for the card under it.
  */
 export async function briefHtml(handle: string): Promise<{ html: string; stats: string }> {
   const u = userByHandle(handle);
   const b = u ? await traderBrief(u.id) : undefined;
-  if (!b) return { html: `<span class="sm mut">Chief couldn't find @${esc(handle)}.</span>`, stats: STATS_EMPTY };
+  if (!b) return { html: `<span class="sm mut">Couldn't find @${esc(handle)}.</span>`, stats: STATS_EMPTY };
   const col = { ok: "#34D399", warn: "#FCD34D", bad: "#F87171" };
   const curve = pnlCurve(b.curve, "bcg");
   const holding = b.held.length ? `<div class="bheld"><div class="xs mut">Holding now</div>${b.held.map((h) => `<div class="row sp"><span><b>${esc(h.symbol)}</b> <span class="xs mut">${money(h.value)}</span></span><span class="row" style="gap:10px"><span class="xs ${h.stopPct === null ? "warn" : "mut"}">${h.stopPct === null ? "no stop" : `stop −${h.stopPct.toFixed(1)}%`}</span><b class="${flatCls(h.pnlPct)}">${flatPct(h.pnlPct)}</b></span></div>`).join("")}</div>` : "";
@@ -122,16 +126,16 @@ function pnlCurve(curve: number[], gid: string): string {
   const last = pts[pts.length - 1], c = last >= 0 ? "#34D399" : "#F87171", zero = (4 + (1 - (0 - lo) / span) * 52).toFixed(1);
   return `<div class="bcurve"><div class="row sp xs mut"><span>P&amp;L over time</span><b class="${flatCls(last)}">${flatPct(last)}</b></div><svg viewBox="0 0 300 60" preserveAspectRatio="none" role="img" aria-label="P&amp;L over time, now ${flatPct(last)}"><defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".28"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><line x1="0" x2="300" y1="${zero}" y2="${zero}" stroke="#333" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/><polygon points="0,60 ${xy.join(" ")} 300,60" fill="url(#${gid})"/><polyline points="${xy.join(" ")}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg></div>`;
 }
-/** Their last three closed trades as chips, each marked Manual or Bot. */
+/** Their last three closed trades as chips. */
 const lastChips = (b: Brief) =>
-  `<div class="blast"><span class="xs mut">Last ${b.last.length || ""}</span>${b.last.length ? b.last.map((t) => `<span class="btrade" title="${t.source === "user" ? "Manual" : "Bot"} · ${esc(t.symbol)} · ${ago(t.at)} ago"><span class="srcic">${t.source === "user" ? icon("hand", 11, "currentColor", 2) : icon("bot", 11, "currentColor", 2)}</span><b class="${flatCls(t.pct)}">${flatPct(t.pct)}</b></span>`).join("") : `<span class="xs mut">no closed trades yet</span>`}</div>`;
+  `<div class="blast"><span class="xs mut">Last ${b.last.length || ""}</span>${b.last.length ? b.last.map((t) => `<span class="btrade" title="${esc(t.symbol)} · ${ago(t.at)} ago"><b class="${flatCls(t.pct)}">${flatPct(t.pct)}</b></span>`).join("") : `<span class="xs mut">no closed trades yet</span>`}</div>`;
 /** Win rate, closed trades, max drawdown, copiers. */
 const statsHtml = (b: Brief) => {
   const st = b.stats;
   return `<span><b>${st.winRate === null ? "—" : st.winRate + "%"}</b> win</span><span><b>${st.closed}</b> closed</span><span><b class="${st.maxDd >= 10 ? "warn" : ""}">${st.maxDd.toFixed(1)}%</b> max DD</span><span><b>${st.followers}</b> ${st.followers === 1 ? "copier" : "copiers"}</span>`;
 };
 
-// Chief's brief per trader, kept for a few seconds so a deck of cards from the same few traders builds it once.
+// The brief per trader, kept for a few seconds so a deck of cards from the same few traders builds it once.
 const briefMemo = new Map<number, { at: number; b: Promise<Brief | undefined> }>();
 function briefOf(leader: number) {
   const hit = briefMemo.get(leader);
@@ -142,8 +146,8 @@ function briefOf(leader: number) {
 }
 
 /**
- * Phones only (desktop has the side panel): the trader's record on the card itself, in the room above Chief's read.
- * On shorter phones the chips go first, then the whole section, so Chief's read always fits.
+ * Phones only (desktop has the side panel): the trader's record on the card itself, in the room above the safety read.
+ * On shorter phones the chips go first, then the whole section, so the safety read always fits.
  */
 async function phoneRecord(c: TradeCard): Promise<string> {
   const b = await briefOf(c.leader).catch(() => undefined);
@@ -173,7 +177,7 @@ export async function activeHtml(viewer: number): Promise<string> {
       ? `<b class="${flat ? "mut" : signCls(t.pnlPct!)}">${flat ? "flat" : pct(t.pnlPct!)}</b><span class="xs ${flat ? "mut" : signCls(t.pnlUsd!)}">${!flat && t.pnlUsd! >= 0 ? "+" : ""}${money(t.pnlUsd!)}</span>`
       : `<b>${t.limit !== null ? usd0(t.limit) : "—"}</b><span class="xs mut">waiting</span>`;
     const line2 = t.kind === "held" ? `${money(t.usd)} in · ${usd0(t.entry!)} → ${usd0(t.mark!)}` : `${money(t.usd)} to fill${t.limit !== null ? ` at or under ${usd0(t.limit)}` : ""}`;
-    return `<a class="aslide${i ? "" : " on"}" href="/t/${t.tradeId}" aria-label="${esc(t.symbol)} trade ${i + 1} of ${list.length}"><div class="row" style="gap:8px"><span class="av xs">${face(t.from === "you" ? getUser(viewer).handle : t.from)}</span><span class="grow" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b class="sm">${esc(t.symbol)}</b> <span class="xs mut">${who}</span></span><span class="row" style="gap:6px;align-items:baseline">${right}</span></div><div class="row sp xs mut"><span>${line2}</span><span>${stop}</span></div></a>`;
+    return `<a class="aslide${i ? "" : " on"}" href="${t.tradeId < 0 ? `/b/${basketOfOrder(t.tradeId)}#yours` : `/t/${t.tradeId}`}" aria-label="${esc(t.symbol)} trade ${i + 1} of ${list.length}"><div class="row" style="gap:8px"><span class="av xs">${face(t.from === "you" ? getUser(viewer).handle : t.from)}</span><span class="grow" style="min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><b class="sm">${esc(t.symbol)}</b> <span class="xs mut">${who}</span></span><span class="row" style="gap:6px;align-items:baseline">${right}</span></div><div class="row sp xs mut"><span>${line2}</span><span>${stop}</span></div></a>`;
   };
   const nav = list.length > 1 ? `<span class="xs mut" data-acar-pos>1 of ${list.length}</span><button type="button" class="acbtn" data-acar-go="-1" aria-label="Previous trade">${icon("chevl", 13, "currentColor", 2.4)}</button><button type="button" class="acbtn" data-acar-go="1" aria-label="Next trade">${icon("chev", 13, "currentColor", 2.4)}</button>` : "";
   return `<div class="acar" data-acar role="region" aria-roledescription="carousel" aria-label="Your active trades">${top(nav)}<div class="aslides">${list.map(slide).join("")}</div></div>`;
@@ -188,25 +192,45 @@ async function deckAside(viewer: number): Promise<string> {
   // One row: the balance, then the quick actions as icons, so the brief and your active trades fit on a laptop screen.
   return `<section class="card row sp" style="gap:10px;padding:12px 14px"><a href="/portfolio" style="color:#F5F5F5;min-width:0"><div class="xs mut">Copy portfolio · Flash</div><div style="font-size:22px;font-weight:700;letter-spacing:-.01em">${meta.hideBalance ? "••••" : money(pf.total)}</div><div class="xs ${signCls(pf.todayUsd)}" style="white-space:nowrap">${pf.todayUsd >= 0 ? "↑" : "↓"} ${money(Math.abs(pf.todayUsd))} today · copying ${followingOf(viewer).length}</div></a>
 <nav class="row" style="gap:6px;flex:none" aria-label="Quick actions">${quick}</nav></section>
-<section class="flat col bcard" style="gap:8px" aria-label="Chief on this trader" aria-live="polite"><h2 class="row" style="font-size:14px;gap:8px"><span class="orb" aria-hidden="true" style="width:16px;height:16px"><i></i></span>Chief on this trader</h2><div id="brief" class="col" style="gap:8px"><span class="sm mut">Swipe a basket to see who's behind it.</span></div></section>
+<section class="flat col bcard" style="gap:8px" aria-label="About this trader" aria-live="polite"><h2 class="row" style="font-size:14px;gap:8px">About this trader</h2><div id="brief" class="col" style="gap:8px"><span class="sm mut">Swipe a basket to see who's behind it.</span></div></section>
 <section class="flat col bstatcard" aria-label="Their record"><div class="row sp"><h2 style="font-size:14px">Their record</h2><span class="xs mut" id="bstatwho"></span></div><div class="bstats" id="bstats">${STATS_EMPTY}</div></section>`;
 }
 
-export async function deckPage(viewer: number, tab: DeckTab = "for-you"): Promise<string> {
-  const { html } = await deckCards(viewer, new Set(), tab);
-  // X-style tabs: For you (ranked by your network), Following (only traders you copy or follow), Trending.
-  const tabs = `<nav class="dtabs" aria-label="Feed">${([["for-you", "For you"], ["following", "Following"], ["trending", "Trending"]] as const).map(([k, l]) => `<a href="/feed${k === "for-you" ? "" : `?tab=${k}`}"${k === tab ? ' class="on" aria-current="page"' : ""}>${l}</a>`).join("")}</nav>`;
+const feedUrl = (t: DeckTab, a: AssetFilter) => { const q = [t === "for-you" ? "" : `tab=${t}`, `asset=${a}`].filter(Boolean).join("&"); return `/feed?${q}`; };
+
+/** What every feed tab shares: X-style tabs and the row of asset filters. */
+function feedNav(tab: DeckTab, asset: AssetFilter) {
+  const filters = `<nav class="dfilter" aria-label="What are you looking to invest in?">${ASSET_FILTERS.map(([k, l]) => `<a href="${feedUrl(tab, k)}"${k === asset ? ' class="on" aria-current="true"' : ""}>${l}</a>`).join("")}</nav>`;
+  // For you (ranked by your network), Following (only traders you copy or follow), Trending, Top (the leaderboard, as lists).
+  const tabs = `<nav class="dtabs" aria-label="Feed">${([["for-you", "For you"], ["following", "Following"], ["trending", '<span class="only-d">Trending</span><span class="only-m">Hot</span>'], ["top", "Top"]] as const).map(([k, l]) => `<a href="${feedUrl(k, asset)}"${k === tab ? ' class="on" aria-current="page"' : ""}>${l}</a>`).join("")}</nav>`;
+  return { filters, tabs };
+}
+
+/** The Top tab: the leaderboard, for browsing everything the deck deals one card at a time. */
+export async function feedTopPage(viewer: number, q: Record<string, unknown>, asset: AssetFilter): Promise<string> {
+  const { filters, tabs } = feedNav("top", asset);
+  const share = `<a class="ic" target="_blank" rel="noopener" aria-label="Share this week's top traders on X" href="https://x.com/intent/post?text=${encodeURIComponent("This week's top traders on Tribe. Copy them with your own limits, guarded onchain by Chainlink CRE. Built on @DefinitiveFi Flash")}&url=${encodeURIComponent(`${process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`}/top`)}">${icon("share", 17, "currentColor", 2)}</a><a class="ic" href="/season" aria-label="Last season">${icon("star", 18)}</a>`;
+  const body = `<header class="hd" style="justify-content:space-between;padding-bottom:6px">${tabs}<div class="row" style="gap:8px;flex:none">${share}</div></header><div class="main" style="flex:none;padding-bottom:12px;padding-top:6px">${filters}</div>
+${await ranksHtml(viewer, q, asset)}`;
+  return page({ title: "Top · Tribe", nav: "feed", body });
+}
+
+export async function deckPage(viewer: number, tab: DeckTab = "for-you", asset: AssetFilter = "all"): Promise<string> {
+  const { html } = await deckCards(viewer, new Set(), tab, new Set(), asset);
+  const assetLabel = ASSET_FILTERS.find(([k]) => k === asset)![1];
+  const { filters, tabs } = feedNav(tab, asset);
   const pend = pendingFor(viewer);
   const pf = await portfolio(viewer);
   const meta = getMeta(viewer);
-  const waiting = `<div class="swempty"><span class="orb" aria-hidden="true" style="width:64px;height:64px"><i></i></span><h2>Waiting for the next basket</h2><p class="mut md" style="margin:0;max-width:300px">New baskets from the tribe slide in here on their own, one at a time.</p><div class="grid2" style="width:100%;max-width:320px"><a class="btn" href="/baskets">All baskets</a><a class="btn p" href="/baskets/new">Build one</a></div></div>`;
+  const waiting = `<div class="swempty"><span class="orb" aria-hidden="true" style="width:64px;height:64px"><i></i></span><h2>${asset === "all" ? "Waiting for the next basket" : `No more ${esc(assetLabel)} baskets`}</h2><p class="mut md" style="margin:0;max-width:300px">${asset === "all" ? "New baskets from the tribe slide in here on their own, one at a time." : "New ones slide in here on their own. Build one, or see everything."}</p><div class="grid2" style="width:100%;max-width:320px">${asset === "all" ? `<a class="btn" href="/feed?tab=top">All baskets</a>` : `<a class="btn" href="${feedUrl(tab, "all")}">Show all</a>`}<a class="btn p" href="/baskets/new">Build one</a></div></div>`;
   // The heading sits in the deck column so the side panel starts at the top and fits the screen.
   const body = split(`<main class="main swmain"><header class="hd" style="justify-content:space-between;padding:8px 0 0"><div class="row" style="gap:18px;min-width:0"><h1 class="row only-d" style="font-size:22px;gap:8px;white-space:nowrap"><span class="live" aria-hidden="true"></span>Baskets</h1>${tabs}</div>
 <div class="row" style="gap:8px"><button class="ic only-m" data-open="mytribe" aria-label="Your portfolio and active trades">${icon("wallet", 18)}</button><a class="ic only-m" href="/requests" aria-label="Copy requests, ${pend.length} pending">${icon("inbox", 18)}${pend.length ? `<span class="badge">${pend.length}</span>` : ""}</a></div></header>
-<div class="deck" id="deck" data-tab="${tab}" aria-live="polite">${html}${waiting}</div>
-<div class="swbar" role="toolbar" aria-label="Decide on this basket"><button class="swbtn skip" data-sw="left" aria-label="Skip (left arrow)">${icon("close", 26, "currentColor", 2.6)}</button><button class="swbtn ask" data-sw="up" aria-label="Ask Chief about this basket (up arrow)"><span class="orb" aria-hidden="true" style="width:30px;height:30px"><i></i></span></button><button class="swbtn copy" data-sw="right" aria-label="Copy with Flash (right arrow)">${icon("bolt", 26, "currentColor", 2.2)}</button></div>
+${filters}
+<div class="deck" id="deck" data-tab="${tab}" data-asset="${asset}" aria-live="polite">${html}${waiting}</div>
+<div class="swbar" role="toolbar" aria-label="Decide on this basket"><button class="swbtn skip" data-sw="left" aria-label="Skip (left arrow)">${icon("close", 26, "currentColor", 2.6)}</button><button class="swbtn copy" data-sw="right" aria-label="Copy with Flash (right arrow)">${icon("bolt", 26, "currentColor", 2.2)}</button></div>
 <button class="btn swfollow" id="swfollow" type="button" hidden></button>
-<p class="xs mut only-d" style="text-align:center;margin:0">← skip · ↑ ask Chief · → copy with Flash · F follow</p></main>`, await deckAside(viewer), "Trader brief and active trades");
+<p class="xs mut only-d" style="text-align:center;margin:0">← skip · → copy with Flash · F follow</p></main>`, await deckAside(viewer), "Trader brief and active trades");
   const myTribe = sheet("mytribe", `<div class="row sp"><h2>Your portfolio</h2><button class="ic s" data-close="mytribe" aria-label="Close">${icon("close", 14, "currentColor", 2.4)}</button></div>
 <a class="card" href="/me" style="display:block;color:#F5F5F5;margin-top:12px"><div class="sm mut">Copy portfolio · Flash</div><div class="big" style="font-size:30px;margin-top:4px">${meta.hideBalance ? "••••" : money(pf.total)}</div><div class="${signCls(pf.todayUsd)}" style="font-size:13px">${pf.todayUsd >= 0 ? "↑" : "↓"} ${money(Math.abs(pf.todayUsd))} today · copying ${followingOf(viewer).length}</div></a>
 <div class="grid4" style="margin-top:12px">${([["Add funds", "/funds", "plus"], ["Positions", "/positions", "trend"], ["My traders", "/traders", "people"], ["Portfolio", "/portfolio", "list"]] as const).map(([l, h, i]) => `<a href="${h}" class="col" style="align-items:center;gap:6px;color:#F5F5F5;font-size:12px"><span class="ic" aria-hidden="true">${icon(i, 18)}</span>${l}</a>`).join("")}</div>
@@ -231,7 +255,7 @@ function key(c){return c.dataset.basket?'b'+c.dataset.basket:c.dataset.trade}
 function restack(){cards().forEach(function(c,i){c.style.zIndex=50-i;c.classList.toggle('p0',i===0);c.classList.toggle('p1',i===1);c.classList.toggle('pn',i>1)})}
 function top(){return deck.querySelector('.swcard:not(.gone)')}
 function count(){deck.classList.toggle('done',!cards().length);follow();brief();if(cards().length<3)more()}
-// Desktop side panel: Chief's brief on whoever is behind the top card, fetched once per trader per minute.
+// Desktop side panel: The brief on whoever is behind the top card, fetched once per trader per minute.
 var briefs={},shown='';
 // Their record (win rate, closed, max DD, copiers) sits in the card underneath and follows the same trader.
 var stEmpty=(document.getElementById('bstats')||{}).innerHTML||'';
@@ -239,7 +263,7 @@ function put(h,j){document.getElementById('brief').innerHTML=j.html;var s=docume
 function brief(){var box=document.getElementById('brief');if(!box||getComputedStyle(box.closest('.paside')).display==='none')return;var c=top(),h=c?c.dataset.handle:'';if(h===shown)return;shown=h;
  if(!h){put('',{html:'<span class="sm mut">Swipe a basket to see who\\u2019s behind it.</span>',stats:stEmpty});return}
  var hit=briefs[h];if(hit&&Date.now()-hit.at<60000){put(h,hit);return}
- box.classList.add('loading');if(!hit)box.innerHTML='<span class="sm mut">Chief is reading @'+h+'\\u2019s portfolio\\u2026</span>';
+ box.classList.add('loading');if(!hit)box.innerHTML='<span class="sm mut">Reading @'+h+'\\u2019s portfolio\\u2026</span>';
  fetch('/api/deck/brief?h='+encodeURIComponent(h)).then(function(r){return r.json()}).then(function(j){briefs[h]={html:j.html,stats:j.stats,at:Date.now()};if(shown===h)put(h,j)}).catch(function(){}).then(function(){if(shown===h)box.classList.remove('loading')})}
 // Your active trades, in the side panel and the phone sheet; refreshed after a copy and every 15s, keeping your place.
 // One trade at a time: it moves on every 6s unless you're hovering over it or using its buttons; arrows, dots, keys and swipes move it by hand.
@@ -271,14 +295,13 @@ function follow(){var c=top();if(!c){fol.hidden=true;return}fol.hidden=false;var
  fol.className='btn swfollow'+(on?'':' p');fol.setAttribute('aria-pressed',on?'true':'false');fol.textContent=c.dataset.copying?'You copy @'+h:on?'Following @'+h:'+ Follow @'+h;fol.disabled=!!c.dataset.copying}
 fol.onclick=function(){var c=top();if(!c)return;var h=c.dataset.handle;post('/api/watch',{leader:h}).then(function(j){if(j.error){tribe.toast(j.error);return}var on=/^Following/.test(j.toast||'');deck.querySelectorAll('.swcard').forEach(function(x){if(x.dataset.handle===h)x.dataset.following=on?'1':''});tribe.toast(j.toast);follow()})};
 function decide(dir){var c=top();if(!c)return;
- if(dir==='up'){location.href=c.dataset.ask;return}
  if(c.dataset.pending){post('/api/pending',{id:Number(c.dataset.pending),action:dir==='right'?'approve':'skip',back:'/feed'}).then(function(j){tribe.toast(j.error||(dir==='right'?(j.toast||'Approved'):'Skipped'));if(dir==='right')active()});fly(c,dir);return}
  if(dir==='left'){post('/api/swipe',{basket:Number(c.dataset.basket),dir:'left'});fly(c,'left');return}
  cur=c;openConfirm(c)}
 function openConfirm(c){var max=Number(c.dataset.max),usd=Math.min(Number(c.dataset.usd),max),opts=[];[5,10,25,50,100].forEach(function(v){if(v<max)opts.push(v)});opts.push(max);opts=opts.filter(function(v,i,a){return a.indexOf(v)===i}).slice(-4);
  amt=opts.indexOf(usd)>-1?usd:opts[opts.length-1];
  document.getElementById('swc-t').textContent='Copy '+c.dataset.symbol;
- document.getElementById('swc-s').textContent='Pick how much. It splits across '+c.dataset.legs+' tokens. Your max per copy is '+fmt(max)+'.';
+ document.getElementById('swc-s').textContent='Pick how much. '+(c.dataset.legs==='1'?'It buys one token':'It splits across '+c.dataset.legs+' tokens')+'. Your max per copy is '+fmt(max)+'.';
  var box=document.getElementById('swc-amt');box.innerHTML='';opts.forEach(function(v){var b=document.createElement('button');b.type='button';b.className='chip'+(v===amt?' on':'');b.setAttribute('role','radio');b.textContent=fmt(v);b.onclick=function(){amt=v;document.getElementById('swc-custom').value='';document.getElementById('swc-err').hidden=true;box.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('on',x===b)});risk()};box.appendChild(b)});
  var cu=document.getElementById('swc-custom');cu.value='';cu.max=max;document.getElementById('swc-err').hidden=true;
  // A typed amount: $1 up to the max per trade (the server checks the same), to the cent.
@@ -286,19 +309,19 @@ function openConfirm(c){var max=Number(c.dataset.max),usd=Math.min(Number(c.data
   if(ok){amt=v;box.querySelectorAll('.chip').forEach(function(x){x.classList.remove('on')});risk()}else document.getElementById('swc-go').disabled=true};
  risk();document.getElementById('swconfirm').classList.add('open');document.getElementById('bd-swconfirm').classList.add('open')}
 function risk(){var fb=Number(cur.dataset.fee),fs=Number(cur.dataset.share),fe=document.getElementById('swc-fee');if(fe&&fb)fe.textContent='Fee about '+fmt(amt*fb/1e4)+' ('+(fb/100)+'%), and @'+cur.dataset.handle+' gets '+fs+'% of it ('+fmt(amt*fb/1e4*fs/100)+') for being copied.';var sl=parseFloat(cur.dataset.sl),tp=parseFloat(cur.dataset.tp),block=!!cur.dataset.needstop,go=document.getElementById('swc-go');go.disabled=block;
- document.getElementById('swc-n').textContent=block?'This basket has no stop-loss, and your rules only copy baskets with one. Change that in Settings, or skip it.':cur.dataset.legs+' Flash orders from your wallet, one per token'+(isNaN(sl)?', with no stop-loss.':', each with the stop'+(isNaN(tp)?'':' and target')+' attached.')+' CopyGuard checks the creator again right before they\\u2019re placed.';document.getElementById('swc-loss').textContent=isNaN(sl)?'No stop':'\\u2212'+fmt(amt*sl/100);document.getElementById('swc-gain').textContent=isNaN(tp)?'No target':'+'+fmt(amt*tp/100)}
+ document.getElementById('swc-n').textContent=block?'This basket has no stop-loss, and your rules only copy baskets with one. Change that in Settings, or skip it.':(cur.dataset.legs==='1'?'One Flash order from your wallet':cur.dataset.legs+' Flash orders from your wallet, one per token')+(isNaN(sl)?', with no stop-loss.':(cur.dataset.legs==='1'?', with the stop':', each with the stop')+(isNaN(tp)?'':' and target')+' attached.')+' CopyGuard checks the creator again right before '+(cur.dataset.legs==='1'?'it\\u2019s':'they\\u2019re')+' placed.';document.getElementById('swc-loss').textContent=isNaN(sl)?'No stop':'\\u2212'+fmt(amt*sl/100);document.getElementById('swc-gain').textContent=isNaN(tp)?'No target':'+'+fmt(amt*tp/100)}
 function closeConfirm(back){document.getElementById('swconfirm').classList.remove('open');document.getElementById('bd-swconfirm').classList.remove('open');if(back&&cur)reset(cur)}
 document.addEventListener('click',function(e){if(e.target.closest('[data-close=swconfirm]'))closeConfirm(true)});
 document.getElementById('swc-go').onclick=function(){var b=this,c=cur;b.disabled=true;post('/api/basket-copy',{basket:Number(c.dataset.basket),usd:amt}).then(function(j){b.disabled=false;if(j.error){tribe.toast(j.error);if(/retired|already copy/.test(j.error)){closeConfirm(false);fly(c,'fade')}return}closeConfirm(false);tribe.toast(j.toast);fly(c,'right');active()}).catch(function(){b.disabled=false;tribe.toast('Network error')})};
 document.querySelectorAll('[data-sw]').forEach(function(b){b.onclick=function(){var c=top();if(!c)return;var d=b.dataset.sw;if(d!=='right'||c.dataset.pending){c.style.transform=d==='left'?'translateX(-30px) rotate(-6deg)':d==='right'?'translateX(30px) rotate(6deg)':'translateY(-30px)'}decide(d)}});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&cur&&!cur.classList.contains('gone')){closeConfirm(true);return}
  var ac=e.target.closest&&e.target.closest('#active,[data-active]');if(ac){if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();acGo(ac,(ac._i||0)+(e.key==='ArrowLeft'?-1:1))}return}
- if(document.querySelector('.sheet.open'))return;if(e.target.closest('input,textarea'))return;if(e.key==='f'||e.key==='F'){if(!fol.hidden&&!fol.disabled)fol.click();return}var m={ArrowLeft:'left',ArrowRight:'right',ArrowUp:'up'}[e.key];if(m){e.preventDefault();decide(m)}});
+ if(document.querySelector('.sheet.open'))return;if(e.target.closest('input,textarea'))return;if(e.key==='f'||e.key==='F'){if(!fol.hidden&&!fol.disabled)fol.click();return}var m={ArrowLeft:'left',ArrowRight:'right'}[e.key];if(m){e.preventDefault();decide(m)}});
 var sx,sy,dx=0,dy=0,drag=null;
 deck.addEventListener('pointerdown',function(e){var c=top();if(!c||!c.contains(e.target)||e.target.closest('a,button'))return;drag=c;sx=e.clientX;sy=e.clientY;dx=dy=0;c.style.transition='none';c.setPointerCapture(e.pointerId)});
 deck.addEventListener('pointermove',function(e){if(!drag)return;dx=e.clientX-sx;dy=e.clientY-sy;drag.style.transform='translate('+dx+'px,'+Math.min(dy,40)+'px) rotate('+(dx/18)+'deg)';
- var s=function(k,o){var el=drag.querySelector('.stamp.'+k);if(el)el.style.opacity=Math.max(0,Math.min(1,o))};s('copy',dx/110);s('skip',-dx/110);s('ask',-dy/110-Math.abs(dx)/200)});
-function end(){if(!drag)return;var c=drag;drag=null;if(dx>110)decide('right');else if(dx<-110)decide('left');else if(dy<-110&&Math.abs(dx)<80)decide('up');else{reset(c);if(Math.abs(dx)<6&&Math.abs(dy)<6)location.href=c.dataset.basket?'/b/'+c.dataset.basket:'/t/'+c.dataset.trade}}
+ var s=function(k,o){var el=drag.querySelector('.stamp.'+k);if(el)el.style.opacity=Math.max(0,Math.min(1,o))};s('copy',dx/110);s('skip',-dx/110)});
+function end(){if(!drag)return;var c=drag;drag=null;if(dx>110)decide('right');else if(dx<-110)decide('left');else{reset(c);if(Math.abs(dx)<6&&Math.abs(dy)<6)location.href=c.dataset.basket?'/b/'+c.dataset.basket:'/t/'+c.dataset.trade}}
 deck.addEventListener('pointerup',end);deck.addEventListener('pointercancel',end);
 // Live numbers on the cards you can see, and new baskets as they're published.
 function ids(){return cards().map(function(c){return c.dataset.basket}).filter(Boolean)}
@@ -306,6 +329,6 @@ setInterval(function(){if(document.hidden)return;var l=ids().slice(0,3);if(!l.le
 // Top the queue up as soon as it runs low (and every 5s for new baskets). Cards on screen, including the one on the left, aren't sent again.
 // Baskets already swiped this round stay out too, so a looping deck goes all the way round before repeating.
 var busy=0,seen=[];
-function more(){if(busy||document.hidden||cards().length>=4)return;busy=1;var have=[].slice.call(deck.querySelectorAll('.swcard')).map(key).concat(seen);fetch('/api/deck/cards?tab='+deck.dataset.tab+'&have='+have.join(',')).then(function(r){return r.json()}).then(function(j){busy=0;if(!j.html){if(seen.length){seen=[];more()}return}var t=document.createElement('div');t.innerHTML=j.html;var empty=deck.querySelector('.swempty');[].slice.call(t.children).forEach(function(n){deck.insertBefore(n,empty)});restack();count()}).catch(function(){busy=0})}
+function more(){if(busy||document.hidden||cards().length>=4)return;busy=1;var have=[].slice.call(deck.querySelectorAll('.swcard')).map(key).concat(seen);fetch('/api/deck/cards?tab='+deck.dataset.tab+'&asset='+deck.dataset.asset+'&have='+have.join(',')).then(function(r){return r.json()}).then(function(j){busy=0;if(!j.html){if(seen.length){seen=[];more()}return}var t=document.createElement('div');t.innerHTML=j.html;var empty=deck.querySelector('.swempty');[].slice.call(t.children).forEach(function(n){deck.insertBefore(n,empty)});restack();count()}).catch(function(){busy=0})}
 setInterval(more,5000);
 restack();count()})()`;

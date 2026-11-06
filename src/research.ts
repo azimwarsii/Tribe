@@ -56,7 +56,7 @@ export const latestEntry = (leader: number) =>
   (db.prepare("SELECT id FROM trades WHERE leader = ? AND private = 0 ORDER BY json_extract(trade,'$.side') = 'buy' DESC, id DESC LIMIT 1").get(leader) as { id: number } | undefined)?.id;
 
 /** Chief's read as plain text, for Telegram and MCP where there is no card. */
-export const verdictText = (v: Verdict) => `Chief's read: ${v.label}\n${v.checks.map((c) => `${c.ok === true ? "✅" : c.ok === false ? "⚠️" : "▫️"} ${c.t}`).join("\n")}`;
+export const verdictText = (v: Verdict) => `Safety read: ${v.label}\n${v.checks.map((c) => `${c.ok === true ? "✅" : c.ok === false ? "⚠️" : "▫️"} ${c.t}`).join("\n")}`;
 
 const verbOf = (c: TradeCard) => c.trade.side === "buy" ? (c.trade.orderType === "twap" ? "Accumulating" : c.trade.attach ? "Bracket long" : "Long") : c.realisedPct !== null ? (c.realisedPct > 0 ? "Took profit" : "Closed") : "Protective order";
 

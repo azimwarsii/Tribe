@@ -1,12 +1,12 @@
 import { isWatching, watchersCount, watchingOf, allHalts, commentsOf, db, DEFAULT_RULES, followingOf, getFollowRules, getMeta, getUser, guardEvents, haltOf, pendingFor, reactionCounts, tradeById, userByHandle, userById } from "../db.js";
-import { face, liveBook, monthlyHistory, sourceSplit, type SideRecord, ago, closedPositions, copyPnlByLeader, feed, freeBalance, initials, money, ORDER_LABEL, openPositions, pct, profile, symOf, tradeCard, windowPnl } from "../data.js";
+import { face, liveBook, monthlyHistory, ago, closedPositions, copyPnlByLeader, feed, freeBalance, initials, money, ORDER_LABEL, openPositions, pct, profile, symOf, tradeCard, windowPnl } from "../data.js";
 import { decide, RISK_LINE, type FollowRules } from "../rules.js";
 import { riskWord } from "../risk.js";
 import { riskOf } from "../guard.js";
 import { getPrice } from "../prices.js";
 import type { Trade } from "../flash.js";
 import { DISCLAIMER, esc, header, icon, money2, notFound, page, polyline, seg, sheet, signCls, split, stat, sw } from "../ui.js";
-import { sourceTag, tradeCardHtml } from "./feed.js";
+import { tradeCardHtml } from "./feed.js";
 import { madeByMonth } from "./web.js";
 import { catReadCard } from "./cat.js";
 import { reactBar, reactBreakdown } from "./reactions.js";
@@ -23,15 +23,6 @@ const BASE_URL = () => process.env.PUBLIC_URL ?? `http://localhost:${process.env
 // ---------- Profile ----------
 
 const RANGE_MS: Record<string, number> = { "1D": 86400e3, "1W": 7 * 86400e3, "1M": 30 * 86400e3, All: 1e15 };
-
-/** Manual vs Bot: the same trader's record split by who placed the entry. */
-function splitCard(leader: number): string {
-  const s = sourceSplit(leader);
-  if (!s.bot.trades) return "";
-  const col = (label: string, ic: string, r: SideRecord, bot: boolean) => `<div class="tile" style="${bot ? "border-color:rgba(52,211,153,.25)" : ""}"><div class="row" style="gap:6px"><span class="srctag${bot ? " bot" : ""}">${icon(ic, 11, "currentColor", 2)}${label}</span></div>
-<div style="font-size:20px;font-weight:600;margin-top:8px" class="${r.pnlPct === null ? "" : signCls(r.pnlPct)}">${r.pnlPct === null ? "—" : pct(r.pnlPct)}</div><div class="xs mut">${r.trades} entr${r.trades === 1 ? "y" : "ies"} · ${r.closed ? `${r.wins} of ${r.closed} closed green` : "none closed"}</div></div>`;
-  return `<h2>Manual vs Bot</h2><div class="grid2">${col("Manual", "hand", s.manual, false)}${col("Bot", "bot", s.bot, true)}</div>`;
-}
 
 /**
  * A trader's portfolio: their live book (positions they hold and orders still resting), each copyable with Flash,
@@ -67,7 +58,6 @@ export async function profilePage(viewer: number, handle: string, q: Record<stri
   const p = await profile(u.id);
   const range = String(q.r ?? "All");
   const tab = String(q.tab ?? "Overview");
-  const src = String(q.src ?? "All");
   const href = (extra: Record<string, string>) => `/u/${esc(handle)}?` + new URLSearchParams({ r: range, tab, ...extra }).toString();
   const curve = (db.prepare("SELECT pnl_pct FROM snapshots WHERE trader = ? AND at >= ? ORDER BY at").all(u.id, Date.now() - (RANGE_MS[range] ?? 1e15)) as unknown as { pnl_pct: number }[]).map((r) => r.pnl_pct);
   const line = polyline(curve, 390, 150);
@@ -77,7 +67,7 @@ export async function profilePage(viewer: number, handle: string, q: Record<stri
   const bot = getMeta(u.id).bot;
   const events = guardEvents(u.id);
   const all = (await feed(viewer, { time: "30d" }, 80)).filter((c) => c.leader === u.id);
-  const trades = all.filter((c) => src === "All" || (src === "Bot" ? c.source !== "user" : c.source === "user"));
+  const trades = all;
   const dd = p.maxDd;
   const followers = watchersCount(u.id);
   const following = new Set([...watchingOf(u.id), ...followingOf(u.id).map((f) => f.leader)]).size;
@@ -89,7 +79,6 @@ ${events.map((e) => `<div class="tile"><div class="row sp"><b class="md">${e.kin
     : tab === "Badges" ? (p.badges.length ? `<div class="grid3">${p.badges.map((b) => `<div class="tile col" style="align-items:center;text-align:center;gap:8px;padding:14px 8px"><span class="medal on" aria-hidden="true">${icon(b.icon, 22)}</span><span class="sm" style="font-weight:600">${esc(b.label)}</span></div>`).join("")}</div>` : '<span class="sm mut">No badges yet.</span>')
     : `<h2>Stats</h2><div class="grid2">${stat("Win rate", p.winRate === null ? "—" : p.winRate + "%")}${stat("Guard pauses", `${p.guardPauses} in ${p.days || 0} days`)}${stat("Copies", String(p.copies))}${stat("Track record", `${p.days} days · ${p.trades} trades`)}</div>
 ${await basketsStrip(u.id)}
-${splitCard(u.id)}
 ${botsStrip(u.id)}
 <div class="tile"><div class="row sp sm mut"><span>Max drawdown</span><span>${riskWord(Math.min(100, dd * 3.5))}</span></div><div style="font-size:18px;font-weight:600;margin-top:4px">${dd ? "−" + dd.toFixed(1) + "pp" : "—"}</div><div class="bar" style="margin-top:8px"><i style="width:${Math.min(100, (dd / 25) * 100)}%"></i></div></div>`;
   const cta = me ? `<a class="btn p" href="/profile/edit" style="flex:2">Edit profile</a>`
@@ -98,14 +87,14 @@ ${botsStrip(u.id)}
     : `<a class="btn p" href="#baskets" style="flex:2">${icon("list", 14, "currentColor", 2)}See baskets</a>`;
   const count = (n: number, label: string, link?: string) => `<${link ? `a href="${link}"` : "span"} class="pcount"><b>${n}</b><span>${label}</span></${link ? "a" : "span"}>`;
   const botBanner = bot.on
-    ? `<a class="card row" href="${me ? "/bot" : href({ tab: "Trades", src: "Bot" })}" style="margin:0 20px 12px;gap:12px;color:#F5F5F5;border-color:rgba(52,211,153,.3);background:linear-gradient(135deg,rgba(52,211,153,.08),#141414 60%)"><span class="ic36" style="color:#34D399;background:rgba(52,211,153,.12)">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">${me ? "Your bot is on" : `@${esc(handle)} runs a bot`}</b><span class="sm mut">Chainlink CRE strategy · $${bot.usd} a trade · up to ${bot.perDay} a day · tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>`
+    ? `<a class="card row" href="${me ? "/bot" : href({ tab: "Trades" })}" style="margin:0 20px 12px;gap:12px;color:#F5F5F5;border-color:rgba(52,211,153,.3);background:linear-gradient(135deg,rgba(52,211,153,.08),#141414 60%)"><span class="ic36" style="color:#34D399;background:rgba(52,211,153,.12)">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">${me ? "Your bot is on" : `@${esc(handle)} runs a bot`}</b><span class="sm mut">Chainlink CRE strategy · $${bot.usd} a trade · up to ${bot.perDay} a day · tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>`
     : me ? `<a class="flat row" href="/bot" style="margin:0 20px 12px;gap:12px;color:#F5F5F5"><span class="ic36">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">Turn on your bot</b><span class="sm mut">It trades the CRE strategy under your name, tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>` : "";
   const body = `<header class="hd" style="justify-content:space-between">${`<a class="ic" href="/feed" aria-label="Back">${icon("back", 18, "currentColor", 2)}</a>`}<a class="ic" href="/share/${esc(handle)}" aria-label="Share">${icon("share", 17, "currentColor", 2)}</a></header>
 <div class="row" style="padding:0 20px 10px;gap:14px;align-items:flex-start"><a class="av w lg pav" ${me ? 'href="/profile/edit" aria-label="Change photo"' : 'aria-hidden="true"'}>${face(handle)}${me ? `<i>${icon("camera", 12, "currentColor", 2.2)}</i>` : ""}</a>
 <div class="grow" style="min-width:0"><h1 style="margin:0;font-size:20px">@${esc(handle)}</h1><div class="sm mut">${esc(u.persona ?? "Trader")} · Lv ${p.level} · ${p.days ? `trading ${p.days} day${p.days === 1 ? "" : "s"}` : "new"}</div>${u.bio ? `<p class="md" style="margin:6px 0 0;color:#D4D4D4;line-height:1.45">${esc(u.bio)}</p>` : me ? `<a class="sm" href="/profile/edit" style="display:inline-block;margin-top:6px">Add a bio</a>` : ""}</div>
 <div style="text-align:right"><div class="${signCls(p.pnlPct)} lg" style="font-size:22px">${pct(p.pnlPct, 1)}</div><div class="xs mut">total return</div></div></div>
 <div class="row" style="padding:0 20px 12px;gap:18px">${count(followers, followers === 1 ? "follower" : "followers")}${count(p.followers, p.followers === 1 ? "copier" : "copiers")}${count(following, "following")}</div>
-${me ? "" : `<div class="grid2" style="padding:0 20px 12px"><button class="btn sm${watching ? "" : " p"}" style="width:100%" data-act="/api/watch" data-body='{"leader":"${esc(handle)}"}' aria-pressed="${watching}">${watching ? `${icon("check", 13, "currentColor", 2.4)}Following` : `${icon("userplus", 14, "currentColor", 2)}Follow`}</button><a class="btn sm" style="width:100%" href="/cat/chat?new=1&q=${encodeURIComponent(`Is @${handle} worth copying?`)}" aria-label="Ask Chief about @${esc(handle)}"><span class="orb" aria-hidden="true" style="width:16px;height:16px"><i></i></span>Ask Chief</a></div>`}
+${me ? "" : `<div style="padding:0 20px 12px"><button class="btn sm${watching ? "" : " p"}" style="width:100%" data-act="/api/watch" data-body='{"leader":"${esc(handle)}"}' aria-pressed="${watching}">${watching ? `${icon("check", 13, "currentColor", 2.4)}Following` : `${icon("userplus", 14, "currentColor", 2)}Follow`}</button></div>`}
 ${p.halted ? `<div class="card bad" style="margin:0 20px 12px"><div class="row" style="gap:8px">${icon("shield", 16, "#F87171")}<b class="down">Paused by CopyGuard</b></div><div class="sm" style="color:#FECACA;margin-top:4px">${esc(p.halted.reason)}</div></div>` : ""}
 ${botBanner}
 ${me ? "" : await catReadCard(viewer, u.id, "margin:0 20px 12px")}
@@ -276,7 +265,7 @@ export async function positionsPage(viewer: number, tab: string): Promise<string
     const sl = p.stopPct ?? 0, tp = p.tpPct ?? 0, span = sl + tp || 1;
     const pos = (v: number) => Math.max(2, Math.min(98, ((v + sl) / span) * 100)).toFixed(0) + "%";
     return `<article class="card post" id="p-${p.symbol}"><div class="row"><span class="av">${esc(p.symbol.slice(0, 3))}</span><span class="grow"><b>${esc(p.symbol)} · Long</b><span class="sm mut" style="display:block">from ${p.from === "you" ? "you" : "@" + esc(p.from)} · ${esc(p.type)} · ${money(p.sizeUsd)}</span></span><span style="text-align:right"><b class="${signCls(p.pnlPct)}">${pct(p.pnlPct)}</b><span class="${signCls(p.pnlUsd)} sm" style="display:block">${p.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(p.pnlUsd))}</span></span></div>
-${p.fromHalted ? `<div class="sm warn">@${esc(p.from)} is paused by Guard. This position still has its stop.</div>` : ""}${p.from !== "you" ? `<a class="chip askcat" style="align-self:flex-start" href="/cat/chat?new=1&q=${encodeURIComponent(`Is @${p.from} still worth copying?`)}"><span class="orb" aria-hidden="true"><i></i></span>Ask Chief about @${esc(p.from)}</a>` : ""}
+${p.fromHalted ? `<div class="sm warn">@${esc(p.from)} is paused by Guard. This position still has its stop.</div>` : ""}
 ${p.stopPct !== null || p.tpPct !== null ? `<div><div role="img" aria-label="Price is ${pct(p.pnlPct)} from entry" style="position:relative;height:6px;border-radius:3px;background:linear-gradient(90deg,rgba(248,113,113,.5),#262626 ${pos(0)},rgba(52,211,153,.5))"><span style="position:absolute;left:${pos(p.pnlPct)};top:-4px;width:2px;height:14px;background:#F5F5F5"></span></div>
 <div class="row sp xs mut" style="margin-top:6px"><span>Stop <b style="color:#F87171">${p.stopPct !== null ? "−" + p.stopPct.toFixed(1) + "%" : "—"}</b></span><span>Entry $${p.entry.toFixed(2)} · now $${p.mark.toFixed(2)}</span><span>Target <b style="color:#34D399">${p.tpPct !== null ? "+" + p.tpPct.toFixed(1) + "%" : "—"}</b></span></div></div>` : `<div class="xs mut">No stop or target on this position.</div>`}
 <div class="grid2"><button class="btn sm" style="width:100%" data-toggle="e-${p.symbol}">Edit stop</button><button class="btn sm danger" style="width:100%" data-act="/api/position-close" data-body='{"token":"${p.token}"}' data-confirm="Close ${esc(p.symbol)} at market for ${p.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(p.pnlUsd))}?">Close</button></div>
@@ -285,7 +274,7 @@ ${p.stopPct !== null || p.tpPct !== null ? `<div><div role="img" aria-label="Pri
   const body = `${header("Positions", "Copied trades you hold right now", "/me")}<main class="main" style="gap:12px">
 <section class="card"><div class="row sp"><div><div class="sm mut">Open positions</div><div class="lg">${open.length}</div></div><div style="text-align:right"><div class="sm mut">Unrealized PnL</div><div class="lg ${signCls(unreal)}">${unreal >= 0 ? "+" : "−"}${money(Math.abs(unreal))}</div></div></div><p class="note" style="margin:10px 0 0">Every position keeps its own stop and target, even if you pause or stop copying the trader.</p></section>
 ${seg([{ label: "Open", href: "/positions", on: tab !== "closed" }, { label: `Closed · ${closed.length}`, href: "/positions?tab=closed", on: tab === "closed" }], false, "Positions")}
-${tab === "closed" ? closed.map((c) => `<div class="line"><span class="av sm">${esc(c.symbol.slice(0, 3))}</span><span class="grow"><span class="t">${esc(c.symbol)} sold</span><span class="s">from ${c.from === "you" ? "you" : "@" + esc(c.from)} · ${ago(c.at)} ago</span></span><b class="${signCls(c.pnlUsd)}">${c.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(c.pnlUsd))}</b></div>`).join("") || '<div class="empty"><div class="md" style="font-weight:600">No closed positions yet</div></div>' : open.map(card).join("") || '<div class="empty"><div class="md" style="font-weight:600">Nothing open</div><div class="sm mut">Copy a trader or place a trade with Ask Chief.</div><a class="btn sm" href="/feed">Find traders</a></div>'}
+${tab === "closed" ? closed.map((c) => `<div class="line"><span class="av sm">${esc(c.symbol.slice(0, 3))}</span><span class="grow"><span class="t">${esc(c.symbol)} sold</span><span class="s">from ${c.from === "you" ? "you" : "@" + esc(c.from)} · ${ago(c.at)} ago</span></span><b class="${signCls(c.pnlUsd)}">${c.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(c.pnlUsd))}</b></div>`).join("") || '<div class="empty"><div class="md" style="font-weight:600">No closed positions yet</div></div>' : open.map(card).join("") || '<div class="empty"><div class="md" style="font-weight:600">Nothing open</div><div class="sm mut">Copy a basket from the feed.</div><a class="btn sm" href="/feed">Find traders</a></div>'}
 <div style="height:90px"></div></main>`;
   return page({ title: "Positions", nav: "me", body });
 }
@@ -309,7 +298,7 @@ export async function myTradersPage(viewer: number): Promise<string> {
   });
   const body = `${header("My traders", `${follows.length} copied · ${money(totalCopied)} in copies`, "/me")}<main class="main" style="gap:12px">
 <div class="card row" style="gap:12px"><span class="grow"><b>${meta.pausedAll ? "All copying paused" : "Copying is on"}</b><span class="sm mut" style="display:block">${meta.pausedAll ? "Open positions keep their stops and targets." : "Pause everything with one tap."}</span></span><button class="btn sm ${meta.pausedAll ? "p" : "danger"}" data-act="/api/pause-all" data-body='{"value":${!meta.pausedAll}}'>${meta.pausedAll ? "Resume all" : "Pause all"}</button></div>
-${items.join("") || '<div class="empty"><div class="md" style="font-weight:600">You are not copying anyone</div><a class="btn sm" href="/ranks">Browse leaderboard</a></div>'}<div style="height:90px"></div></main>`;
+${items.join("") || '<div class="empty"><div class="md" style="font-weight:600">You are not copying anyone</div><a class="btn sm" href="/feed?tab=top">Browse leaderboard</a></div>'}<div style="height:90px"></div></main>`;
   return page({ title: "My traders", nav: "me", body });
 }
 

@@ -2,9 +2,9 @@ import { basketHoldingsHtml } from "./baskets.js";
 import { statSync } from "node:fs";
 import { allHalts, db, followingOf, getMeta, pendingFor, userById } from "../db.js";
 import { face, copyPnlByLeader, initials, money, monthlyHistory, ORDER_LABEL, openPositions, pct, portfolio, ago, topTraders, type MonthRow } from "../data.js";
-import { sourceTag } from "./feed.js";
 import { creatorEarnings } from "./me.js";
-import { esc, header, icon, money2, page, signCls } from "../ui.js";
+import { creatingTabHtml } from "./creator.js";
+import { esc, header, icon, money2, page, seg, signCls } from "../ui.js";
 import type { Trade } from "../flash.js";
 
 const BOT = () => process.env.BOT_USERNAME ?? "TribeTradeBot";
@@ -57,12 +57,18 @@ export function madeByMonth(months: MonthRow[], dollars: boolean): string {
   const fmt = (m: MonthRow) => (dollars ? `${m.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(m.pnlUsd))}` : pct(m.pct));
   const curve = pnlCurve(months, dollars);
   const list = months.map((m, i) => `<details class="mrow"${i === 0 ? " open" : ""}><summary class="row sp"><span><b class="md">${esc(m.label)}</b><span class="xs mut" style="display:block">${m.closed} closed · ${m.wins} green${dollars ? ` · ${money(m.investedUsd)} put in` : ""}</span></span><span style="text-align:right"><b class="${signCls(val(m))}">${fmt(m)}</b>${dollars ? `<span class="xs mut" style="display:block">${pct(m.pct)}</span>` : ""}</span></summary>
-${m.trades.map((t) => `<div class="row sp sm" style="min-height:40px;border-top:1px solid #1C1C1C"><span class="row" style="gap:8px">${sourceTag(t.source)}<span>${esc(t.symbol)}${t.from ? ` <span class="mut">copied from @${esc(t.from)}</span>` : ""}</span></span><span class="row" style="gap:10px"><span class="xs mut">${new Date(t.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span><b class="${signCls(t.pnlUsd)}">${dollars ? `${t.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(t.pnlUsd))}` : pct(t.pct)}</b></span></div>`).join("") || '<div class="sm mut" style="padding:8px 0">Entries only this month, nothing closed.</div>'}</details>`).join("");
+${m.trades.map((t) => `<div class="row sp sm" style="min-height:40px;border-top:1px solid #1C1C1C"><span class="row" style="gap:8px"><span>${esc(t.symbol)}${t.from ? ` <span class="mut">copied from @${esc(t.from)}</span>` : ""}</span></span><span class="row" style="gap:10px"><span class="xs mut">${new Date(t.at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span><b class="${signCls(t.pnlUsd)}">${dollars ? `${t.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(t.pnlUsd))}` : pct(t.pct)}</b></span></div>`).join("") || '<div class="sm mut" style="padding:8px 0">Entries only this month, nothing closed.</div>'}</details>`).join("");
   return `<section class="card col" style="gap:12px" aria-label="Results by month"><div class="row sp"><h2>What ${dollars ? "you've" : "they've"} made</h2><span class="sm ${signCls(total)}">${dollars ? `${total >= 0 ? "+" : "−"}${money(Math.abs(total))} realised` : ""}</span></div>
 ${curve}<div class="col" style="gap:0">${list}</div></section>`;
 }
 
-export async function portfolioPage(uid: number): Promise<string> {
+export type PortfolioTab = "investing" | "creating";
+export const portfolioTab = (t: unknown): PortfolioTab => (t === "creating" ? t : "investing");
+
+export async function portfolioPage(uid: number, tab: PortfolioTab = "investing"): Promise<string> {
+  const head = `${header("Portfolio", tab === "creating" ? "Build baskets, get paid when people copy you" : "Positions, requests, traders and funds", "/feed", tab === "creating" ? `<a class="ic" href="/share/me" aria-label="Share your profile">${icon("share", 17, "currentColor", 2)}</a>` : "")}
+<div class="main" style="flex:none;padding-bottom:14px">${seg([{ label: "Investing", href: "/portfolio", on: tab === "investing" }, { label: "Creating", href: "/portfolio?tab=creating", on: tab === "creating" }], false, "Portfolio")}</div>`;
+  if (tab === "creating") return page({ title: "Portfolio", nav: "me", body: `${head}${await creatingTabHtml(uid)}` });
   const pf = await portfolio(uid);
   const open = await openPositions(uid);
   const unreal = open.reduce((a, p) => a + p.pnlUsd, 0);
@@ -79,13 +85,13 @@ export async function portfolioPage(uid: number): Promise<string> {
   const cards = open.map((p) => `<div class="line"><span class="av sm">${esc(p.symbol.slice(0, 3))}</span><span class="grow"><span class="t">${esc(p.symbol)} · ${money(p.sizeUsd)}</span><span class="s">from ${p.from === "you" ? "you" : "@" + esc(p.from)} · stop ${p.stopPct !== null ? "−" + p.stopPct.toFixed(1) + "%" : "—"} · target ${p.tpPct !== null ? "+" + p.tpPct.toFixed(1) + "%" : "—"}</span></span><b class="${signCls(p.pnlUsd)}">${p.pnlUsd >= 0 ? "+" : "−"}${money(Math.abs(p.pnlUsd))}</b></div>`).join("");
 
   const history = madeByMonth(monthlyHistory(uid), true);
-  const body = `${header("Portfolio", "Positions, requests, traders and funds", "/feed")}<main class="main" style="gap:16px;padding-bottom:40px">
+  const body = `${head}<main class="main" style="gap:16px">
 <div class="grid2 pgrid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">${tile("Wallet balance", money(pf.total), `${money(pf.free)} free`)}${tile("In copies", money(pf.inCopies), `${follows.length} traders`)}${tile("Unrealized PnL", `${unreal >= 0 ? "+" : "−"}${money(Math.abs(unreal))}`, `${open.length} positions`, signCls(unreal))}${tile("Creator earned", money(cr.accrued), `${cr.copiers} copiers`, "up")}</div>
 <div class="col" style="gap:16px">
 <section class="card" style="padding:0"><div class="row sp" style="padding:16px 16px 8px"><h2>Positions</h2><span class="sm mut">Each keeps its own stop and target</span></div>
-<div class="only-d" style="padding:0 8px 8px;overflow-x:auto"><table class="tbl"><thead><tr><th>Token</th><th>From</th><th>Size</th><th>Stop / target</th><th>PnL</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="mut">Nothing open. Copy a trader or ask Chief.</td></tr>'}</tbody></table></div>
+<div class="only-d" style="padding:0 8px 8px;overflow-x:auto"><table class="tbl"><thead><tr><th>Token</th><th>From</th><th>Size</th><th>Stop / target</th><th>PnL</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="mut">Nothing open. Copy a basket from the feed.</td></tr>'}</tbody></table></div>
 <div class="only-m" style="padding:0 16px 12px">${cards || '<div class="sm mut" style="padding:8px 0">Nothing open.</div>'}<a class="sm" href="/positions" style="display:block;padding-top:10px">Manage positions ›</a></div></section>
-<section class="card"><div class="row sp"><h2>Baskets</h2><a class="sm" href="/baskets">All baskets ›</a></div>${await basketHoldingsHtml(uid)}</section>
+<section class="card"><div class="row sp"><h2>Baskets</h2><a class="sm" href="/feed?tab=top">All baskets ›</a></div>${await basketHoldingsHtml(uid)}</section>
 ${history}
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px;align-items:start">
 <section class="card"><div class="row sp"><h2>Copy requests</h2><span class="sm mut">${pend.length} pending</span></div>
@@ -93,7 +99,7 @@ ${pend.map((p) => { const t = p.trade as Trade; const lh = userById(p.leader)?.h
 <section class="card"><div class="row sp"><h2>My traders</h2><button class="btn sm ${meta.pausedAll ? "p" : "danger"}" data-act="/api/pause-all" data-body='{"value":${!meta.pausedAll}}'>${meta.pausedAll ? "Resume all" : "Pause all"}</button></div>
 ${follows.map((f) => { const lu = userById(f.leader)!; const st = halted.has(f.leader) && !f.rules.guardOverride ? ["Paused by Guard", "down"] : meta.pausedAll ? ["Paused (all)", "warn"] : f.rules.paused ? ["Paused by you", "mut"] : ["Copying", "up"]; const v = pnl.get(f.leader); return `<a class="row" href="/u/${esc(lu.handle)}" style="min-height:48px;gap:10px;color:#F5F5F5;border-bottom:1px solid #1C1C1C"><span class="av sm">${face(lu.handle)}</span><span class="grow"><b class="md">@${esc(lu.handle)}</b><span class="xs mut" style="display:block">${f.rules.mode === "auto" ? "Auto" : "Ask first"}${v ? ` · ${v.pnl >= 0 ? "+" : "−"}${money(Math.abs(v.pnl))}` : ""}</span></span><span class="sm ${st[1]}">${st[0]}</span></a>`; }).join("") || '<div class="sm mut" style="padding-top:10px">Not copying anyone yet.</div>'}
 <a class="sm" href="/traders" style="display:block;padding-top:10px">Manage rules ›</a></section></div></div></main>`;
-  return page({ title: "Portfolio", body });
+  return page({ title: "Portfolio", nav: "me", body });
 }
 
 // ---------- Public landing and sign-in ----------
@@ -123,9 +129,9 @@ export function landingPage(): string {
 <div class="mock" aria-hidden="true"><div class="card" style="left:30px;top:20px;width:min(400px,86%);padding:20px"><div class="row" style="gap:10px"><span class="av w">NO</span><b class="grow">@nightowl</b><b class="up" style="font-size:22px">+8.4%</b></div><div style="font-size:26px;font-weight:600;margin-top:14px">ETH long</div><div class="row" style="gap:6px;margin-top:10px"><span class="pill flash">FLASH BRACKET</span><span class="pill bad">SL −5%</span><span class="pill ok">TP +12%</span></div><div class="btn p" style="margin-top:18px">${icon("bolt", 14)}Copy with Flash</div></div>
 <div class="card" style="right:10px;top:230px;width:min(330px,80%);padding:18px;background:linear-gradient(180deg,#241818,#151313);border-color:rgba(248,113,113,.4)"><div class="row sp"><b>@traderx</b><span class="pill bad">Paused by Guard</span></div><div style="position:relative;height:6px;border-radius:3px;background:#262626;margin-top:14px"><div style="width:91%;height:6px;border-radius:3px;background:#F87171"></div><span style="position:absolute;left:65%;top:-4px;width:2px;height:14px;background:#F5F5F5"></span></div><div class="sm" style="color:#C4C4C4;margin-top:10px">Your $15 copy was blocked. Proof onchain ↗</div></div>
 <div class="row" style="left:40px;bottom:10px;gap:12px;padding:14px 18px;border-radius:26px;background:#161616;border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 40px rgba(0,0,0,.5)"><span class="orb" style="width:30px;height:30px"><i></i></span><span style="font-size:15px;color:#E5E5E5">“buy $50 ETH with a 5% stop”</span></div></div></section>
-<section id="guard" class="feat">${feat("bolt", "#34D399", "Flash copy trading", "Entry, stop and target copy together as one Flash order, at the size you choose. Approve each trade or let it run.")}${feat("shield", "#34D399", "CRE Guard", "Every 5 minutes Chainlink CRE checks each trader. Risky ones are paused onchain, and anyone can verify why.")}${feat("cat", "#F5F5F5", "Ask Chief", "Trade in plain words, ask who's best this week, or why someone was paused. In the app, on the web and in Telegram.")}</section>
+<section id="guard" class="feat">${feat("bolt", "#34D399", "Flash copy trading", "Entry, stop and target copy together as one Flash order, at the size you choose. Approve each trade or let it run.")}${feat("shield", "#34D399", "CRE Guard", "Every 5 minutes Chainlink CRE checks each trader. Risky ones are paused onchain, and anyone can verify why.")}</section>
 <section id="how" class="lsec"><h2>How copying works</h2><ol class="steps" style="padding:0">${step("01", "Pick a trader", "Real onchain results, Guard record and copy slippage.")}${step("02", "Set your limits", "Budget, size per trade, stops required.")}${step("03", "They trade", "Guard checks them, then your filters.")}${step("04", "You copy", "Approve in a tap, or let it run. Stops come along.")}</ol></section>
-<section id="creators" class="cta"><div style="flex:1"><h2 style="margin:0;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em">Good trader? Get paid when people copy you.</h2><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.55">Publish your trades or a bot you build with Chief. Every copy earns you a share of the Flash fee.</p></div><a class="btn w big" href="/onboarding" style="width:auto;padding:0 26px">Become a creator</a></section>
+<section id="creators" class="cta"><div style="flex:1"><h2 style="margin:0;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em">Good trader? Get paid when people copy you.</h2><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.55">Publish a basket or a bot you build. Every copy earns you a share of the Flash fee.</p></div><a class="btn w big" href="/onboarding" style="width:auto;padding:0 26px">Become a creator</a></section>
 <footer style="padding:26px 24px;border-top:1px solid #1A1A1A;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font-size:13px;color:#8A8A8A"><span style="max-width:760px">Copy trading is risky. Past results don't predict future ones. Guard reduces but can't remove losses. Not financial advice.</span><span>Terms · Privacy · Risk disclosure</span></footer>
 `;
   return page({ title: "Copy great traders", body, focus: true, extraClass: "landing" });
@@ -157,7 +163,7 @@ export function topPage(signedIn: boolean): string {
   const top = topTraders(7, 10);
   const rows = top.map((t, i) => `<div class="row" style="min-height:64px;border-bottom:1px solid #1C1C1C;gap:12px"><span style="width:22px;text-align:center;font-weight:600;color:${i < 3 ? "#34D399" : "#8A8A8A"}">${i + 1}</span><span class="av ${i === 0 ? "w" : ""}">${face(t.handle)}</span>
 <span class="grow"><a href="/u/${esc(t.handle)}" style="color:#F5F5F5;font-weight:600">@${esc(t.handle)}</a><span class="sm mut" style="display:block">${esc(t.persona ?? "Trader")} · ${t.n} fills</span></span><b class="${signCls(t.pct)}">${pct(t.pct)}</b><a class="btn sm" href="${signedIn ? `/copy/${esc(t.handle)}` : `/onboarding?follow=${esc(t.handle)}`}" style="height:32px">Copy</a></div>`).join("");
-  const body = `<style>.app.pub{max-width:720px}</style><header class="hd" style="gap:16px"><a href="/" style="font-size:22px;font-weight:700;letter-spacing:-.04em;color:#F5F5F5">tribe<span style="color:#34D399">.</span></a><span class="grow"></span>${signedIn ? '<a class="btn sm" href="/ranks">Full leaderboard</a>' : '<a class="mut md" href="/signin">Sign in</a><a class="btn sm w" href="/onboarding">Get started</a>'}</header>
+  const body = `<style>.app.pub{max-width:720px}</style><header class="hd" style="gap:16px"><a href="/" style="font-size:22px;font-weight:700;letter-spacing:-.04em;color:#F5F5F5">tribe<span style="color:#34D399">.</span></a><span class="grow"></span>${signedIn ? '<a class="btn sm" href="/feed?tab=top">Full leaderboard</a>' : '<a class="mut md" href="/signin">Sign in</a><a class="btn sm w" href="/onboarding">Get started</a>'}</header>
 <main class="main" style="gap:14px"><div><h1 class="h1">Top traders this week</h1><p class="mut md" style="margin:6px 0 0">Realised returns from filled Flash orders. Copy any of them with your own wallet and limits; Chainlink CRE pauses anyone who starts blowing up.</p></div>
 <section>${rows || '<div class="empty"><div class="md" style="font-weight:600">No fills this week yet</div></div>'}</section>
 <p class="note">Past results don't predict future ones. Not financial advice.</p></main>`;

@@ -1,4 +1,4 @@
-import { basketById, copyBasket, createBasket, updateWeights } from "./baskets.js";
+import { basketById, copyBasket, createBasket, tokensText, updateWeights } from "./baskets.js";
 import { db, haltLeader, resumeLeader, userByHandle } from "./db.js";
 import { DEMO_TOKENS } from "./demo-tokens.js";
 import { mirror } from "./copy.js";
@@ -40,7 +40,7 @@ export const BEATS: Beat[] = [
     say: "One tap: $20 becomes one Flash order per token, each with its stop, in your own wallet.",
     run: async () => {
       const out = await copyBasket(who("you"), latest(), 20);
-      return `Copied $${out.usd} across ${out.placed} tokens.`;
+      return `Copied $${out.usd} across ${tokensText(out.placed)}.`;
     },
   },
   {

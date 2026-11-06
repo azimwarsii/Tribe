@@ -10,6 +10,7 @@ const { db, createWebUser, getMeta, haltLeader, resumeLeader, setMeta, spentToda
 const b = await import("./baskets.js");
 const { DEMO_TOKENS } = await import("./demo-tokens.js");
 const { pollOrders, heldTokens } = await import("./tracker.js");
+const { freeBalance } = await import("./data.js");
 const { traderStats } = await import("./stats.js");
 const { earningsOf } = await import("./creator.js");
 
@@ -36,8 +37,33 @@ function user(balance = 1000, max = 500) {
 const three = [{ token: ETH, weight: 50 }, { token: BTC, weight: 30 }, { token: AERO, weight: 20 }];
 const make = (owner: number, over: Record<string, unknown> = {}) => b.createBasket(owner, { name: "Base Blue Chips", stopPct: 10, tpPct: 30, weights: three, ...over });
 
-test("weights: 2 to 10 different tokens, 1% or more each, adding up to 100", () => {
-  assert.throws(() => b.checkWeights([{ token: ETH, weight: 100 }]), /at least 2/);
+test("a one-token basket: copy it, read it, rebalance it into two tokens, close it", async () => {
+  reset();
+  const owner = user(), me = user();
+  const id = await make(owner, { name: "Just ETH", weights: [{ token: ETH, weight: 100 }] });
+  const out = await b.copyBasket(me, id, 50);
+  assert.deepEqual([out.placed, out.failed, out.status], [1, 0, "filled"]);
+  const held = await b.copyValue(out.copy);
+  assert.equal(held.holdings.length, 1);
+  assert.ok(Math.abs(held.value - 50) < 1e-6);
+
+  const read = await b.basketRead((await b.basketView(id))!);
+  assert.ok(read.checks.some((c) => !c.ok && /Holds only ETH/.test(c.t)));
+  assert.ok(!read.checks.some((c) => /moves like one token/.test(c.t)));
+
+  assert.equal((await b.updateWeights(owner, id, [{ token: ETH, weight: 50 }, { token: BTC, weight: 50 }])).asked, 1);
+  await b.approveRebalance(me, b.rebalanceRequests(me)[0].id);
+  assert.equal((await b.copyValue(out.copy)).holdings.filter((h) => h.value > 0).length, 2);
+
+  assert.equal((await b.closeCopy(me, out.copy)).failed, 0);
+  assert.equal(b.tokensText(1), "1 token");
+  assert.equal(b.tokensText(3), "3 tokens");
+});
+
+test("weights: 1 to 10 different tokens, 1% or more each, adding up to 100", () => {
+  assert.throws(() => b.checkWeights([]), /at least one token/);
+  assert.equal(b.checkWeights([{ token: ETH, weight: 100 }]).length, 1);
+  assert.throws(() => b.checkWeights([{ token: ETH, weight: 90 }]), /add up to 100/);
   assert.throws(() => b.checkWeights([{ token: ETH, weight: 50 }, { token: ETH, weight: 50 }]), /only be in a basket once/);
   assert.throws(() => b.checkWeights([{ token: ETH, weight: 50 }, { token: BTC, weight: 40 }]), /add up to 100/);
   assert.throws(() => b.checkWeights([{ token: ETH, weight: 99.5 }, { token: BTC, weight: 0.5 }]), /at least 1%/);
@@ -244,6 +270,41 @@ test("a stop firing sells that token only, and the copy closes when nothing is l
   reset();
   assert.equal((await b.copiesOf(me)).length, 0);
   assert.equal(db.prepare("SELECT status FROM basket_copies WHERE id = ?").get(copy)!.status, "closed");
+});
+
+test("a target firing takes the profit on that token, and nothing is left resting after a close", async () => {
+  reset();
+  const owner = user(), me = user();
+  const before = await freeBalance(me);
+  const { copy } = await b.copyBasket(me, await make(owner), 100);
+  px[AERO] = 1.4; // over its 30% target
+  await pollOrders();
+  const left = await b.copyValue(copy);
+  assert.deepEqual(left.holdings.map((h) => h.symbol).sort(), ["ETH", "cbBTC"]);
+  assert.ok(left.pnlUsd > 5, `took the profit on AERO, got ${left.pnlUsd}`);
+  reset();
+  await pollOrders(); // AERO back at 1: its old stop is gone with the target, so nothing more sells
+  assert.equal((await b.copyValue(copy)).holdings.length, 2);
+  await b.closeCopy(me, copy);
+  const resting = db.prepare("SELECT COUNT(*) AS n FROM orders WHERE status IN ('open','waiting') AND trade_id IN (SELECT -id FROM basket_legs WHERE copy_id = ?)").get(copy)!.n;
+  assert.equal(resting, 0, "no stop or target of a closed copy can fire later");
+  const after = await freeBalance(me);
+  assert.ok(Math.abs(after - before - (await b.copyValue(copy)).pnlUsd) < 1e-6, "the balance moved by exactly the profit");
+});
+
+test("once stops sell everything the basket can be copied again, without visiting any page first", async () => {
+  const owner = user(), me = user();
+  const id = await make(owner);
+  const { copy } = await b.copyBasket(me, id, 100);
+  px[ETH] = 2000; px[BTC] = 50000; px[AERO] = 0.5;
+  await pollOrders();
+  reset();
+  assert.equal((await b.updateWeights(owner, id, [{ token: ETH, weight: 100 }])).asked, 0, "nobody to ask: the copier holds nothing");
+  assert.equal(db.prepare("SELECT status FROM basket_copies WHERE id = ?").get(copy)!.status, "closed");
+  assert.equal(await b.liveCopy(me, id), undefined);
+  const again = await b.copyBasket(me, id, 50);
+  assert.equal(again.status, "filled");
+  assert.equal((await b.liveCopy(me, id))?.id, again.copy);
 });
 
 test("a retired basket can't be copied, and its copiers keep what they hold", async () => {

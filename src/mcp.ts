@@ -1,7 +1,7 @@
 /**
  * Tribe MCP server: use Tribe from any MCP client (Claude Code, Claude Desktop, Cursor).
- * Your agent can read the leaderboard and baskets, check a trader and Guard, copy a basket, and propose a bracketed
- * Flash trade that it can only place after you confirm. Copy rules, Guard pauses and confirm-to-sign all still apply.
+ * Your agent can read the leaderboard and baskets, check a trader and Guard, and copy a basket. Copy rules and Guard
+ * pauses all still apply.
  *
  * Config (Settings → AI agent access shows it with your token filled in):
  *   { "mcpServers": { "tribe": { "command": "npx", "args": ["tsx", "src/mcp.ts"], "env": { "TRIBE_URL": "http://localhost:8787", "TRIBE_TOKEN": "<agent token>" } } } }
@@ -62,10 +62,10 @@ server.registerTool("tribe_me", {
 
 server.registerTool("tribe_baskets", {
   title: "List baskets",
-  description: "The best baskets on Tribe: each creator's tokens and weights, return since launch, stop, target, copiers and whether CopyGuard has the creator paused.",
-  inputSchema: {},
+  description: "Baskets on Tribe: each creator's make-up by asset class (Major coins, US stocks, Altcoins, Meme coins), risk band, tokens and weights, simulated index return since launch, stop, target, copiers and whether CopyGuard has the creator paused. Optionally only one kind.",
+  inputSchema: { asset: z.enum(["major", "stock", "alt", "meme", "steady"]).optional().describe("Keep baskets with at least 25% in this class, or in the Steady risk band") },
   annotations: { readOnlyHint: true },
-}, safe(async () => api("/api/v1/baskets")));
+}, safe(async (a: { asset?: string }) => api(`/api/v1/baskets${a.asset ? `?asset=${a.asset}` : ""}`)));
 
 server.registerTool("tribe_copy_basket", {
   title: "Copy a basket",
@@ -73,38 +73,6 @@ server.registerTool("tribe_copy_basket", {
   inputSchema: { basket: z.number().int().describe("Basket id, from tribe_baskets"), usd: z.number().positive().describe("Total amount in dollars") },
   annotations: { destructiveHint: true },
 }, safe(async (a: { basket: number; usd: number }) => api("/api/basket-copy", a)));
-
-server.registerTool("tribe_research", {
-  title: "Research a trader or trade",
-  description: "Ask Chief whether a trader's latest trade (or a specific feed post) is worth copying. Returns Chief's read: checks on the stop, payoff, track record, drawdown, the latest Chainlink CRE CopyGuard verdict and the Chainlink-vs-DEX price check, plus what copying would risk under the user's rules.",
-  inputSchema: {
-    handle: z.string().optional().describe("Trader username, e.g. nightowl"),
-    tradeId: z.number().int().optional().describe("A specific feed post id"),
-    question: z.string().optional().describe("Defaults to 'Is this a good trade?'. Ask about 'track record' or 'worst case if I copy' for those answers."),
-  },
-  annotations: { readOnlyHint: true },
-}, safe(async (a: { handle?: string; tradeId?: number; question?: string }) => {
-  if (!a.tradeId && !a.handle) throw new Error("Give a handle or a tradeId");
-  const r = await api("/api/cat/ask", { text: a.question ?? "Is this a good trade?", trade: a.tradeId, handle: a.tradeId ? undefined : a.handle });
-  if (!r.ctx) throw new Error(`No trades found for ${a.handle ?? `post ${a.tradeId}`}`);
-  return { reply: r.reply, read: r.verdict ?? null, post: r.ctx ?? null, sources: r.sources };
-}));
-
-server.registerTool("tribe_propose_trade", {
-  title: "Propose a trade",
-  description: "Ask Tribe's Chief to turn plain words into a Flash order, e.g. 'buy $20 ETH with a 5% stop and 12% target' (one order with a take-profit/stop-loss bracket attached). Nothing is placed: it returns a proposal id to confirm.",
-  inputSchema: { request: z.string().describe("What to trade, in plain words") },
-}, safe(async ({ request }: { request: string }) => {
-  const r = await api("/api/cat/ask", { text: request });
-  return { reply: r.reply, proposalId: r.proposalId ?? null, order: r.card ?? null, next: r.proposalId ? "Show this to the user. Call tribe_confirm_trade only after they say yes." : "No order proposed." };
-}));
-
-server.registerTool("tribe_confirm_trade", {
-  title: "Confirm a proposed trade",
-  description: "Place a proposed trade as a Flash order, signed with the user's wallet, and offer it to their followers. Only call after the user explicitly confirms.",
-  inputSchema: { proposalId: z.string() },
-  annotations: { destructiveHint: true },
-}, safe(async ({ proposalId }: { proposalId: string }) => api("/api/cat/confirm", { id: proposalId })));
 
 if (!TOKEN) console.error("TRIBE_TOKEN is not set: copy it from Settings → AI agent access.");
 await server.connect(new StdioServerTransport());

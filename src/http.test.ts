@@ -21,6 +21,7 @@ const halts: [number, boolean][] = [];
 const app = express();
 app.use(creRouter({ halt: (leader, halted) => void halts.push([leader, halted]) }));
 app.use((await import("./wallet-api.js")).walletRouter());
+app.use((await import("./chief-api.js")).chiefRouter()); // Ask Chief is parked: only these tests still mount it, and many use it to place trades
 app.use(appRouter());
 const server = app.listen(0);
 const base = `http://localhost:${(server.address() as AddressInfo).port}`;
@@ -84,7 +85,7 @@ test("signup, trade through Ask Chief, follow, approve", async () => {
   assert.match(pos.text, /ETH · Long/);
 
   // Pages render with data.
-  for (const p of ["/feed", "/ranks", "/guard", "/me", "/traders", "/u/leader1", "/creator", "/activity", "/settings", "/share/me"]) {
+  for (const p of ["/feed", "/feed?tab=top", "/guard", "/me", "/traders", "/u/leader1", "/portfolio?tab=creating", "/activity", "/settings", "/share/me"]) {
     assert.equal((await fol(p)).status, 200, p);
   }
 });
@@ -114,7 +115,7 @@ test("squads: create, join, leaderboard tab and feed chip", async () => {
   const sq = db.allSquads()[0];
   assert.equal((await b("/api/squad-join", { id: sq.id })).json.toast, "You joined Night Shift");
   assert.equal(db.squadMembers(sq.id).length, 2);
-  const tab = await a("/ranks?tab=Squads");
+  const tab = await a("/feed?tab=top&board=Squads");
   assert.match(tab.text, /Night Shift/);
   assert.equal((await a("/feed?tab=Squad")).status, 200);
   const page = await a("/squad");
@@ -177,7 +178,7 @@ test("CRE endpoints: snapshot, verdicts, agent signal, season board", async () =
   assert.deepEqual((t.trade as { attach?: unknown }).attach, { tp: "2650", sl: "2400" });
   const watcher = client();
   await watcher("/api/signup", { handle: "botwatcher", persona: "Sniper" });
-  assert.match((await watcher(`/t/${mine.tradeId}`)).text, /class="srctag bot"/); // others see it on the record, tagged Bot
+  assert.doesNotMatch((await watcher(`/t/${mine.tradeId}`)).text, /srctag/); // on the record, with no Bot or Manual tag
   // Its daily limit holds, and a bot that is off doesn't trade.
   const again = await (await cre("/cre/signal", { args: ["long", "ETH", "10", "2650", "2400"] })).json();
   assert.match(again.skipped.find((x: { handle: string }) => x.handle === "crelead").why, /daily limit/);
@@ -211,7 +212,7 @@ test("agents use the API with a bearer token (the MCP server's path)", async () 
 test("desktop split pages bring their own aside instead of the rail", async () => {
   const c = client();
   await c("/api/signup", { handle: "splitter", persona: "Sniper" });
-  for (const path of ["/activity", "/alerts", "/funds", "/season", "/requests", "/cat/memory", "/cat/voice", "/strategy/new", "/progress", "/squads"]) {
+  for (const path of ["/activity", "/alerts", "/funds", "/season", "/requests", "/strategy/new", "/progress", "/squads"]) {
     const r = await c(path);
     assert.equal(r.status, 200, path);
     assert.match(r.text, /class="paside"/, path);
@@ -293,24 +294,22 @@ test("Chief: persona tone, follow-ups, rules, memory and history", async () => {
   assert.equal((await c("/api/cat/confirm", { id: big.json.proposalId })).json.ok, true);
   assert.equal(db.msgsOf(big.json.chatId).find((m) => m.id === big.json.msgId)!.data!.signed, true);
   assert.equal((await c("/api/cat/vote", { msg: big.json.msgId, vote: 1 })).status, 200);
-  for (const p of ["/cat", `/cat/chat?id=${big.json.chatId}`, "/cat/chat?new=1&q=hello", "/cat/voice", "/cat/memory"]) assert.equal((await c(p)).status, 200, p);
+  // Ask Chief is off: every old link lands on the feed.
+  for (const p of ["/cat", "/cat/chat?new=1&q=hello", "/cat/voice", "/cat/memory", "/settings/chief"]) assert.equal((await c(p)).loc, "/feed", p);
   // Chats like a chat app: follow-ups stay in their chat, a message with no chat starts a new one, titled by its question.
   assert.equal(new Set([chill.json.chatId, tight.json.chatId, big.json.chatId]).size, 1, "follow-ups land in the same chat");
   assert.notEqual(sharp.json.chatId, chill.json.chatId, "a message without a chat starts a new one");
-  const home = (await c("/cat")).text;
-  assert.match(home, /New chat/);
-  assert.match(home, /Trade with Flash/); // a new chat lists what Chief can do
-  assert.match(home, new RegExp(`/cat/chat\\?id=${chill.json.chatId}`)); // past chats in the history
-  assert.match((await c(`/cat/chat?id=${chill.json.chatId}`)).text, /make the stop 3%/);
-  assert.equal((await c("/cat/chat?id=999999")).status, 200); // an unknown chat opens a new one
+  // Nothing in the app points at Chief any more.
+  for (const p of ["/feed", "/feed?tab=top", "/settings", "/guard", "/me", "/portfolio"]) {
+    const page = (await c(p)).text.replace(/<style>[\s\S]*?<\/style>/g, "");
+    assert.doesNotMatch(page, /Ask Chief|id="chief"|data-ask=|\/feed\?ask=/, p);
+  }
   assert.equal((await c("/api/cat/chat/delete", { id: sharp.json.chatId })).status, 200);
   assert.ok(!db.chatsOf(uid).some((x) => x.id === sharp.json.chatId), "deleted chats are gone");
   assert.equal((await c("/api/cat/chat/delete", { id: 999999 })).status, 400);
 
   // Forget one learned memory, then everything.
-  assert.match((await c("/cat/memory")).text, /Prefers/);
   await c("/api/cat/memory", { op: "forget", key: "kind" });
-  assert.doesNotMatch((await c("/cat/memory")).text, /Prefers/);
   await c("/api/cat/memory", { op: "wipe" });
   assert.equal(db.rulesOf(uid).length, 0);
   assert.equal(db.chatsOf(uid).length, 0);
@@ -327,7 +326,6 @@ test("Ask Chief about a feed post: verdict, history, worst case, and the way bac
   const trade = (db.db.prepare("SELECT MAX(id) AS id FROM trades WHERE leader = ?").get(db.userByHandle("postlead")!.id) as { id: number }).id;
 
   // Every post links to a research chat about itself.
-  assert.match((await me(`/t/${trade}`)).text, new RegExp(`/cat/chat\\?new=1&amp;trade=${trade}|/cat/chat\\?new=1&trade=${trade}`));
   const v = await me("/api/cat/ask", { text: "Is this a good trade?", trade });
   assert.ok(v.json.verdict && ["Looks solid", "Mixed", "Risky"].includes(v.json.verdict.label));
   assert.ok(v.json.verdict.checks.some((x: { t: string }) => /Has a stop/.test(x.t)));
@@ -343,13 +341,6 @@ test("Ask Chief about a feed post: verdict, history, worst case, and the way bac
   assert.ok((await me("/api/cat/ask", { text: "buy $20 ETH with 5% stop", chat: v.json.chatId })).json.proposalId);
 
   // The chat page pins the post with a way back and a link to the trader's baskets.
-  const page = await me(`/cat/chat?id=${v.json.chatId}`);
-  assert.ok(page.text.includes(`href="/t/${trade}"`), "the pinned post links back to it");
-  assert.ok(page.text.includes(`href="/u/postlead#baskets"`), "copying happens through their baskets");
-  assert.ok(page.text.includes('id="unpin"'), "the pinned post can be unpinned");
-  await me("/api/cat/unpin", {});
-  assert.ok(!(await me("/cat")).text.includes('class="ctxbar"'), "unpinned: back to general questions");
-  assert.match(await (await fetch(`${base}/cat/ctxbar/${trade}`)).text(), /^$|<title>Sign in · Tribe<\/title>/); // needs a session: signed out lands on sign-in
 
   // Asked by name from anywhere (Chief home, Telegram, MCP): research their latest entry.
   const named = await me("/api/cat/ask", { text: "Is @postlead worth copying?" });
@@ -367,9 +358,8 @@ test("Ask Chief about a feed post: verdict, history, worst case, and the way bac
   // Research is part of the game: a daily quest, and Chief's read before you copy.
   const uid = db.userByHandle("researcher")!.id;
   const { questsOf } = await import("./stats.js");
-  assert.equal(questsOf(uid).find((q) => q.id === "d-research")!.done, 1);
-  assert.match((await me("/copy/postlead")).text, /Chief’s read on their latest trade/);
-  assert.match((await me("/u/postlead")).text, /Chief’s read on their latest trade/);
+  assert.match((await me("/copy/postlead")).text, /Safety read on their latest trade/);
+  assert.match((await me("/u/postlead")).text, /Safety read on their latest trade/);
 
   // Chief's calls are scored by what the trader did next: the call above, then a green exit.
   const { catCalls, topicOf } = await import("./research.js");
@@ -384,7 +374,6 @@ test("Ask Chief about a feed post: verdict, history, worst case, and the way bac
   prices.setPriceProvider(async () => 2500);
   const scored = catCalls().find((c) => c.label === solidOrNot)!;
   assert.deepEqual([scored.closed, scored.green], [1, 1]);
-  assert.match((await me("/cat")).text, /Chief’s calls/);
 
   assert.equal(topicOf("What's the worst case if I copy? (the cat agent worth copying?)"), "risk");
   assert.equal(topicOf("Show the agent's history"), "history");
@@ -399,6 +388,8 @@ test("web chrome: shell for signed-in pages, landing and sign-in when logged out
   assert.doesNotMatch(landing.text, /class="side"/);
   assert.equal((await anon("/signin")).status, 200);
   assert.equal((await anon("/portfolio")).loc, "/signin");
+  assert.equal((await anon("/creator")).loc, "/portfolio?tab=creating"); // merged: old links land on the Creating tab
+  assert.equal((await anon("/ranks?tab=Streaks&period=Month&q=x")).loc, "/feed?tab=top&board=Streaks&period=Month&q=x"); // the leaderboard is the feed's Top tab now
 
   const c = client();
   await c("/api/signup", { handle: "webuser", persona: "Sniper" });
@@ -410,20 +401,17 @@ test("web chrome: shell for signed-in pages, landing and sign-in when logged out
   assert.match((await c("/guard")).text, /class="rail"/);
   assert.equal((await c("/search?q=webuser")).loc, "/u/webuser");
   assert.doesNotMatch(feed.text, /SHELL_(OPEN|CLOSE)/);
-  assert.match((await c("/ranks?tab=Profit")).text, /<table class="tbl">/);
+  assert.match((await c("/feed?tab=top&board=Profit")).text, /<table class="tbl">/);
   assert.match((await c("/guard")).text, /Guard/);
   const pf = await c("/portfolio");
   assert.equal(pf.status, 200);
   assert.match(pf.text, /Copy requests/);
   assert.equal((await c("/")).loc, "/feed");
   // voice mode sits in the shell on desktop, with its own transcript aside instead of the rail
-  const voice = (await c("/cat/voice")).text;
-  assert.match(voice, /class="side"/);
-  assert.doesNotMatch(voice, /class="rail"/);
   // focus pages stay chrome-free
   assert.doesNotMatch((await anon("/onboarding")).text, /class="rail"/);
   // active sidebar item follows the path
-  assert.match((await c("/cat/chat")).text, /class="side-item on" href="\/cat"/);
+  assert.match((await c("/guard")).text, /class="side-item on" href="\/guard"/);
   // desktop profile copy opens the embedded wizard
   const lead = client();
   await lead("/api/signup", { handle: "lead9", persona: "Sniper" });
@@ -481,7 +469,7 @@ test("profiles: unique usernames, photos, free follows, portfolio, and Manual vs
   assert.match(prof, /aria-pressed="true"/);
 
   // Profile tabs: Manual vs Bot record, portfolio (no dollar amounts for visitors), trades filtered by who placed them.
-  assert.match((await b("/u/photo_gal?tab=Overview")).text, /Manual vs Bot/);
+  assert.doesNotMatch((await b("/u/photo_gal?tab=Overview")).text, /Manual vs Bot/);
   const port = (await b("/u/photo_gal?tab=Portfolio")).text;
   assert.match(port, /Live now/);
   assert.ok(!port.includes("/api/copy-trade"), "a single position can't be copied: people copy baskets");
@@ -499,7 +487,7 @@ test("baskets over HTTP: build, copy, change weights, approve, close, and every 
   const F = db.userByHandle("basketfan")!.id;
   db.setMeta(F, { simBalance: 500 });
   assert.equal((await maker("/api/baskets", { name: "x", weights: basketWeights })).status, 400);
-  assert.match((await maker("/api/baskets", { name: "Half and Half", weights: [basketWeights[0]] })).json.error, /at least 2/);
+  assert.match((await maker("/api/baskets", { name: "Half and Half", weights: [] })).json.error, /at least one token/);
   const made = await maker("/api/baskets", { name: "Half <b>Half", thesis: "Two big names", stopPct: 10, tpPct: 30, weights: basketWeights });
   const id = Number(made.json.redirect.split("/").pop());
 
@@ -508,7 +496,7 @@ test("baskets over HTTP: build, copy, change weights, approve, close, and every 
   assert.match(pub, /Half &lt;b&gt;Half/);
   assert.match(pub, /Sign in to copy/);
   assert.match(pub, /What's in it/);
-  assert.equal((await anon("/baskets")).loc, "/signin");
+  assert.equal((await anon("/baskets")).status, 404); // the page is gone: Leaderboard lists baskets, Portfolio your copies, Creator yours
   assert.equal((await anon(`/b/${id + 999}`)).status, 200); // friendly not-found page
 
   // The creator's page has their controls, the follower's the copy form; the builder only opens for its owner.
@@ -522,7 +510,12 @@ test("baskets over HTTP: build, copy, change weights, approve, close, and every 
   const mine = (await fan(`/b/${id}`)).text;
   assert.match(mine, /Your copy/);
   assert.match(mine, /Close this copy/);
-  assert.match((await fan("/baskets")).text, /You copy/);
+  assert.equal((await fan("/baskets")).status, 404);
+  const studio = (await maker("/portfolio?tab=creating")).text;
+  assert.match(studio, /Your baskets/);
+  assert.match(studio, /New basket/);
+  assert.doesNotMatch(studio, /New trade|New bot|href="\/trade\/new"|href="\/bots\/new"/);
+  assert.match((await fan("/feed?tab=top")).text, /Half &lt;b&gt;Half/);
   assert.match((await fan("/portfolio")).text, /Half &lt;b&gt;Half/);
   assert.match((await fan("/activity")).text, /Half &lt;b&gt;Half/);
 
@@ -564,7 +557,14 @@ test("Chief answers about baskets by name, and suggests the best ones otherwise"
   assert.match(named.reply, /Chief Check Basket by @chiefmaker holds ETH 60%/);
   assert.equal(named.verdict.label, "Looks solid");
   assert.ok(named.follow.some((f: { href?: string }) => /^\/b\/\d+$/.test(String(f.href))));
-  assert.match((await me("/api/cat/ask", { text: "which baskets are best?", newChat: true })).json.reply, /best baskets/);
+  assert.match((await me("/api/cat/ask", { text: "which baskets are best?", newChat: true })).json.reply, /Best protected first/);
+  // The feed's filter sticks between visits, and agents can use the same one.
+  assert.match((await me("/feed?asset=major")).text, /data-asset="major"/);
+  assert.match((await me("/feed")).text, /data-asset="major"/);
+  assert.match((await me("/feed?asset=nonsense")).text, /data-asset="all"/);
+  const listed = (await me("/api/v1/baskets?asset=major")).json.baskets.find((b: { name: string }) => b.name === "Chief Check Basket");
+  assert.deepEqual(listed.mix[0], { assetClass: "Major coins", pct: 60 });
+  assert.equal((await me("/api/v1/baskets?asset=stock")).json.baskets.some((b: { name: string }) => b.name === "Chief Check Basket"), false);
   // Agents read the same list.
   assert.ok((await me("/api/v1/baskets")).json.baskets.some((b: { name: string; creator: string }) => b.name === "Chief Check Basket" && b.creator === "chiefmaker"));
 });
@@ -622,7 +622,7 @@ test("discover deck: one basket at a time, requests first, swipe to skip or copy
   let deck = (await me("/feed")).text;
   assert.ok(deck.includes(`data-basket="${b1}"`) && deck.includes(`data-basket="${b2}"`));
   assert.ok(!/class="swcard[^"]*" data-trade=/.test(deck), "no single trades in the deck");
-  assert.match(deck, /Chief’s read/);
+  assert.match(deck, /Safety read/);
   assert.match(deck, /Copied by<\/div><div class="v" data-live="copiers">0 people/);
   assert.match(deck, /id="swfollow"/); // follow the creator on the top card
   assert.match(deck, /data-open="mytribe"/); // portfolio, quests and the tribe sit behind one button on phones
@@ -632,7 +632,6 @@ test("discover deck: one basket at a time, requests first, swipe to skip or copy
   const more = (await me(`/api/deck/cards?have=b${b1},b${b2}`)).json.html as string;
   assert.ok(!more.includes(`data-basket="${b1}"`) && !more.includes(`data-basket="${b2}"`), "cards already on screen aren't sent again");
   assert.ok((await me(`/api/deck/cards?have=b${b1}`)).json.html.includes(`data-basket="${b2}"`));
-  assert.ok(deck.includes('/cat/chat?new=1&amp;q=Is%20the%20basket'), "swipe up asks Chief about this basket");
   assert.doesNotMatch(deck, /data-react=/); // no comments or reactions in the deck
 
   // Swipe left: gone for good.
@@ -653,7 +652,7 @@ test("discover deck: one basket at a time, requests first, swipe to skip or copy
   assert.match(brief, /@decklead/);
   assert.match(brief, /\d+ fills? read/);
   assert.match(bj.stats, /max DD/); // their record goes in its own card under the brief
-  assert.match((await me("/api/deck/brief?h=nobody-here")).json.html, /couldn't find/);
+  assert.match((await me("/api/deck/brief?h=nobody-here")).json.html, /couldn't find/i);
   assert.equal((await me(`/api/deck/live?ids=${b2}`)).json[b2].copiers, "1 person"); // a count, not names
   assert.match((await lead("/api/basket-copy", { basket: b2, usd: 5 })).json.error, /your own basket/);
 
@@ -702,17 +701,17 @@ test("leaderboard: in the nav next to Baskets, with search and new traders", asy
   const viewer = client();
   await viewer("/api/signup", { handle: "explorer1", persona: "Sniper" });
 
-  const board = (await viewer("/ranks")).text;
+  const board = (await viewer("/feed?tab=top")).text;
   assert.match(board, /aria-label="Leaderboard"/);
-  assert.match(board, /aria-label="Baskets"/);
+  assert.doesNotMatch(board, /aria-label="Baskets"/);
   assert.doesNotMatch(board, /aria-label="Signals"/);
   assert.equal((await fresh("/signals")).status, 404); // the Signals feature is gone; bots still trade through /cre/signal
   assert.match(board, /name="q"/);
-  assert.match((await viewer("/ranks?tab=New")).text, /@freshface/); // new traders show before they qualify for the ranked boards
-  const found = (await viewer("/ranks?q=FRESH")).text;
+  assert.match((await viewer("/feed?tab=top&board=New")).text, /@freshface/); // new traders show before they qualify for the ranked boards
+  const found = (await viewer("/feed?tab=top&q=FRESH")).text;
   assert.match(found, /@freshface/);
   assert.match(found, /matching “fresh”/);
-  assert.match((await viewer("/ranks?q=nobodyhere")).text, /Nobody called “nobodyhere” has traded yet/);
+  assert.match((await viewer("/feed?tab=top&q=nobodyhere")).text, /Nobody called “nobodyhere” has traded yet/);
 });
 
 test("sessions: sign-out ends the session server-side, other devices can be signed out, agents can't manage access", async () => {
@@ -862,7 +861,7 @@ test("Creator studio: trade ticket, bot trial, publish, copies and pay", async (
   const copiesOf = (trade: number) => (db.db.prepare("SELECT COUNT(*) AS n FROM copies WHERE trade_id = ? AND follower = ? AND status IN ('executed','dry-run')").get(trade, fan) as { n: number }).n;
 
   // A trade by hand needs a stop, then lands on its own page and is copied.
-  for (const p of ["/creator", "/trade/new", "/bots/new", "/creator/verify"]) assert.equal((await c(p)).status, 200, p);
+  for (const p of ["/portfolio?tab=creating", "/trade/new", "/bots/new", "/creator/verify"]) assert.equal((await c(p)).status, 200, p);
   assert.equal((await c("/api/trade/new", { usd: 20, stop: 0 })).status, 400, "no trade without a stop");
   const t = await c("/api/trade/new", { usd: 20, stop: 5, tp: 10, note: "Range low held" });
   assert.match(t.json.redirect, /^\/t\/\d+$/);
@@ -906,7 +905,7 @@ test("Creator studio: trade ticket, bot trial, publish, copies and pay", async (
   const live = db.db.prepare("SELECT id, private FROM trades WHERE bot_id = ? ORDER BY id DESC LIMIT 1").get(botId) as { id: number; private: number };
   assert.equal(live.private, 0);
   assert.equal(copiesOf(live.id), 1, "followers copy a published bot");
-  assert.match((await c("/creator")).text, /Steady test/);
+  assert.match((await c("/portfolio?tab=creating")).text, /Steady test/);
   assert.match((await c(`/api/bots/${botId}/pause`, {})).json.toast, /paused/);
   assert.match((await c(`/api/bots/${botId}/check`, {})).json.error, /Resume/);
 
@@ -918,7 +917,7 @@ test("Creator studio: trade ticket, bot trial, publish, copies and pay", async (
   assert.equal((await c("/api/claim", {})).json.redirect, "/creator/verify");
   assert.match((await c("/api/creator/verify", { country: "US", adult: true, honest: true })).json.error, /aren't available/);
   assert.match((await c("/api/creator/verify", { country: "IN", adult: false, honest: true })).json.error, /Tick both/);
-  assert.equal((await c("/api/creator/verify", { country: "IN", adult: true, honest: true })).json.redirect, "/creator");
+  assert.equal((await c("/api/creator/verify", { country: "IN", adult: true, honest: true })).json.redirect, "/portfolio?tab=creating");
   assert.match((await c("/api/claim", {})).json.toast, /added to your balance/);
   const after = earningsOf(maker);
   assert.ok(after.claimable < 1e-9 && after.held > 0, "claiming pays the released half; the held half waits for the season");
@@ -1015,7 +1014,7 @@ test("Closing a position asks everyone holding a copy to sell theirs, and their 
 test("Every inline script on the main pages parses (a stray quote breaks a whole page)", async () => {
   const c = client();
   await c("/api/signup", { handle: "scriptcheck", persona: "Hodler" });
-  for (const path of ["/cat", "/feed", "/baskets", "/baskets/new", "/trade/new", "/bots/new", "/creator", "/portfolio", "/settings", "/ranks"]) {
+  for (const path of ["/feed", "/baskets/new", "/trade/new", "/bots/new", "/portfolio?tab=creating", "/portfolio", "/settings", "/feed?tab=top"]) {
     const html = (await c(path)).text;
     const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
     for (const code of scripts) assert.doesNotThrow(() => new Function(code), `${path}: inline script has a syntax error`);

@@ -11,7 +11,7 @@
     "web:build": "cd web && npm install && npm run build",
     "typecheck": "tsc --noEmit",
     "flash:check": "tsx src/flash-check.ts",
-    "test": "node --import tsx --test src/rules.test.ts src/baskets.test.ts src/app.test.ts src/http.test.ts src/guard-contract.test.ts src/guard-gate.test.ts src/preflight.test.ts src/ratelimit.test.ts src/privy.test.ts",
+    "test": "node --import tsx --test src/rules.test.ts src/baskets.test.ts src/chief-baskets.test.ts src/app.test.ts src/http.test.ts src/guard-contract.test.ts src/guard-gate.test.ts src/preflight.test.ts src/ratelimit.test.ts src/privy.test.ts",
     "demo:reset": "node -e \"require('fs').rmSync('demo.db',{force:true})\" && cross-env DEMO=true DB_PATH=demo.db npm run seed",
     "demo": "cross-env DEMO=true DRY_RUN=true DB_PATH=demo.db CRE_SHARED_SECRET=demo PORT=8787 tsx src/index.ts",
     "guard:deploy": "tsx src/deploy-guard.ts",

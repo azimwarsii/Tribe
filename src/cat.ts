@@ -1,4 +1,5 @@
-import { basketAnswer } from "./baskets.js";
+import { copyBasket, tokensText } from "./baskets.js";
+import { aboutBaskets, basketAnswer, basketNamed } from "./catbaskets.js";
 import { randomUUID } from "node:crypto";
 import { ask, buildProposal, resolveIntent, type Card, type Intent, type Proposal } from "./ask.js";
 import { mirror, type PendingNotice } from "./copy.js";
@@ -89,14 +90,17 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
   const chatId = named0 ?? (opts.newChat ? createChat(uid, clean || "New chat", source) : currentChatOf(uid, source));
   const chat = chatById(chatId, uid)!;
   if (chat.title === "New chat" && clean) renameChat(chatId, clean);
-  const state = JSON.parse(chat.state || "{}") as { intent?: Intent; trade?: number };
+  const state = JSON.parse(chat.state || "{}") as { intent?: Intent; trade?: number; basket?: number };
   // A chat opened from a feed post stays about that post until the user asks for a concrete order.
   const order = /\b(buy|sell|long)\b[^?]*\d/i.test(clean) || !!(state.intent && applyFollowUp(state.intent, clean));
+  // A basket named anywhere is the subject, even in "buy $20 of Steady Stack": that must never become a token order.
+  const namedBasket = await basketNamed(clean);
+  if (namedBasket && namedBasket.id !== state.basket) { state.basket = namedBasket.id; state.trade = undefined; setChatState(chatId, state); }
   // Or one named in the question ("is @nightowl worth copying?"); a new name switches the subject.
   const named = order ? undefined : subjectTrade(clean);
   // "Ask Chief" on a trade switches the subject to it; later messages stay on it until the user unpins it.
   const about = named ?? (opts.trade && opts.trade !== state.trade ? opts.trade : undefined);
-  if (about && about !== state.trade) { state.trade = about; setChatState(chatId, state); }
+  if (about && about !== state.trade && !namedBasket) { state.trade = about; state.basket = undefined; setChatState(chatId, state); }
   addMsg(chatId, "user", clean);
 
   let reply = "";
@@ -105,18 +109,27 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
 
   // Guard questions ("why was @x paused?") get Guard's answer even while a trade is pinned in the chat.
   const guardQ = /\b(paus|halt|guard)/i.test(clean);
-  const basketQ = !order && !guardQ && /\bbaskets?\b/i.test(clean) ? await basketAnswer(clean) : undefined;
-  const research = !basketQ && state.trade && !order && !guardQ && !/\bcompar/i.test(clean) ? await researchTrade(uid, state.trade, clean) : undefined;
+  const basketTopic = !guardQ && (!!namedBasket || (!order && (await aboutBaskets(clean, state.basket))));
+  const research = !basketTopic && state.trade && !order && !guardQ && !/\bcompar/i.test(clean) ? await researchTrade(uid, state.trade, clean) : undefined;
   // Live Flash questions (a quote, balances, order status) go to Flash MCP first, so "what would $50 of ETH get me?"
   // gets a quote rather than becoming a buy. If it can't answer, Chief carries on as usual.
   // Everything else: the AI assistant with tools (Flash MCP, token search, portfolio, traders, Guard). If it isn't
   // available (no key, model error), the built-in answers below take over.
-  const agent = research || basketQ ? undefined : await catAgent(uid, chatId, { live: opts.live, pinned: state.trade }).catch((e) => { console.warn(`Chief agent: ${(e as Error).message}`); return undefined; });
+  const agent = research ? undefined : await catAgent(uid, chatId, { live: opts.live, pinned: state.trade, basket: state.basket }).catch((e) => { console.warn(`Chief agent: ${(e as Error).message}`); return undefined; });
+  // No model to hand: baskets still get a real answer, from the same facts the model's tools read.
+  const basketQ = !agent && basketTopic ? await basketAnswer(uid, clean, state.basket) : undefined;
   const flash = !research && !basketQ && !agent && !order && !guardQ && opts.live !== false && wantsFlash(clean) ? await flashAnswer(uid, clean).catch(() => undefined) : undefined;
   const intent = research || basketQ || agent || flash ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
   if (basketQ) {
     reply = basketQ.reply;
-    data = { sources: ["Tribe baskets", "CopyGuard"], verdict: basketQ.read, follow: basketQ.basket ? [{ label: "Open the basket", href: `/b/${basketQ.basket}` }, { label: `More from @${basketQ.handle}`, href: `/u/${basketQ.handle}#baskets` }] : [{ label: "All baskets", href: "/baskets" }] };
+    data = { sources: ["Tribe baskets", "CopyGuard"], verdict: basketQ.read, follow: basketQ.follow ?? [{ label: "All baskets", href: "/feed?tab=top" }] };
+    if (basketQ.basket && basketQ.basket !== state.basket) { state.basket = basketQ.basket; setChatState(chatId, state); }
+    if (basketQ.proposal) {
+      const proposalId = randomUUID();
+      sweep();
+      data = { ...data, card: basketQ.proposal.card, proposalId };
+      proposals.set(proposalId, { user: uid, chat: chatId, msg: 0, proposal: basketQ.proposal, at: Date.now() });
+    }
   } else if (research) {
     reply = research.reply;
     data = { steps: research.steps, sources: research.sources, follow: research.follow, verdict: research.verdict, ctx: research.ctx };
@@ -124,7 +137,8 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
     if (research.verdict && research.ctx.buy && research.ctx.mark) addCatRead({ trade: research.ctx.id, user: uid, label: research.verdict.label, token: research.ctx.token, price: research.ctx.mark });
   } else if (agent) {
     reply = agent.reply;
-    data = { steps: agent.steps, sources: agent.sources };
+    data = { steps: agent.steps, sources: agent.sources, verdict: agent.read, follow: agent.follow };
+    if (agent.basket && agent.basket !== state.basket) { state.basket = agent.basket; setChatState(chatId, state); }
     if (agent.proposal) {
       const proposalId = randomUUID();
       sweep();
@@ -183,10 +197,26 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
 }
 
 /** source "agent": confirmed through the user's own AI agent (MCP), so the trade is tagged Bot. */
-export async function catConfirm(uid: number, id: string, notify?: (p: PendingNotice[], leader: number) => void, source: "user" | "agent" = "user"): Promise<{ ok: boolean; reply: string }> {
+export async function catConfirm(uid: number, id: string, notify?: (p: PendingNotice[], leader: number) => void, source: "user" | "agent" = "user"): Promise<{ ok: boolean; reply: string; sim: boolean; basket?: boolean }> {
   const p = proposals.get(id);
-  if (!p || p.user !== uid) return { ok: false, reply: "That proposal expired. Ask again." };
+  if (!p || p.user !== uid) return { ok: false, reply: "That proposal expired. Ask again.", sim: isDry() };
   proposals.delete(id);
+  if (p.proposal.basket) {
+    // Every limit and Guard check runs again here: the card may be minutes old.
+    const { id: basket, usd } = p.proposal.basket;
+    let reply: string, ok: boolean;
+    try {
+      const out = await copyBasket(uid, basket, usd);
+      ok = out.status !== "failed";
+      reply = !ok ? "None of the tokens could be bought, so nothing was copied." : out.failed ? `Copied $${out.usd}: ${out.placed} of ${tokensText(out.placed + out.failed)} filled. Try the rest from the basket's page.` : `Copied $${out.usd} across ${tokensText(out.placed)}.`;
+    } catch (e) {
+      ok = false;
+      reply = `Not copied: ${(e as Error).message}.`;
+    }
+    if (p.msg) patchMsgData(p.msg, { signed: ok, receipt: reply });
+    addMsg(p.chat, "cat", reply, { sources: [] });
+    return { ok, reply, sim: isDry(), basket: true };
+  }
   const lines: string[] = [];
   let offers = 0;
   let ok = true;
@@ -203,7 +233,7 @@ export async function catConfirm(uid: number, id: string, notify?: (p: PendingNo
   const reply = `${ok ? "Placed." : "Stopped."}\n${lines.join("\n")}${ok ? `\n${offers} follower(s) copying or asked.` : ""}`;
   if (p.msg) patchMsgData(p.msg, { signed: ok, receipt: lines.join(" · ") });
   addMsg(p.chat, "cat", reply, { sources: [] });
-  return { ok, reply };
+  return { ok, reply, sim: isDry() };
 }
 
 // Memory screen data

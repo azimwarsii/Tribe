@@ -2,12 +2,14 @@
 
 Tribe is a social trading app built around **baskets**. A creator publishes a named set of tokens with target weights, a stop and a target; followers copy the basket with one tap, from their own wallet and within their own limits. Traders also post real trades to build their record; an AI agent run on Chainlink CRE trades in the open so anyone can copy it too. Every trade is a [Flash](https://flash.definitive.fi/docs) advanced order (entries ship with a take-profit / stop-loss bracket attached), and a [Chainlink CRE](https://docs.chain.link/cre) workflow acts as an onchain circuit breaker: it pauses copying of a trader who is blowing up, before the next copy fills.
 
-Mobile-first web app (it reflows to a full desktop layout), plus the same Ask Cat assistant in Telegram.
+Mobile-first web app (it reflows to a full desktop layout).
 
 ## Baskets
 A basket is what you copy on Tribe (`src/baskets.ts`, `src/views/baskets.ts`).
 
-- **Build:** 2 to 10 tokens, at least 1% each, adding up to 100%, with an optional stop and target per token.
+- **Build:** 1 to 10 tokens, at least 1% each, adding up to 100%, with an optional stop and target per token.
+- **Mix and risk:** every basket shows its share in Major coins, US stocks, Altcoins and Meme coins, plus a Steady, Balanced or Aggressive band (`src/assets.ts`). Classes come from a reviewed list of contract addresses, never a token's name or a creator's tag; anything unreviewed is Unclassified and counts as the riskiest kind. Confirm a token's address with its issuer before adding it (Coinbase's tokenized stocks are listed at base.org/assets). The feed filters on this, with a basket counting for a class from 25% up.
+- **Safety read:** every basket shows rule-based checks on its stop, spread, record and creator's Guard status. No AI is involved.
 - **Copy:** Tribe runs your limits and CopyGuard once for the whole amount, then places one Flash order per token at its weight. The tokens sit in your own wallet; nothing is pooled.
 - **Partial fills:** if a token won't fill, the rest still go through. The copy shows as partly filled, and you can try again or close it.
 - **Rebalance:** a published version never changes. New weights make a new version and send every copier a request showing the exact sells and buys. Nothing moves until they approve.
@@ -19,7 +21,6 @@ Single trades are now each trader's record rather than something you copy. Bots 
 ## Why it wins, in three lines
 - **Social and gamified:** unique usernames with profile photos and bios, public profiles with a portfolio view, free follow or copy with Flash, a feed with story rings, levels, streaks, quests, badges, squads, a Hot pick and share cards. The game rewards safe behaviour: brackets, copying trades with stops, and researching before you copy.
 - **CRE security:** Chainlink CRE checks every trader and writes the verdict onchain. Tribe reads that contract right before every copy, and if CRE goes quiet, auto-copies wait for your OK.
-- **One AI across the app:** Cat trades from plain words or voice, and researches any post or trader ("Is this a good trade?") using the trader's fills, the latest CopyGuard verdict and the Chainlink price check. It does the same in Telegram and over MCP. Anyone can switch on their own bot, which runs on CRE. Its trades post under their name, tagged **Bot**, next to their **Manual** trades.
 
 ## How Tribe meets the tracks
 
@@ -27,10 +28,9 @@ Single trades are now each trader's record rather than something you copy. Bots 
 | Requirement | Where |
 | --- | --- |
 | Working trading flow on Flash advanced orders | `src/flash.ts`: quote → setup (approvals broadcast via Flash's `/setup-transaction`) → EIP-712 sign → order. Market with an **attached bracket** (entry + take-profit + stop-loss as one Flash order), limit, stop-loss, take-profit, standalone bracket, **TWAP**, stop-buy. Gasless signed **cancel**, **batch cancel** (a leader's cancel cancels every follower's resting copy) and **update** (move a live stop). The **orders WebSocket** delivers fills and close reasons live. **Permit2 with minimal allowance** is on by default, so no wallet carries an unlimited approval. **Limit orders with `expireTime`** power the chase limit: a copy never pays more than 1% above the leader's entry. `npm run flash:check` checks 9 order shapes, batch cancel, order listing and the stream against the live API. Full map: [docs/FLASH.md](docs/FLASH.md). |
-| Onchain execution in the demo | `DRY_RUN=false` + `LIVE_WALLET_PRIVATE_KEY`: Ask Cat or a copied trade places a real Flash order on Base; the feed card and Activity link the settlement tx (from Flash fills) on basescan. `npm run flash:check -- --live 5` places a real $5 bracketed buy from the terminal. |
+| Onchain execution in the demo | `DRY_RUN=false` + `LIVE_WALLET_PRIVATE_KEY`: the trade form or a copied trade places a real Flash order on Base; the feed card and Activity link the settlement tx (from Flash fills) on basescan. `npm run flash:check -- --live 5` places a real $5 bracketed buy from the terminal. |
 | Social | Copy trading with per-trader rules (ask-first with Telegram approve buttons, or auto; ratio, max per trade, daily cap, stop-loss required), live feed with reactions and comments, leaderboard (profit, most copied, streaks, safest, squads), squads, quests and badges, share cards for **X** (1200×630) and **TikTok / Reels** (9:16, phone share sheet), a public `/top` leaderboard whose X preview is the rendered board, public profile pages that land new users on "Join and copy". |
 | Agent-run product others follow | **Your own bot**: any user can switch on a bot that runs the CRE strategy (`cre-workflow/agent-workflow`). It trades from their wallet and posts under their username, tagged **Bot** with a one-line thesis, next to their **Manual** trades. People copy that user and get both, by their own rules, and the profile shows the user's Manual vs Bot record side by side (`src/bots.ts`). Also **Ask Cat**: "buy $50 ETH with a 5% stop and 12% target" → a bracketed Flash order, in the app, by voice, or in Telegram. |
-| AI on every post | **Ask Cat** on each feed card opens a research chat about that trade. Cat's read covers the stop, the payoff, whether you'd be chasing, the track record, drawdown, the latest **CRE CopyGuard verdict** and the **Chainlink vs DEX price**. It also gives the trader's history and the worst case under your own copy rules. The post stays pinned with **Copy with Flash** and a way back. The same read appears on profiles and in the copy flow, and "Cat's pick" in the feed surfaces today's best-checked entry. You can ask by name from anywhere: "is @nightowl worth copying?" (`src/research.ts`). Cat is accountable: every call it makes is stored and scored by what the trader did next ("Cat's calls" on the Cat home). |
 | AI-native | **Tribe MCP server** (`src/mcp.ts`): any MCP client (Claude, Cursor) can read the leaderboard, check Guard, **research a trader or post** (`tribe_research`), copy a trader with limits, and propose a bracketed Flash trade that it places only after the user confirms. Setup is on Settings → AI agent access. |
 | Monetized from day 1 | `flashIntegratorFeeBps` on every quote and order. Creators earn a share (`CREATOR_SHARE`) of the integrator fee on copies of their trades, read from Flash fills (`integratorFeeNotional`). |
 
@@ -76,7 +76,8 @@ flowchart LR
 | `src/baskets.ts` | Baskets: versions, copying, per-copy holdings, partial fills, rebalancing, the index |
 | `src/copy.ts`, `src/rules.ts` | Fan-out to followers of a bot or trader by their rules |
 | `src/guard.ts`, `contracts/CopyGuard.sol` | Risk snapshot for CRE, onchain halt watcher, the CRE receiver contract |
-| `src/cat.ts`, `src/ask.ts` | Ask Cat (rules or Claude), proposals, confirm-to-sign |
+| `src/ask.ts` | Order proposals, used by bots and the trade form |
+| `src/chief-api.ts`, `src/cat*.ts`, `src/views/chief.ts` | Ask Chief, **switched off**: no route, page or bot calls these, so no AI model runs for it. CopyGuard's own AI check in `cre-workflow/` is separate and still runs |
 | `src/views/*` | Server-rendered screens (from the Tribe design canvas) |
 | `cre-workflow/` | CRE project: `project.yaml`, `secrets.yaml`, two workflows |
 
@@ -116,7 +117,7 @@ The workflows call Tribe over HTTP, so expose it (`cloudflared tunnel --url http
 - The Chainlink ETH/USD feed address on Base reads live ($2,337 vs Flash's $2,343 at the time of writing).
 - All three CRE workflows typecheck and compile to WASM with the CRE SDK compiler, within CRE's per-run quotas; 25 workflow unit tests.
 - CopyGuard and SeasonBoard deploy and behave on a real EVM (Ganache): forwarder-only reports, ERC-165, replay protection, halt/resume, batch reads, season attestation.
-- 42 app tests, including attached brackets sized from the fill, Ask Cat research on posts, and the copy-time CopyGuard gate against the contract over JSON-RPC. In that test, a trader halted onchain is blocked; a silent CRE or an unreachable chain means copies are held for approval.
+- 42 app tests, including attached brackets sized from the fill, and the copy-time CopyGuard gate against the contract over JSON-RPC. In that test, a trader halted onchain is blocked; a silent CRE or an unreachable chain means copies are held for approval.
 
 ## Not verified yet, or not built
 - Real-money baskets: blocked in code until Privy automatic signing is connected and Flash's limits are checked. A stop on a basket's total value, automatic rebalancing and a per-basket Guard pause are not built.

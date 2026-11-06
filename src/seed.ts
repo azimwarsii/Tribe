@@ -9,7 +9,6 @@ import { enableDemoPrices, getPrice, nudgeDemoPrice, resetDemoPrices, setDemoPri
 import { searchAsset } from "./flash.js";
 import { parseTrade, TOKENS } from "./parse.js";
 import { heldTokens, pollOrders } from "./tracker.js";
-import { catAsk } from "./cat.js";
 
 /** Demo data: traders with personas, followers with different rules, brackets, one CopyGuard halt. Run with DEMO=true. */
 enableDemoPrices();
@@ -150,6 +149,10 @@ if (process.env.DEMO_PRICES !== "false") {
     [kestrel, "Steady Stack", "Two assets, tight stops, low drama.", 8, 25, [["ETH", 60], ["cbBTC", 40]], 30, 6.2, [ember]],
     [mav, "Base Memes", "Small size, big swings. Stops on everything.", 20, 100, [["BRETT", 40], ["DEGEN", 30], ["TOSHI", 30]], 9, -8.5, []],
     [traderx, "All Gas", "High conviction, no stops.", 0, 0, [["ZORA", 70], ["DEGEN", 30]], 6, -14.1, []],
+    [kestrel, "US Core", "Mostly the S&P 500, with a little ETH for growth.", 8, 25, [["deSPXA", 80], ["ETH", 20]], 45, 7.1, [ember]],
+    [nightowl, "Stocks and Coins", "Half US stocks, half the biggest coins.", 10, 40, [["deSPXA", 50], ["ETH", 30], ["cbBTC", 20]], 28, 9.3, []],
+    [ember, "Big Tech", "The largest names on Base, weighted by conviction.", 10, 30, [["NVDAc", 30], ["AAPLc", 20], ["MSFTc", 20], ["GOOGLc", 15], ["AMZNc", 15]], 21, 11.4, []],
+    [mav, "Bitcoin Proxies", "Strategy and cbBTC: one idea, two wrappers.", 15, 60, [["MSTRc", 60], ["cbBTC", 40]], 12, 18.6, []],
   ];
   for (const [owner, name, thesis, stopPct, tpPct, weights, days, ret, copiers] of seedBaskets) {
     const id = await createBasket(owner, { name, thesis, stopPct, tpPct, weights: weights.map(([s, weight]) => ({ token: T[s], weight })) });
@@ -164,9 +167,6 @@ for (const u of [kestrel, you]) joinSquad(u, night);
 const blue = createSquad(mav, "Blue Chips")!;
 joinSquad(traderx, blue);
 
-// Chief: a couple of past chats (one from Telegram) and rules, so the history drawer and memory screen are alive.
-await catAsk(you, "buy $50 ETH with 5% stop and 12% take profit", { source: "App" });
-await catAsk(you, "who's best this week?", { source: "Telegram" });
 addRule(you, "Never copy memecoins without a stop", "Telegram");
 addRule(you, "Ask me before anything over $50", "app");
 addRule(you, "Explain Guard pauses in plain words", "app");

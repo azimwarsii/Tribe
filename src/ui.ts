@@ -123,7 +123,6 @@ h2{margin:0;font-size:17px;font-weight:600}
 .av img{border-radius:inherit}.pav{position:relative;overflow:visible}.pav>img{border-radius:inherit}.pav>i{position:absolute;right:-2px;bottom:-2px;width:24px;height:24px;border-radius:12px;background:#F5F5F5;color:#0A0A0A;display:grid;place-items:center;border:2px solid #0A0A0A;font-style:normal}
 .pcount{display:flex;flex-direction:column;color:#F5F5F5;line-height:1.2}.pcount b{font-size:16px}.pcount span{font-size:12px;color:#8A8A8A}
 .av{overflow:hidden}.av img,.story .ring>span img{width:100%;height:100%;object-fit:cover;display:block}
-.srctag{display:inline-flex;align-items:center;gap:3px;height:18px;padding:0 6px;border-radius:9px;font-size:11px;font-weight:600;background:#1F1F1F;color:#BDBDBD;vertical-align:1px}.srctag.bot{background:rgba(52,211,153,.12);color:#6EE7B7}
 .story .ring{position:relative}.botbadge{position:absolute;right:-2px;bottom:-2px;width:20px;height:20px;border-radius:10px;background:#34D399;color:#052E1C;display:grid;place-items:center;border:2px solid #0A0A0A;font-style:normal}
 .react{position:relative;display:inline-flex}
 .rx{width:var(--s,20px);height:var(--s,20px);border-radius:50%;display:inline-grid;place-items:center;flex:none;color:#fff;box-shadow:0 0 0 2px #1A1A1A;transition:transform .18s cubic-bezier(.3,1.6,.5,1)}
@@ -164,7 +163,8 @@ h2{margin:0;font-size:17px;font-weight:600}
 .ck{width:14px;height:14px;border-radius:7px;display:inline-grid;place-items:center;flex:none;background:rgba(52,211,153,.18);color:#34D399;font-style:normal;font-size:9px;font-weight:800}.ck.bad{background:rgba(248,113,113,.18);color:#F87171}
 .chip.flashchip{background:#34D399;color:#052E1C;border-color:#34D399;font-weight:600}.chip.flashchip:hover{color:#052E1C}
 .swmain{gap:14px;padding-bottom:120px}
-.deck{position:relative;height:min(648px,calc(100vh - 270px));min-height:430px}
+.deck{position:relative;height:min(648px,calc(100vh - 296px));min-height:430px}
+@media (min-width:900px) and (max-height:860px){.swcard .soc,.swcard .freshband{display:none}}
 .swcard{position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:26px;background:linear-gradient(180deg,#262626,#151515);border:1px solid var(--line);box-shadow:0 18px 40px rgba(0,0,0,.45);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;will-change:transform;transition:transform .45s cubic-bezier(.2,.9,.25,1.05),filter .45s,opacity .35s}
 .swcard:active{cursor:grabbing}
 /* Coverflow: the trade in front (p0), the next one peeking on the right (p1), the rest waiting behind it (pn), and the one
@@ -180,7 +180,12 @@ h2{margin:0;font-size:17px;font-weight:600}
 .soc{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#A3A3A3;min-width:0;margin-bottom:-4px}.soc>span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .soc .socic{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:11px;background:#1F1F1F;color:#D4D4D4;flex:none}.soc.trending .socic{color:#FB923C;background:rgba(251,146,60,.12)}.soc.copying .socic,.soc.following .socic{color:#34D399;background:rgba(52,211,153,.12)}
 .socfaces{display:flex;flex:none;padding-left:7px}.socfaces .av.stack{width:22px;height:22px;font-size:8px;border-color:#202020}.soc.network>span:last-child{color:#D4D4D4}
-.dtabs{display:flex;gap:4px;min-width:0}.dtabs a{padding:7px 10px;border-radius:999px;font-size:14px;font-weight:600;color:#A3A3A3;white-space:nowrap}.dtabs a:hover{color:#F5F5F5}.dtabs a.on{color:#0A0A0A;background:#F5F5F5}
+@media (max-width:430px){.dtabs a{padding:6px 7px;font-size:13px}.dtabs+div>.ic,.swmain .hd .row>.ic{width:36px;height:36px}.swmain .hd .row{gap:6px!important}}
+.dchief{flex:none;height:30px;padding:0 12px 0 7px;display:inline-flex;align-items:center;gap:6px;border-radius:15px;border:1px solid rgba(52,211,153,.45);background:rgba(52,211,153,.1);color:#F5F5F5;font-size:13px;font-weight:600;white-space:nowrap}
+#chief-new[hidden]{display:none}.chiefbox{display:flex;flex-direction:column;gap:10px;height:min(74vh,640px)}.chiefmsgs{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:4px 2px}.chiefchips{flex:none;max-height:84px;overflow-y:auto}.chiefchips:empty{display:none}.chiefform{display:flex;gap:8px;align-items:center;flex:none}.chiefform input{flex:1;min-width:0;height:44px;padding:0 14px;border-radius:22px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#F5F5F5;font-size:16px;outline:none}.chiefform input:focus{border-color:#34D399}
+.mixtags{display:flex;flex-wrap:wrap;gap:5px}.mixtag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;background:#1A1A1A;border:1px solid rgba(255,255,255,.08);font-size:11.5px;color:#D4D4D4;white-space:nowrap}.mixtag i{width:7px;height:7px;border-radius:2px;flex:none}.mixtag b{font-weight:700;color:#F5F5F5}.mixtag.risk{background:none;font-weight:600}
+.dfilter{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:none;margin:-6px -2px 0;padding:2px;-webkit-overflow-scrolling:touch}.dfilter::-webkit-scrollbar{display:none}.dfilter a{flex:none;height:30px;padding:0 12px;display:inline-flex;align-items:center;border-radius:15px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#A3A3A3;font-size:13px;font-weight:600;white-space:nowrap}.dfilter a:hover{color:#F5F5F5}.dfilter a.on{background:#F5F5F5;border-color:#F5F5F5;color:#0A0A0A}
+.dtabs{display:flex;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none}.dtabs::-webkit-scrollbar{display:none}.dtabs a{padding:7px 10px;border-radius:999px;font-size:14px;font-weight:600;color:#A3A3A3;white-space:nowrap}.dtabs a:hover{color:#F5F5F5}.dtabs a.on{color:#0A0A0A;background:#F5F5F5}
 .deskstats{gap:6px}.deskstats div{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:12px;background:#1A1A1A;text-align:center}.deskstats b{font-size:16px}.deskstats span{font-size:11px;color:#A3A3A3}
 .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;counter-reset:st}.steps li{display:flex;flex-direction:column;gap:2px;padding-left:30px;position:relative;font-size:13px}.steps li::before{counter-increment:st;content:counter(st);position:absolute;left:0;top:0;width:20px;height:20px;border-radius:10px;background:rgba(52,211,153,.14);color:#34D399;font-size:11px;font-weight:700;display:grid;place-items:center}.steps span{color:#A3A3A3;font-size:12.5px;line-height:1.4}
 .lbsearch{display:flex;align-items:center;gap:10px;padding:0 14px;height:44px;border-radius:14px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#A3A3A3}.lbsearch:focus-within{border-color:#34D399}.lbsearch input{flex:1;min-width:0;height:100%;border:0;background:none;color:#F5F5F5;font:inherit;font-size:15px;outline:none}
@@ -196,8 +201,10 @@ h2{margin:0;font-size:17px;font-weight:600}
 /* Phones are swipes only: following the trader lives on desktop (button or F). */
 @media (max-width:899px){.swfollow{display:none!important}
   /* Phones: the card fills the screen between the header and the tab bar. */
-  .swmain{padding:0 10px}.deck{height:calc(100vh - 190px);height:calc(100dvh - 190px);min-height:430px;margin:0 8px;--peek:16%}
+  .swmain{padding:0 10px}.deck{height:calc(100vh - 226px);height:calc(100dvh - 226px);min-height:430px;margin:0 8px;--peek:16%}
   .swmain .swbar{margin-bottom:-16px}}
+/* Short phones: Chief's read and the worst case stay; the extras give way. */
+@media (max-width:899px) and (max-height:740px){.swcard{gap:7px;padding:12px 14px 50px}.swcard .soc,.swcard .allockey,.swcard .swthesis,.swcard .freshband{display:none}.swcard .swread{padding:9px 11px}.swcard .swread li:nth-child(n+3){display:none}}
 .bcard{padding:20px 20px 18px;gap:16px!important}.bcard #brief{gap:16px!important;flex:1 1 auto}
 /* Deck side panel: runs to the bottom of the screen. Chief's brief takes all the room the portfolio and active trades leave,
    with its last trades and stats sitting at the bottom; on a short screen the brief scrolls inside itself. */
@@ -214,7 +221,7 @@ h2{margin:0;font-size:17px;font-weight:600}
 .bhead .av{width:42px;height:42px;border-radius:21px;font-size:13px}.bhead b{font-size:17px}.bhead .xs{font-size:12.5px}
 .brief{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}.brief li{display:flex;gap:11px;align-items:flex-start;font-size:15.5px;line-height:1.4;color:#E5E5E5}.brief li i{flex:none;width:9px;height:9px;border-radius:50%;margin-top:7px}
 .blast{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.blast>.xs{font-size:13.5px}
-.btrade{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:#1A1A1A;border:1px solid rgba(255,255,255,.06);font-size:15px}.btrade .srcic{display:inline-flex;color:#A3A3A3}
+.btrade{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:#1A1A1A;border:1px solid rgba(255,255,255,.06);font-size:15px}
 .bstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;font-size:12.5px;color:#A3A3A3}.bstats span{display:flex;flex-direction:column;align-items:center;gap:3px;padding:12px 4px;border-radius:14px;background:#1A1A1A;text-align:center}.bstats b{color:#F5F5F5;font-size:19px}
 #brief.loading{opacity:.45;transition:opacity .2s}
 .acar{display:flex;flex-direction:column;gap:10px;border-radius:18px;background:#141414;border:1px solid rgba(255,255,255,.07);padding:12px 14px;overflow:hidden}
@@ -246,7 +253,7 @@ h2{margin:0;font-size:17px;font-weight:600}
 .vchecks i{flex:none;width:20px;height:20px;border-radius:10px;display:grid;place-items:center;font-style:normal;font-size:11px;font-weight:700;background:#262626;color:#A3A3A3}
 .vchecks .ok i{background:rgba(52,211,153,.15);color:#34D399}.vchecks .bad i{background:rgba(248,113,113,.15);color:#F87171}
 .card.post{scroll-margin-top:90px}.card.post:target{box-shadow:0 0 0 2px rgba(52,211,153,.6),0 0 32px rgba(52,211,153,.15)}
-#copy{scroll-margin-top:90px}#copy:target{box-shadow:0 0 0 2px rgba(52,211,153,.6),0 0 32px rgba(52,211,153,.15)}.card.post[data-href]{cursor:pointer}.card.post[data-href]:hover{border-color:rgba(255,255,255,.14)}
+#rebalance,#yours{scroll-margin-top:90px}#copy{scroll-margin-top:90px}#copy:target{box-shadow:0 0 0 2px rgba(52,211,153,.6),0 0 32px rgba(52,211,153,.15)}.card.post[data-href]{cursor:pointer}.card.post[data-href]:hover{border-color:rgba(255,255,255,.14)}
 .chip:has(input:checked){background:#F5F5F5;border-color:#F5F5F5;color:#0A0A0A}
 .sw{width:44px;height:26px;border-radius:13px;border:0;padding:3px;background:#3A3A3A;display:flex;justify-content:flex-start;flex-shrink:0}
 .sw i{width:20px;height:20px;border-radius:10px;background:#fff;display:block}
@@ -379,7 +386,7 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   .d2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.d3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
   .d3 .qcard{flex-direction:column;align-items:flex-start}.d3 .qcard>.grow{width:100%}
   .chat-hist{position:sticky;top:76px;display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 100px);overflow:auto}
-  /* Ask Chief chat: an app view, not a page. The history list and the conversation are separate scroll panes; the page itself never scrolls. */
+  /* Chat: an app view, not a page. The history list and the conversation are separate scroll panes; the page itself never scrolls. */
   .app.chatapp{height:100vh;height:100dvh;min-height:0}
   .mainc:has(>.app.chatapp){height:100vh;height:100dvh;display:flex;flex-direction:column}.mainc:has(>.app.chatapp)>.app{flex:1;height:auto}
   .chatapp .chatpanes{flex:1;min-height:0;padding-bottom:0!important;overflow:hidden;grid-template-rows:minmax(0,1fr);align-items:stretch}
@@ -399,7 +406,7 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   /* The side panel never runs past the bottom of the screen: on short screens it scrolls inside itself. */
   .paside{position:sticky;top:84px;max-height:calc(100vh - 100px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#333 transparent}
 }
-/* Focus pages (Ask Chief chat): the menu collapses to icons and the summary rail goes, unless the user opens the menu. */
+/* Focus pages: the menu collapses to icons and the summary rail goes, unless the user opens the menu. */
 @media (min-width:900px){
   body.slim{--cx:calc(76px + (100vw - 76px)/2)}
   body.slim .side{width:76px;padding:22px 12px}body.slim .side-item{justify-content:center}body.slim .side-label,body.slim .side-extra{display:none}
@@ -425,7 +432,7 @@ label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
 button,a{transition:transform 120ms ease,background-color 180ms ease,color 180ms ease,border-color 180ms ease,opacity 180ms ease}
 button:active,a:active{transform:scale(.97)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;transition:none!important}}
-/* Ask Chief: chat history and the new-chat feature grid. */
+/* Chat history and the new-chat feature grid. */
 .chat-hist{display:none}.hlist{display:flex;flex-direction:column;gap:2px}.hgrp{font-size:11px;font-weight:600;color:#6B6B6B;text-transform:uppercase;letter-spacing:.06em;padding:12px 10px 4px}
 .hitem{display:flex;align-items:center;border-radius:10px}.hitem a{flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:9px 10px;color:#D4D4D4;font-size:14px}.hitem a span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hitem:hover{background:#171717}.hitem.on{background:#1F1F1F}.hitem.on a{color:#fff}.hdel{flex:none;width:28px;height:28px;margin-right:4px;border:0;border-radius:8px;background:transparent;color:#8A8A8A;display:flex;align-items:center;justify-content:center;opacity:0;cursor:pointer}.hitem:hover .hdel,.hitem.on .hdel,.hdel:focus-visible{opacity:1}.hdel:hover{background:#2A2A2A;color:#F87171}
@@ -462,15 +469,14 @@ button:active,a:active{transform:scale(.97)}
 .posacts{gap:6px;justify-content:flex-end;flex-wrap:nowrap}.posacts .btn{flex:none;width:auto;white-space:nowrap}
 .tkf{gap:8px}.chip.cust{padding:0 10px;cursor:text}.chip.cust input{width:64px;border:0;background:transparent;color:#F5F5F5;font-size:13px;outline:none}.chip.cust:focus-within{border-color:#F5F5F5}
 .tkta{width:100%;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:#141414;color:#F5F5F5;font:inherit;font-size:14px;resize:vertical}
-@media (max-width:899px){.cmake{grid-template-columns:1fr}}
 .cnew{display:flex;gap:12px;align-items:center;color:#F5F5F5;padding:16px;transition:border-color .15s}.cnew:hover{border-color:rgba(255,255,255,.2)}.cnew b{display:block;font-size:16px}.cnew .sm{display:block;line-height:1.4;margin-top:2px}
 .signbox{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:90;display:flex;gap:12px;align-items:center;max-width:min(440px,calc(100vw - 32px));padding:14px 18px;border-radius:18px;background:#1A1A1A;border:1px solid rgba(252,211,77,.45);box-shadow:0 12px 40px rgba(0,0,0,.6);color:#F5F5F5}.signbox[hidden]{display:none}.signbox b{display:block}.signbox .sb-t{display:block;font-size:13px;color:#A3A3A3;margin-top:2px}
 /* Scrolling still works everywhere; the bars just stay out of sight. */
 *{scrollbar-width:none!important}*::-webkit-scrollbar{display:none;width:0;height:0}
 `;
 
-export type NavKey = "feed" | "baskets" | "ranks" | "cat" | "guard" | "me";
-const NAV: [NavKey, string, string, string][] = [["feed", "/feed", "home", "Feed"], ["baskets", "/baskets", "list", "Baskets"], ["ranks", "/ranks", "bars", "Leaderboard"], ["cat", "/cat", "cat", "Ask Chief"], ["guard", "/guard", "shield", "Guard"], ["me", "/me", "user", "Me"]];
+export type NavKey = "feed" | "guard" | "me";
+const NAV: [NavKey, string, string, string][] = [["feed", "/feed", "home", "Feed"], ["guard", "/guard", "shield", "Guard"], ["me", "/me", "user", "Me"]];
 
 /** split: the body uses split(); on desktop its aside replaces the global right rail. */
 export interface PageOpts { title: string; body: string; nav?: NavKey; head?: string; bare?: boolean; sheets?: string; extraClass?: string; focus?: boolean; split?: boolean; slim?: boolean }
@@ -482,7 +488,7 @@ export function page(o: PageOpts): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0A0A0A"><title>${esc(o.title)} · Tribe</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230A0A0A'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%2334D399'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 ${o.head ?? ""}<style>${CSS}</style></head><body${o.split || o.slim ? ` class="norail${o.slim ? " slim" : ""}"` : ""}>
 ${o.focus ? "" : "<!--SHELL_OPEN-->"}<div class="app${o.nav ? " pad" : ""}${o.focus ? " focus" : ""}${o.split ? " split-page" : ""} ${o.extraClass ?? ""}">${o.body}</div>${o.focus ? "" : "<!--SHELL_CLOSE-->"}${nav}${o.sheets ?? ""}
 <div class="toast" id="toast" role="status" aria-live="polite"><span class="tick">${icon("check", 14, "currentColor", 3)}</span><span id="toast-t"></span></div>

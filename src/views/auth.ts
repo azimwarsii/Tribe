@@ -60,13 +60,6 @@ const SLIDES: { h: string; p: string; art: string }[] = [
 <div class="row sp sm mut"><span>Risk 91</span><span>Pause line 65</span></div><div class="up sm">Proof onchain ↗</div></div>`,
   },
   {
-    h: "Just ask Chief",
-    p: "Chief is your AI research partner. Ask about any trade or trader, or trade in plain words: \"buy $50 ETH with a 5% stop\". Chief shows the risk before you sign.",
-    art: `<div style="width:280px;display:flex;flex-direction:column;gap:10px"><div class="bubble u" style="font-size:13px">buy $50 ETH with 5% stop</div>
-<div style="${CARD}"><div class="row sp sm"><b>ETH · Long</b><span class="mut">$50.00</span></div>
-<div class="grid2 xs"><span class="tile up">Max gain +$6</span><span class="tile down">Max loss −$2.50</span></div><div class="btn p" style="height:32px;font-size:13px">Confirm &amp; sign</div></div></div>`,
-  },
-  {
     h: "Climb the leaderboard",
     p: "Traders are ranked by profit, copiers, streaks and safety. Seasons are recorded onchain so the rankings can't be rewritten. Quests, badges and squads reward trading with stops.",
     art: `<div style="width:260px;${CARD}"><div class="row sp sm mut"><span>Season 3</span><span>Profit</span></div>
