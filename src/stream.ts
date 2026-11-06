@@ -17,6 +17,7 @@ let attempts = 0;
 let stopped = false;
 let socket: WebSocket | undefined;
 const seen = new Map<string, string>();
+const RETRIES = 4, RETRY_MS = 1_500;
 
 export const streamHealthy = () => Date.now() - lastBeat < 5_000;
 
@@ -27,10 +28,19 @@ async function onOrders(list: OrderUpdate[]) {
   for (const u of list) {
     const fp = fingerprint(u);
     if (seen.get(u.orderId) === fp) continue;
-    seen.set(u.orderId, fp);
     const row = db.prepare("SELECT id, trade_id, trader, leader, role, order_id, trade, sim, status FROM orders WHERE order_id = ? AND status = 'open'").get(u.orderId) as OrderRow | undefined;
     if (!row) continue; // not a Tribe order, or already settled
-    await refreshOrder(row).catch((e) => console.error(`stream order ${u.orderId}:`, (e as Error).message));
+    // Flash can announce an order a moment before it can be read back, so only an update that applied counts as seen.
+    for (let tries = 1; ; tries++) {
+      try {
+        await refreshOrder(row);
+        seen.set(u.orderId, fp);
+        break;
+      } catch (e) {
+        if (tries >= RETRIES) { console.error(`stream order ${u.orderId}:`, (e as Error).message); break; } // the sweep picks it up
+        await new Promise((done) => setTimeout(done, RETRY_MS));
+      }
+    }
   }
 }
 
@@ -43,7 +53,12 @@ function connect() {
     ws.send(JSON.stringify({ channel: "orders", type: "subscribe", apiKey: KEY() })); // whole portfolio: every funder
   };
   ws.onmessage = (ev) => {
-    const m = JSON.parse(String(ev.data)) as { channel?: string; type: string; orders?: OrderUpdate[]; code?: string; message?: string };
+    let m: { channel?: string; type: string; orders?: OrderUpdate[]; code?: string; message?: string };
+    try {
+      m = JSON.parse(String(ev.data));
+    } catch {
+      return; // a throw here would take the whole process down; polling covers whatever this was
+    }
     if (m.channel === "heartbeats") { lastBeat = Date.now(); attempts = 0; return; }
     if (m.type === "error") {
       console.error(`flash stream: ${m.code} ${m.message ?? ""}`);
@@ -58,7 +73,8 @@ function connect() {
     const cap = Math.min(30_000, 1_000 * 2 ** attempts++);
     setTimeout(connect, cap / 2 + Math.random() * (cap / 2));
   };
-  ws.onerror = () => ws.close();
+  // Log only: a failed socket closes by itself, and calling close() here fires this again until the process overflows its stack.
+  ws.onerror = () => console.error("flash stream: connection error, polling covers it until it reconnects");
 }
 
 export function startOrderStream() {

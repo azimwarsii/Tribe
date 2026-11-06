@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { searchAsset, type FlashAsset } from "./flash.js";
+import { pace, searchAsset, type FlashAsset } from "./flash.js";
 import { TOKENS } from "./parse.js";
 import { DEMO_TOKENS, demoToken, type DemoToken } from "./demo-tokens.js";
 import { demoPricesOn } from "./prices.js";
@@ -48,7 +48,10 @@ export async function searchTokens(q: string, limit = 8): Promise<TokenView[]> {
   const url = `${BASE_SEARCH}?query=${encodeURIComponent(key)}&chain=base&limit=${limit}`;
   let r = await fetch(url, { headers: { "x-definitive-api-key": KEY() }, signal: AbortSignal.timeout(15_000) });
   // Search not enabled for Tribe's own key yet: the shared public key (search carries no fee).
-  if (r.status === 403 && KEY() !== PUBLIC) r = await fetch(url, { headers: { "x-definitive-api-key": PUBLIC }, signal: AbortSignal.timeout(15_000) });
+  if (r.status === 403 && KEY() !== PUBLIC) {
+    await pace("search");
+    r = await fetch(url, { headers: { "x-definitive-api-key": PUBLIC }, signal: AbortSignal.timeout(15_000) });
+  }
   if (!r.ok) throw new Error(r.status === 429 ? "Flash is busy, try again in a moment" : `Token search failed (${r.status})`);
   const j = (await r.json()) as { assets?: (FlashAsset & { name?: string; imageUrl?: string; decimals?: number })[] };
   const out = (j.assets ?? []).filter((a) => a.address.toLowerCase() !== "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913").map(view)

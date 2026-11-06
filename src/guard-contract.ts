@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import type { Abi, Hex } from "viem";
 
 /** Compile one of contracts/*.sol with solc-js. Used by the deploy script and the contract tests. */
-export function compileContract(name: "CopyGuard" | "SeasonBoard"): { abi: Abi; bytecode: Hex } {
+export function compileContract(name: "CopyGuard" | "SeasonBoard" | "BasketCards"): { abi: Abi; bytecode: Hex } {
   const solc = createRequire(import.meta.url)("solc");
   const source = readFileSync(new URL(`../contracts/${name}.sol`, import.meta.url), "utf8");
   const out = JSON.parse(

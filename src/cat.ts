@@ -122,7 +122,7 @@ export async function catAsk(uid: number, text: string, opts: { chatId?: number;
   const intent = research || basketQ || agent || flash ? undefined : (state.intent && !/\b(buy|sell|long)\b/i.test(clean) ? applyFollowUp(state.intent, clean) : undefined) ?? (/\bcompar/i.test(clean) ? undefined : await resolveIntent(clean));
   if (basketQ) {
     reply = basketQ.reply;
-    data = { sources: ["Tribe baskets", "CopyGuard"], verdict: basketQ.read, follow: basketQ.follow ?? [{ label: "All baskets", href: "/feed?tab=top" }] };
+    data = { sources: ["Tribe trades", "CopyGuard"], verdict: basketQ.read, follow: basketQ.follow ?? [{ label: "All trades", href: "/feed?tab=top" }] };
     if (basketQ.basket && basketQ.basket !== state.basket) { state.basket = basketQ.basket; setChatState(chatId, state); }
     if (basketQ.proposal) {
       const proposalId = randomUUID();
@@ -208,7 +208,7 @@ export async function catConfirm(uid: number, id: string, notify?: (p: PendingNo
     try {
       const out = await copyBasket(uid, basket, usd);
       ok = out.status !== "failed";
-      reply = !ok ? "None of the tokens could be bought, so nothing was copied." : out.failed ? `Copied $${out.usd}: ${out.placed} of ${tokensText(out.placed + out.failed)} filled. Try the rest from the basket's page.` : `Copied $${out.usd} across ${tokensText(out.placed)}.`;
+      reply = !ok ? "None of the tokens could be bought, so nothing was copied." : out.failed ? `Copied $${out.usd}: ${out.placed} of ${tokensText(out.placed + out.failed)} filled. Try the rest from the trade's page.` : `Copied $${out.usd} across ${tokensText(out.placed)}.`;
     } catch (e) {
       ok = false;
       reply = `Not copied: ${(e as Error).message}.`;

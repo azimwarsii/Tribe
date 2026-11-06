@@ -1,3 +1,4 @@
+import { openCopies } from "../baskets.js";
 import { allHalts, db, followingOf, getMeta, getUser, pendingFor } from "../db.js";
 import { face, initials, money, pct, portfolio, topTraders } from "../data.js";
 import { lastGuardCheck } from "../guard.js";
@@ -6,8 +7,7 @@ import { esc, icon, money2, signCls } from "../ui.js";
 
 const ITEMS: [string, string, string, string][] = [
   ["feed", "/feed", "home", "Feed"],
-  ["guard", "/guard", "shield", "Guard"],
-  ["portfolio", "/portfolio", "trend", "Portfolio"],
+  ["collection", "/trades", "cards", "Trades"],
   ["settings", "/settings", "gear", "Settings"],
 ];
 
@@ -15,9 +15,8 @@ const ITEMS: [string, string, string, string][] = [
 export function activeFor(path: string): string {
   const p = path.split("?")[0];
   if (["/progress", "/badges", "/levelup"].some((x) => p.startsWith(x))) return "me";
-  if (p.startsWith("/guard")) return "guard";
-  if (["/portfolio", "/positions", "/traders", "/requests", "/funds", "/transfer", "/activity", "/creator", "/baskets", "/strategy", "/trade/new", "/bots", "/bot"].some((x) => p.startsWith(x))) return "portfolio";
-  if (p.startsWith("/settings") || p.startsWith("/me") || p.startsWith("/alerts")) return "settings";
+  if (["/trades", "/portfolio", "/positions", "/traders", "/requests", "/funds", "/transfer", "/activity", "/creator", "/strategy", "/trade/new", "/bots", "/bot"].some((x) => p.startsWith(x))) return "collection";
+  if (p.startsWith("/guard") || p.startsWith("/settings") || p.startsWith("/me") || p.startsWith("/alerts")) return "settings";
   return "feed";
 }
 
@@ -51,7 +50,7 @@ ${ITEMS.map(([k, href, ic, label]) => `<a class="side-item${k === active ? " on"
   const rail = `<aside class="rail" aria-label="Summary">
 <section class="card${meta.pausedAll ? " bad" : ""}"><div class="row sp sm mut"><span>Copy portfolio</span><span style="color:#F5F5F5;display:inline-flex;gap:3px;align-items:center">${icon("bolt", 11)}Flash</span></div>
 <div class="big" style="margin-top:6px">${meta.hideBalance ? "••••" : money2(pf.total)}</div><div class="${signCls(pf.todayUsd)}" style="font-size:13px">${pf.todayUsd >= 0 ? "↑" : "↓"} ${money(Math.abs(pf.todayUsd))} (${pct(pf.todayPct, 2)}) today</div>
-<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px"><span class="pill">Copying ${follows.filter((f) => !f.rules.paused).length}</span><a class="pill" href="/requests">${pend.length} pending</a>${pausedFollowed ? `<a class="pill bad" href="/guard">${pausedFollowed} paused</a>` : ""}</div>
+<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px"><span class="pill">Copying ${follows.filter((f) => !f.rules.paused).length + openCopies(uid)}</span><a class="pill" href="/requests">${pend.length} pending</a>${pausedFollowed ? `<a class="pill bad" href="/guard">${pausedFollowed} paused</a>` : ""}</div>
 <div class="grid2" style="margin-top:12px"><a class="btn sm" style="width:100%" href="/funds">Add funds</a><a class="btn sm" style="width:100%" href="/traders">My traders</a></div>
 <button class="btn sm ${meta.pausedAll ? "p" : "danger"}" style="width:100%;margin-top:8px" data-act="/api/pause-all" data-body='{"value":${!meta.pausedAll}}'>${meta.pausedAll ? "Resume copying" : "Pause all copying"}</button></section>
 <a class="card row" href="/guard" style="padding:14px;gap:12px;color:#F5F5F5;border-color:${pausedFollowed ? "rgba(248,113,113,.4)" : "rgba(52,211,153,.35)"}">${icon("shield", 22, pausedFollowed ? "#F87171" : "#34D399")}<span class="grow"><b style="display:block;font-size:15px">${pausedFollowed ? `${pausedFollowed} trader${pausedFollowed > 1 ? "s" : ""} paused` : "You're protected"}</b><span class="sm mut">${checked}${halts.length ? ` · ${halts.length} paused` : ""}</span></span>${icon("chev", 14, "#8A8A8A", 2)}</a>

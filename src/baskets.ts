@@ -1,14 +1,16 @@
 import { basketMix, basketRisk, isBroadFund, type MixPart, type RiskLevel } from "./assets.js";
-import { copyFreeze, db, getMeta, getUser, recordCopy, spentToday } from "./db.js";
+import { copyFreeze, db, getMeta, getUser, mintCopyCard, mintOriginalCard, recordCopy, spentToday } from "./db.js";
 import { freeBalance, symOf } from "./data.js";
 import type { Trade } from "./flash.js";
+import { cancelOrder, cancelOrders } from "./flash.js";
 import { guardGate, riskOf } from "./guard.js";
 import { priceStr } from "./numfmt.js";
 import { USDC } from "./parse.js";
 import { getPrice } from "./prices.js";
 import { RISK_LINE } from "./rules.js";
-import { rememberToken, tradableToken } from "./tokens.js";
+import { rememberToken, tradableToken, WETH } from "./tokens.js";
 import { heldTokens, isDry, placeAndTrack } from "./tracker.js";
+import { signerOf } from "./wallet.js";
 
 /**
  * Baskets: what people copy on Tribe. A creator publishes a named set of tokens with target weights; a follower puts
@@ -29,6 +31,7 @@ export const tokensText = (n: number) => `${n} token${n === 1 ? "" : "s"}`;
 export const MIN_LEG_USD = 1;
 const DUST_USD = 1; // a rebalance ignores moves smaller than this
 const OPEN = "('filling','filled','partial')";
+const NATIVE_ETH = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 export interface Weight { token: string; symbol: string; weight: number }
 export interface BasketRow { id: number; owner: number; name: string; thesis: string | null; stop_pct: number; tp_pct: number; status: string; at: number }
@@ -45,19 +48,25 @@ export interface BasketView {
 /** Where the money would move to bring a copy to a version's weights. */
 export interface RebalancePlan { total: number; sells: { token: string; symbol: string; qty: number; usd: number }[]; buys: { token: string; symbol: string; usd: number }[] }
 
-/** Baskets are simulated in this release: multi-order signing, limits and partial fills haven't been proven on live Flash. */
+/** Real-money copies are on, but a rebalance sells and buys across tokens at once, and that hasn't been proven on live Flash. */
 function requireSim() {
-  if (!isDry()) throw new Error("Baskets run in practice mode for now. Real-money baskets aren't switched on yet.");
+  if (!isDry()) throw new Error("Rebalancing runs in practice mode for now. Close the copy and copy the new version instead.");
 }
+/** The most one real-money copy can put in, while baskets are new on live Flash. */
+export const liveCapUsd = () => Number(process.env.BASKET_LIVE_MAX_USD ?? 25);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Check a creator's tokens and weights: 1 to 10 different tokens, at least 1% each, adding up to 100%. */
 export function checkWeights(input: { token: string; weight: number }[]): { token: string; weight: number }[] {
   if (!Array.isArray(input) || input.length < MIN_TOKENS) throw new Error("Pick at least one token");
-  if (input.length > MAX_TOKENS) throw new Error(`A basket holds up to ${MAX_TOKENS} tokens`);
-  const out = input.map((w) => ({ token: String(w.token ?? "").toLowerCase(), weight: Number(w.weight) }));
-  if (new Set(out.map((w) => w.token)).size !== out.length) throw new Error("Each token can only be in a basket once");
+  if (input.length > MAX_TOKENS) throw new Error(`A trade holds up to ${MAX_TOKENS} tokens`);
+  // Flash can't attach a stop to native ETH, so a basket always holds its wrapped form.
+  const out = input.map((w) => {
+    const token = String(w.token ?? "").toLowerCase();
+    return { token: token === NATIVE_ETH ? WETH.toLowerCase() : token, weight: Number(w.weight) };
+  });
+  if (new Set(out.map((w) => w.token)).size !== out.length) throw new Error("Each token can only be in a trade once");
   for (const w of out) if (!(Number.isFinite(w.weight) && w.weight >= 1)) throw new Error("Every token needs at least 1%");
   const total = out.reduce((a, w) => a + w.weight, 0);
   if (Math.abs(total - 100) > 0.01) throw new Error(`Weights must add up to 100% (now ${round2(total)}%)`);
@@ -91,7 +100,7 @@ function addVersion(basket: number, n: number, weights: Weight[], prices: Record
 
 export async function createBasket(owner: number, input: { name: string; thesis?: string; stopPct?: number; tpPct?: number; weights: { token: string; weight: number }[] }): Promise<number> {
   const name = String(input.name ?? "").trim().slice(0, 40);
-  if (name.length < 3) throw new Error("Give the basket a name of at least 3 characters");
+  if (name.length < 3) throw new Error("Give the trade a name of at least 3 characters");
   const stop = Number(input.stopPct ?? 0), tp = Number(input.tpPct ?? 0);
   if (!(stop === 0 || (stop >= 0.5 && stop <= 50))) throw new Error("Stop is none, or 0.5% to 50%");
   if (!(tp === 0 || (tp >= 0.5 && tp <= 500))) throw new Error("Target is none, or 0.5% to 500%");
@@ -101,7 +110,41 @@ export async function createBasket(owner: number, input: { name: string; thesis?
     .run(owner, name, String(input.thesis ?? "").trim().slice(0, 200) || null, stop, tp, Date.now()).lastInsertRowid);
   addVersion(id, 1, weights, prices, 100);
   db.prepare("INSERT INTO basket_nav (basket, at, nav) VALUES (?, ?, 100)").run(id, Date.now());
+  mintOriginalCard(id, owner);
   return id;
+}
+
+/**
+ * Publish a basket by buying it: the creator's own Flash orders go in first, one per token with their stops, so a basket
+ * people can copy is one its creator really holds. This is the creator's stake, not a copy: no Copy card, no copier count,
+ * no fee. If no order goes through, nothing is published.
+ */
+export async function publishBasket(owner: number, input: Parameters<typeof createBasket>[1] & { usd: number }): Promise<{ id: number; placed: number; failed: number; usd: number }> {
+  const usd = round2(Number(input.usd));
+  if (!(usd >= 1)) throw new Error("Put in at least $1 to publish");
+  if (!isDry() && usd > liveCapUsd()) throw new Error(`Real-money trades are limited to $${liveCapUsd()} for now`);
+  const parts = splitUsd(usd, checkWeights(input.weights));
+  if (parts.some((p) => p < MIN_LEG_USD)) throw new Error(`Too small to split: every token needs at least $${MIN_LEG_USD}`);
+  const free = await freeBalance(owner);
+  if (usd > free + 1e-6) throw new Error(`Not enough balance: $${free.toFixed(2)} free, publishing needs $${usd.toFixed(2)}`);
+  if ((await guardGate(owner)).halted) throw new Error("CopyGuard has paused you, so you can't publish right now");
+
+  const id = await createBasket(owner, input);
+  const b = basketById(id)!, v = versionOf(id);
+  const copyId = Number(db.prepare("INSERT INTO basket_copies (basket, follower, version, usd, at) VALUES (?, ?, ?, ?, ?)").run(id, owner, v.n, usd, Date.now()).lastInsertRowid);
+  const c = copyById(copyId)!;
+  let placed = 0, spent = 0;
+  for (let i = 0; i < v.weights.length; i++) {
+    if (await buyLeg(c, b, v.weights[i].token, parts[i], "entry")) { placed++; spent += parts[i]; }
+  }
+  if (!placed) {
+    const why = (db.prepare("SELECT note FROM basket_legs WHERE copy_id = ? AND note IS NOT NULL ORDER BY id DESC LIMIT 1").get(copyId) as { note: string } | undefined)?.note;
+    for (const sql of ["DELETE FROM basket_legs WHERE copy_id IN (SELECT id FROM basket_copies WHERE basket = ?)", "DELETE FROM basket_copies WHERE basket = ?", "DELETE FROM basket_cards WHERE basket = ?", "DELETE FROM basket_nav WHERE basket = ?", "DELETE FROM basket_versions WHERE basket = ?", "DELETE FROM baskets WHERE id = ?"]) db.prepare(sql).run(id);
+    throw new Error(`Nothing was bought, so the trade wasn't published${why ? `: ${why}` : ""}`);
+  }
+  const failed = v.weights.length - placed;
+  setCopy(copyId, failed ? "partial" : "filled", failed ? `${failed} of ${tokensText(v.weights.length)} didn't fill` : undefined);
+  return { id, placed, failed, usd: round2(spent) };
 }
 
 export const basketById = (id: number) => db.prepare("SELECT * FROM baskets WHERE id = ?").get(id) as unknown as BasketRow | undefined;
@@ -110,7 +153,7 @@ export const versionOf = (basket: number, n?: number): VersionRow => {
   const r = (n === undefined
     ? db.prepare("SELECT * FROM basket_versions WHERE basket = ? ORDER BY n DESC LIMIT 1").get(basket)
     : db.prepare("SELECT * FROM basket_versions WHERE basket = ? AND n = ?").get(basket, n)) as Record<string, unknown> | undefined;
-  if (!r) throw new Error("Basket not found");
+  if (!r) throw new Error("Trade not found");
   return parseVersion(r);
 };
 export const versionsOf = (basket: number) => (db.prepare("SELECT * FROM basket_versions WHERE basket = ? ORDER BY n DESC").all(basket) as Record<string, unknown>[]).map(parseVersion);
@@ -131,8 +174,8 @@ export async function navOf(basket: number): Promise<{ nav: number; prices: Reco
 /** A creator changes the weights: a new version from the index's current value, and a rebalance request to every copier. */
 export async function updateWeights(owner: number, id: number, input: { token: string; weight: number }[], note?: string): Promise<{ version: number; asked: number }> {
   const b = basketById(id);
-  if (!b || b.owner !== owner) throw new Error("Basket not found");
-  if (b.status !== "live") throw new Error("This basket is retired");
+  if (!b || b.owner !== owner) throw new Error("Trade not found");
+  if (b.status !== "live") throw new Error("This trade is retired");
   const cur = versionOf(id);
   const weights = await resolveWeights(input);
   const key = (ws: { token: string; weight: number }[]) => JSON.stringify(ws.map((w) => [w.token, w.weight]).sort());
@@ -155,7 +198,7 @@ export async function updateWeights(owner: number, id: number, input: { token: s
 /** A retired basket can't be copied any more. People already in it keep what they hold and can close when they like. */
 export function retireBasket(owner: number, id: number) {
   const b = basketById(id);
-  if (!b || b.owner !== owner) throw new Error("Basket not found");
+  if (!b || b.owner !== owner) throw new Error("Trade not found");
   db.prepare("UPDATE baskets SET status = 'retired' WHERE id = ?").run(id);
   db.prepare("UPDATE basket_requests SET status = 'superseded' WHERE basket = ? AND status = 'open'").run(id);
 }
@@ -165,7 +208,7 @@ export async function basketView(id: number): Promise<BasketView | undefined> {
   if (!b) return undefined;
   const v = versionOf(id);
   const { nav, prices } = await navOf(id);
-  const stats = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(usd), 0) AS usd FROM basket_copies WHERE basket = ? AND status IN ('filled','partial')`).get(id) as { n: number; usd: number };
+  const stats = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(usd), 0) AS usd FROM basket_copies WHERE basket = ? AND follower != ? AND status IN ('filled','partial')`).get(id, b.owner) as { n: number; usd: number };
   const mix = basketMix(v.weights);
   return {
     id, owner: b.owner, handle: getUser(b.owner).handle, name: b.name, thesis: b.thesis, stopPct: b.stop_pct, tpPct: b.tp_pct, status: b.status, at: b.at,
@@ -207,19 +250,33 @@ export async function snapshotBaskets() {
 export const navSeries = (basket: number, limit = 200) =>
   (db.prepare("SELECT nav FROM (SELECT nav, at FROM basket_nav WHERE basket = ? ORDER BY at DESC LIMIT ?) ORDER BY at").all(basket, limit) as { nav: number }[]).map((r) => r.nav);
 
+/** The index between two times, thinned to about `points` values, oldest first. `navSeries` only reaches back `limit` ticks. */
+export const navSince = (basket: number, from: number, to = Date.now(), points = 60) =>
+  (db.prepare(`SELECT nav FROM (SELECT nav, at, ROW_NUMBER() OVER (ORDER BY at) AS i, COUNT(*) OVER () AS n FROM basket_nav WHERE basket = ? AND at >= ? AND at <= ?)
+    WHERE (i - 1) % MAX(1, n / ?) = 0 OR i = n ORDER BY at`).all(basket, from, to, points) as { nav: number }[]).map((r) => r.nav);
+
 // ---------- Copying ----------
 
-const copyById = (id: number) => db.prepare("SELECT * FROM basket_copies WHERE id = ?").get(id) as unknown as CopyRow | undefined;
+export const copyById = (id: number) => db.prepare("SELECT * FROM basket_copies WHERE id = ?").get(id) as unknown as CopyRow | undefined;
 const setCopy = (id: number, status: string, note?: string) =>
   db.prepare("UPDATE basket_copies SET status = ?, note = ?, closed_at = CASE WHEN ? = 'closed' THEN ? ELSE closed_at END WHERE id = ?").run(status, note ?? null, status, Date.now(), id);
 /** The basket a copy order belongs to. A basket order's trade id is its leg id, negated, so it has no trade page. */
 export const basketOfOrder = (tradeId: number) => (db.prepare("SELECT c.basket FROM basket_legs l JOIN basket_copies c ON c.id = l.copy_id WHERE l.id = ?").get(-tradeId) as { basket: number } | undefined)?.basket;
 export const openCopy = (viewer: number, basket: number) => db.prepare(`SELECT * FROM basket_copies WHERE basket = ? AND follower = ? AND status IN ${OPEN}`).get(basket, viewer) as unknown as CopyRow | undefined;
 
+/** How many trades someone is copying right now. A creator's stake in their own trade isn't a copy. */
+export const openCopies = (viewer: number) => (db.prepare(`SELECT COUNT(*) AS n FROM basket_copies c JOIN baskets b ON b.id = c.basket WHERE c.follower = ? AND b.owner != ? AND c.status IN ${OPEN}`).get(viewer, viewer) as { n: number }).n;
+
+/** Is a market order of this copy still on its way? */
+const stillFilling = (copyId: number) => !!db.prepare(`SELECT 1 FROM orders o JOIN basket_legs l ON o.trade_id = -l.id WHERE l.copy_id = ? AND l.status = 'placed' AND o.status = 'open' AND json_extract(o.trade, '$.orderType') = 'market' LIMIT 1`).get(copyId);
+
 /** A copy whose stops and targets sold everything is over: close it, and say whether it did. */
 async function settleCopy(c: CopyRow, value?: CopyValue): Promise<boolean> {
-  if (c.status === "filling" || (value ?? (await copyValue(c.id))).holdings.length) return false;
-  setCopy(c.id, "closed", "Every token's stop or target sold");
+  if (c.status === "filling" || stillFilling(c.id)) return false; // a live order takes a moment: holding nothing yet isn't being sold out
+  const v = value ?? (await copyValue(c.id));
+  if (v.holdings.length) return false;
+  if (v.invested > 0) setCopy(c.id, "closed", "Every token's stop or target sold");
+  else setCopy(c.id, "failed", "None of the orders filled");
   db.prepare("UPDATE basket_requests SET status = 'superseded' WHERE copy_id = ? AND status = 'open'").run(c.id);
   return true;
 }
@@ -254,15 +311,25 @@ async function buyLeg(c: CopyRow, b: BasketRow, token: string, usd: number, kind
   const mark = await getPrice(token).catch(() => 0);
   const attach = mark > 0 ? exitsAt(b, mark) : undefined;
   const trade: Trade = { chain: "base", target: token, contra: USDC, side: "buy", qty: String(usd), orderType: "market", ...(attach ? { attach, hasStop: true } : {}) };
+  // A stop is worked out from the price. With no price, don't buy at all: never place an order without the stop it promised.
+  if (b.stop_pct > 0 && !attach) {
+    db.prepare("INSERT INTO basket_legs (copy_id, token, kind, trade, usd, status, note, at) VALUES (?, ?, ?, ?, ?, 'failed', ?, ?)").run(c.id, token, kind, JSON.stringify(trade), usd, "Couldn't get a price to set the stop, so this wasn't bought", Date.now());
+    return false;
+  }
   return placeLeg(c, b.owner, token, kind, trade, usd);
 }
 
 const sellTrade = (token: string, qty: number): Trade => ({ chain: "base", target: token, contra: USDC, side: "sell", qty: String(Number(qty.toPrecision(12))), orderType: "market" });
 
 /** Close the resting stops and targets of a copy's token, so they can't fire on what is about to be sold. */
-function cancelExits(copyId: number, token: string) {
-  db.prepare(`UPDATE orders SET status = 'closed', close_reason = 'CANCELLED_BY_USER' WHERE status IN ('open','waiting') AND json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') != 'market'
-    AND lower(json_extract(trade, '$.target')) = ? AND trade_id IN (SELECT -id FROM basket_legs WHERE copy_id = ?)`).run(token, copyId);
+async function cancelExits(copyId: number, follower: number, token: string) {
+  const where = `status IN ('open','waiting') AND json_extract(trade, '$.side') = 'sell' AND json_extract(trade, '$.orderType') != 'market'
+    AND lower(json_extract(trade, '$.target')) = ? AND trade_id IN (SELECT -id FROM basket_legs WHERE copy_id = ?)`;
+  // Live ones are cancelled on Flash first: if this throws they're still protecting the tokens, so nothing gets sold under them.
+  const live = (db.prepare(`SELECT order_id FROM orders WHERE ${where} AND sim = 0 AND status = 'open' AND order_id IS NOT NULL`).all(token, copyId) as { order_id: string }[]).map((o) => o.order_id);
+  if (live.length === 1) await cancelOrder(live[0], signerOf(follower));
+  else if (live.length > 1) await cancelOrders(live, signerOf(follower));
+  db.prepare(`UPDATE orders SET status = 'closed', close_reason = 'CANCELLED_BY_USER' WHERE ${where}`).run(token, copyId);
 }
 
 /** Put a stop back on what's left of a token after a partial sell. */
@@ -277,20 +344,20 @@ async function reprotect(c: CopyRow, b: BasketRow, token: string, qty: number) {
 /** Copy a basket: every check once for the whole amount, then one order per token at its weight. */
 /** Everything that must hold before a copy is placed. Copying runs it, and anything preparing a copy can run it first. */
 export async function checkCopy(viewer: number, id: number, usdIn: number) {
-  requireSim();
   const b = basketById(id);
-  if (!b) throw new Error("Basket not found");
-  if (b.status !== "live") throw new Error("This basket is retired");
-  if (b.owner === viewer) throw new Error("That's your own basket");
-  if (await liveCopy(viewer, id)) throw new Error("You already copy this basket");
+  if (!b) throw new Error("Trade not found");
+  if (b.status !== "live") throw new Error("This trade is retired");
+  if (b.owner === viewer) throw new Error("That's your own trade");
+  if (await liveCopy(viewer, id)) throw new Error("You already copy this trade");
   const frozen = copyFreeze();
   if (frozen) throw new Error(`Tribe paused all copying: ${frozen}`);
   const meta = getMeta(viewer);
   if (meta.pausedAll) throw new Error("All copying is paused. Resume it in Me first");
   const usd = round2(usdIn);
   if (!(usd >= 1 && usd <= meta.defaults.max)) throw new Error(`Pick $1 to $${meta.defaults.max} (your max per copy)`);
+  if (!isDry() && usd > liveCapUsd()) throw new Error(`Real-money copies are limited to $${liveCapUsd()} for now`);
   if (spentToday(viewer) + usd > meta.defaults.cap) throw new Error(`That would pass your $${meta.defaults.cap} daily cap`);
-  if (meta.defaults.stop && !(b.stop_pct > 0)) throw new Error("Your rules only copy baskets with a stop-loss");
+  if (meta.defaults.stop && !(b.stop_pct > 0)) throw new Error("Your rules only copy trades with a stop-loss");
   const gate = await guardGate(b.owner);
   if (gate.halted) throw new Error("This creator is paused by CopyGuard");
   const risk = await riskOf(b.owner);
@@ -310,7 +377,7 @@ export async function copyBasket(viewer: number, id: number, usdIn: number): Pro
   try {
     copyId = Number(db.prepare("INSERT INTO basket_copies (basket, follower, version, usd, at) VALUES (?, ?, ?, ?, ?)").run(id, viewer, v.n, usd, Date.now()).lastInsertRowid);
   } catch {
-    throw new Error("You already copy this basket"); // two taps at once: the unique index lets one through
+    throw new Error("You already copy this trade"); // two taps at once: the unique index lets one through
   }
   const c = copyById(copyId)!;
   let placed = 0, spent = 0;
@@ -321,7 +388,10 @@ export async function copyBasket(viewer: number, id: number, usdIn: number): Pro
   const status = placed === 0 ? "failed" : failed ? "partial" : "filled";
   setCopy(copyId, status, failed ? `${failed} of ${tokensText(v.weights.length)} didn't fill` : undefined);
   // One copy, however many tokens: creator pay and daily caps count the amount once.
-  if (placed) recordCopy({ tradeId: -copyId, follower: viewer, leader: b.owner, usd: round2(spent), status: "dry-run", note: `Basket: ${b.name}` });
+  if (placed) {
+    recordCopy({ tradeId: -copyId, follower: viewer, leader: b.owner, usd: round2(spent), status: isDry() ? "dry-run" : "executed", note: `Basket: ${b.name}` });
+    mintCopyCard(copyId); // only now: a copy where nothing filled gets no card and uses no edition number
+  }
   return { copy: copyId, status, placed, failed, usd: round2(spent) };
 }
 
@@ -371,7 +441,6 @@ export async function copiesOf(viewer: number) {
 
 /** Try the orders of a partly filled copy again. */
 export async function retryCopy(viewer: number, copyId: number): Promise<{ placed: number; failed: number }> {
-  requireSim();
   const c = copyById(copyId);
   if (!c || c.follower !== viewer) throw new Error("Copy not found");
   if (c.status !== "partial") throw new Error("Nothing to retry");
@@ -388,21 +457,27 @@ export async function retryCopy(viewer: number, copyId: number): Promise<{ place
   }
   const failed = legs.length - placed;
   setCopy(copyId, failed ? "partial" : "filled", failed ? `${failed} token${failed === 1 ? "" : "s"} still didn't fill` : undefined);
-  if (spent) recordCopy({ tradeId: -copyId, follower: viewer, leader: b.owner, usd: round2(spent), status: "dry-run", note: `Basket: ${b.name}` });
+  if (spent) recordCopy({ tradeId: -copyId, follower: viewer, leader: b.owner, usd: round2(spent), status: isDry() ? "dry-run" : "executed", note: `Basket: ${b.name}` });
   return { placed, failed };
 }
 
 /** Sell everything in a copy at market, after cancelling its stops. Also how a partly filled copy is unwound. */
 export async function closeCopy(viewer: number, copyId: number): Promise<{ sold: number; failed: number; value: number }> {
-  requireSim();
   const c = copyById(copyId);
   if (!c || c.follower !== viewer) throw new Error("Copy not found");
   if (c.status === "closed" || c.status === "failed") throw new Error("This copy is already closed");
+  if (stillFilling(copyId)) throw new Error("This copy's orders are still filling. Try again in a moment");
   const b = basketById(c.basket)!;
   const { holdings, value } = await copyValue(copyId);
   let sold = 0, failed = 0;
   for (const h of holdings) {
-    cancelExits(copyId, h.token);
+    try {
+      await cancelExits(copyId, c.follower, h.token);
+    } catch (e) {
+      console.error(`close copy ${copyId}: couldn't cancel exits on ${h.symbol}:`, (e as Error).message);
+      failed++;
+      continue;
+    }
     if (await placeLeg(c, b.owner, h.token, "close", sellTrade(h.token, h.qty), h.value)) sold++;
     else failed++;
   }
@@ -455,7 +530,7 @@ export async function approveRebalance(viewer: number, requestId: number): Promi
   let sold = 0, bought = 0, failed = 0, raised = 0;
   for (const s of plan.sells) {
     const before = (await copyValue(c.id)).holdings.find((h) => h.token === s.token);
-    cancelExits(c.id, s.token);
+    await cancelExits(c.id, c.follower, s.token);
     const ok = await placeLeg(c, b.owner, s.token, "rebalance", sellTrade(s.token, s.qty), s.usd);
     if (ok) { sold++; raised += s.usd; } else failed++;
     await reprotect(c, b, s.token, ok ? Math.max(0, (before?.qty ?? 0) - s.qty) : before?.qty ?? 0);

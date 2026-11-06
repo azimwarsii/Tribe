@@ -4,13 +4,14 @@ import { createPublicClient, getAddress, http, verifyMessage } from "viem";
 import { base } from "viem/chains";
 import { currentUser, isAgent } from "./auth.js";
 import { db, getMeta, getUser, setMeta } from "./db.js";
+import { privyEnabled } from "./privy.js";
 import { balancesOf } from "./wallet.js";
-import { esc, header, icon, page } from "./ui.js";
+import { bundleVersion, esc, header, icon, page } from "./ui.js";
 
 /**
  * The user's own wallet. Sign-in proves it through Privy (src/privy-api.ts); switching to another wallet here proves the
  * new one with a signed one-time message, like Sign-In with Ethereum. Nothing is sent onchain and Tribe never gets a
- * key: every trade is approved in the wallet.
+ * key. Trades are approved in the wallet, unless the user turns on automatic signing (see src/privy-api.ts).
  *
  *   GET  /wallet                     the Wallet page: connect, or the address and live Base balances
  *   POST /api/wallet/challenge       { address } -> { id, message } to connect a wallet to the signed-in account
@@ -91,11 +92,16 @@ export function walletRouter() {
     const uid = currentUser(req);
     if (uid === undefined) return res.redirect("/signin");
     const u = getUser(uid);
+    const auto = u.wallet_kind === "privy";
+    // The browser part: turn automatic signing on or off, and export the key. Needs the Privy login behind the account.
+    const signing = privyEnabled() && process.env.PRIVY_KEY_QUORUM_ID && u.privy_user_id
+      ? `<div id="wallet-root"></div><script>window.TRIBE=${JSON.stringify({ appId: process.env.PRIVY_APP_ID, auto }).replace(/</g, "\\u003c")}</script><script src="/static/wallet.js?v=${bundleVersion("wallet.js")}" defer></script>`
+      : "";
     let body: string;
-    if (u.wallet_kind === "external") {
+    if (u.wallet_kind === "external" || auto) {
       const b = await balancesOf(u.address).catch(() => undefined);
       const bal = (label: string, v: string, sub: string) => `<div class="line"><span class="grow"><span class="t">${label}</span><span class="s">${sub}</span></span><b>${v}</b></div>`;
-      body = `<div class="card col" style="gap:6px"><div class="sm mut">Your wallet · MetaMask · Base</div><div class="md" style="font-family:ui-monospace,monospace;word-break:break-all">${esc(u.address)}</div>
+      body = `<div class="card col" style="gap:6px"><div class="sm mut">Your wallet · ${auto ? "Tribe wallet" : "MetaMask"} · Base</div><div class="md" style="font-family:ui-monospace,monospace;word-break:break-all">${esc(u.address)}</div>
 <div class="row" style="gap:8px;margin-top:6px"><button class="btn sm" data-copy="${esc(u.address)}">Copy address</button><a class="btn sm" href="https://basescan.org/address/${esc(u.address)}" target="_blank" rel="noopener">Basescan ↗</a></div></div>
 <section class="tile" style="padding:2px 14px">${
         b
@@ -103,9 +109,17 @@ export function walletRouter() {
           : `<div class="line"><span class="grow s">Couldn't read balances from Base right now. Try again in a moment.</span></div>`
       }</section>
 <div class="card col" style="gap:6px"><b>Add funds</b><span class="sm" style="line-height:1.5">Send USDC on the <b>Base</b> network to the address above, from an exchange or another wallet. Keep about $1 of ETH on Base for approvals. Sending on another network won't arrive here.</span></div>
-<div class="card col" style="gap:6px"><b>How trades work</b><span class="sm" style="line-height:1.5">Tribe never holds your key. When a trader you copy trades, you get a request, and the trade runs only after you approve it in MetaMask.</span></div>
-<div class="card col" style="gap:6px"><b>Switch to another wallet</b><span class="sm" style="line-height:1.5">You sign in with your wallet, so the new one must sign too before it replaces this one. Funds in this wallet stay in it.</span><div id="mm-msg" class="sm" role="status"></div><button class="btn" id="mm">${icon("wallet", 16)}Switch wallet in MetaMask</button></div>
-${walletButtonScript("mm", "mm-msg", "/api/wallet/challenge", "/api/wallet/link")}`;
+<div class="card col" style="gap:6px"><b>How trades work</b><span class="sm" style="line-height:1.5">${
+        auto
+          ? "Tribe never holds your key. It can sign Flash trades that pay back to this wallet, within your limits. It can't send your funds anywhere else."
+          : "Tribe never holds your key. When a trader you copy trades, you get a request, and the trade runs only after you approve it in MetaMask."
+      }</span></div>
+${signing}${
+        auto
+          ? ""
+          : `<div class="card col" style="gap:6px"><b>Switch to another wallet</b><span class="sm" style="line-height:1.5">You sign in with your wallet, so the new one must sign too before it replaces this one. Funds in this wallet stay in it.</span><div id="mm-msg" class="sm" role="status"></div><button class="btn" id="mm">${icon("wallet", 16)}Switch wallet in MetaMask</button></div>
+${walletButtonScript("mm", "mm-msg", "/api/wallet/challenge", "/api/wallet/link")}`
+      }`;
     } else {
       body = `<div class="card col" style="gap:8px"><b>Connect your wallet</b><span class="sm" style="line-height:1.5">Use MetaMask on Base. Connecting is a free signature that proves the wallet is yours; nothing moves. Tribe never holds your key: every trade is approved in MetaMask.</span>
 <div id="mm-msg" class="sm" role="status"></div><button class="btn p big" id="mm">${icon("wallet", 16)}Connect MetaMask</button></div>

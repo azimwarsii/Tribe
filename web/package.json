@@ -1,9 +1,9 @@
 {
   "name": "tribe-web",
   "private": true,
-  "description": "Browser bundle for Tribe's sign-in page (Google or Apple through Privy). Built into ../public/signin.js.",
+  "description": "Browser bundles for Tribe's sign-in and wallet pages (Privy). Built into ../public/.",
   "scripts": {
-    "build": "esbuild signin.tsx --bundle --minify --format=iife --target=es2020 --define:process.env.NODE_ENV=\\\"production\\\" --outfile=../public/signin.js"
+    "build": "esbuild signin.tsx wallet.tsx --bundle --minify --format=iife --target=es2020 --define:process.env.NODE_ENV=\\\"production\\\" --outdir=../public"
   },
   "dependencies": {
     "@privy-io/react-auth": "3.49.1",

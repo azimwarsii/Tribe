@@ -61,16 +61,16 @@ server.registerTool("tribe_me", {
 }, safe(async () => api("/api/v1/me")));
 
 server.registerTool("tribe_baskets", {
-  title: "List baskets",
-  description: "Baskets on Tribe: each creator's make-up by asset class (Major coins, US stocks, Altcoins, Meme coins), risk band, tokens and weights, simulated index return since launch, stop, target, copiers and whether CopyGuard has the creator paused. Optionally only one kind.",
-  inputSchema: { asset: z.enum(["major", "stock", "alt", "meme", "steady"]).optional().describe("Keep baskets with at least 25% in this class, or in the Steady risk band") },
+  title: "List trades",
+  description: "Trades on Tribe: each creator's make-up by asset class (Major coins, US stocks, Altcoins, Meme coins), risk band, tokens and weights, simulated index return since launch, stop, target, copiers and whether CopyGuard has the creator paused. Optionally only one kind.",
+  inputSchema: { asset: z.enum(["major", "stock", "alt", "meme", "steady"]).optional().describe("Keep trades with at least 25% in this class, or in the Steady risk band") },
   annotations: { readOnlyHint: true },
 }, safe(async (a: { asset?: string }) => api(`/api/v1/baskets${a.asset ? `?asset=${a.asset}` : ""}`)));
 
 server.registerTool("tribe_copy_basket", {
-  title: "Copy a basket",
-  description: "Copy a basket at a size the user picked: one Flash order per token at its weight, inside their max per copy and daily cap. CopyGuard can still block it. Only call after the user explicitly confirms the amount. Baskets run in practice mode for now.",
-  inputSchema: { basket: z.number().int().describe("Basket id, from tribe_baskets"), usd: z.number().positive().describe("Total amount in dollars") },
+  title: "Copy a trade",
+  description: "Copy a trade at a size the user picked: one Flash order per token at its weight, inside their max per copy and daily cap. CopyGuard can still block it. Only call after the user explicitly confirms the amount. Copies use real money when Tribe runs live, capped per copy.",
+  inputSchema: { basket: z.number().int().describe("Trade id, from tribe_baskets"), usd: z.number().positive().describe("Total amount in dollars") },
   annotations: { destructiveHint: true },
 }, safe(async (a: { basket: number; usd: number }) => api("/api/basket-copy", a)));
 

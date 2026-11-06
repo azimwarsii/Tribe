@@ -81,10 +81,10 @@ refuses it only for the empty balance. `npm run flash:check -- --live 5` places 
 
 **Ask-first copies.** The follower signs when they approve, and Tribe quotes again at that moment, so a 2- or 5-minute approval timer never meets the market quote's roughly 5-minute deadline.
 
-**Auto copies.** These need something that can sign at the moment of the trade, because Flash allows no delegation without a signature. Today that is a server-held demo key. For production the plan is embedded wallets (Privy) or a smart account (Flash supports EIP-1271 signers) with a session key limited to Flash orders and the follower's own caps.
+**Auto copies.** These need something that can sign at the moment of the trade, because Flash allows no delegation without a signature. That is a Privy embedded wallet with Tribe as a signer limited by a per-wallet policy (`src/privy.ts`), which the user turns on from the Wallet page, or a server-held key for demo users. An outside wallet such as MetaMask can't delegate, so those users approve each trade.
 
-## Baskets on Flash
-Flash has no multi-token order, so a basket copy is one order per token, each with its own attached bracket, sent one after another (`copyBasket` in `src/baskets.ts`). A failed order is recorded on its leg and the others continue, which is why a copy can be partly filled. A rebalance sells first, then buys with what the sells raised. Baskets run in practice mode only: before going live, check Flash's minimum order size, whether it can batch orders, and how many signatures a basket really needs. The 5 requests per second limit means 300 copiers of a 5-token basket take about 5 minutes of quotes.
+## Trades on Flash
+Flash has no multi-token order, so a trade copy is one order per token, each with its own attached bracket, sent one after another (`copyBasket` in `src/baskets.ts`). A failed order is recorded on its leg and the others continue, which is why a copy can be partly filled. A rebalance sells first, then buys with what the sells raised. Real-money copies are on and capped at `BASKET_LIVE_MAX_USD`; rebalancing runs in practice mode only. A copy holds nothing until its orders fill, so it isn't treated as sold out while a market order is open, and closing one cancels its brackets on Flash before selling. Flash quotes market orders from $1, but fills at that size and how many signatures a trade really needs are still to be confirmed live. The 5 requests per second limit means 300 copiers of a 5-token trade take about 5 minutes of quotes.
 
 ## Not used, and why
 

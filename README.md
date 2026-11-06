@@ -1,25 +1,27 @@
 # Tribe: copy trading with a safety net, on Flash and Chainlink CRE
 
-Tribe is a social trading app built around **baskets**. A creator publishes a named set of tokens with target weights, a stop and a target; followers copy the basket with one tap, from their own wallet and within their own limits. Traders also post real trades to build their record; an AI agent run on Chainlink CRE trades in the open so anyone can copy it too. Every trade is a [Flash](https://flash.definitive.fi/docs) advanced order (entries ship with a take-profit / stop-loss bracket attached), and a [Chainlink CRE](https://docs.chain.link/cre) workflow acts as an onchain circuit breaker: it pauses copying of a trader who is blowing up, before the next copy fills.
+Tribe is a social trading app built around **trades**. A creator publishes a named set of tokens with target weights, a stop and a target; followers copy the trade with one tap, from their own wallet and within their own limits. Traders also post real trades to build their record; an AI agent run on Chainlink CRE trades in the open so anyone can copy it too. Every trade is a [Flash](https://flash.definitive.fi/docs) advanced order (entries ship with a take-profit / stop-loss bracket attached), and a [Chainlink CRE](https://docs.chain.link/cre) workflow acts as an onchain circuit breaker: it pauses copying of a trader who is blowing up, before the next copy fills.
 
 Mobile-first web app (it reflows to a full desktop layout).
 
-## Baskets
-A basket is what you copy on Tribe (`src/baskets.ts`, `src/views/baskets.ts`).
+## Trades
+A trade is what you copy on Tribe (`src/baskets.ts`, `src/views/baskets.ts`).
 
 - **Build:** 1 to 10 tokens, at least 1% each, adding up to 100%, with an optional stop and target per token.
-- **Mix and risk:** every basket shows its share in Major coins, US stocks, Altcoins and Meme coins, plus a Steady, Balanced or Aggressive band (`src/assets.ts`). Classes come from a reviewed list of contract addresses, never a token's name or a creator's tag; anything unreviewed is Unclassified and counts as the riskiest kind. Confirm a token's address with its issuer before adding it (Coinbase's tokenized stocks are listed at base.org/assets). The agent API can filter on this, with a basket counting for a class from 25% up.
-- **Safety read:** every basket shows rule-based checks on its stop, spread, record and creator's Guard status. No AI is involved.
+- **Mix and risk:** every trade shows its share in Major coins, US stocks, Altcoins and Meme coins, plus a Steady, Balanced or Aggressive band (`src/assets.ts`). Classes come from a reviewed list of contract addresses, never a token's name or a creator's tag; anything unreviewed is Unclassified and counts as the riskiest kind. Confirm a token's address with its issuer before adding it (Coinbase's tokenized stocks are listed at base.org/assets). The agent API can filter on this, with a trade counting for a class from 25% up.
+- **Safety read:** every trade shows rule-based checks on its stop, spread, record and creator's Guard status. No AI is involved.
 - **Copy:** Tribe runs your limits and CopyGuard once for the whole amount, then places one Flash order per token at its weight. The tokens sit in your own wallet; nothing is pooled.
 - **Partial fills:** if a token won't fill, the rest still go through. The copy shows as partly filled, and you can try again or close it.
 - **Rebalance:** a published version never changes. New weights make a new version and send every copier a request showing the exact sells and buys. Nothing moves until they approve.
-- **Record:** a basket's value is an index that starts at 100 and moves with its weights and token prices, carried across versions, so it doesn't depend on what the creator holds.
-- **Practice only for now:** baskets refuse to run with `DRY_RUN=false`. Real-money baskets need Privy automatic signing first: a 5-token copy through MetaMask would need about 10 to 20 prompts. Flash's minimum order size and batch support also need checking against the live API.
+- **Record:** a trade's value is an index that starts at 100 and moves with its weights and token prices, carried across versions, so it doesn't depend on what the creator holds.
+- **Published by buying:** with `DRY_RUN=false` a creator publishes a trade by buying it with Flash, one order per token with their stops. If nothing goes through, nothing is published. That stake isn't counted as a copier.
+- **Real money, in testing:** with `DRY_RUN=false` a copy places real Flash orders, one per token, capped at `BASKET_LIVE_MAX_USD` (default $25) per copy. Use a Privy wallet: a 5-token copy through MetaMask would need about 10 to 20 prompts. Rebalancing stays in practice mode; to change versions, close the copy and copy again.
 
 Single trades are now each trader's record rather than something you copy. Bots still trade one token, and copying a bot still goes through the follow rules and `mirror` in `src/copy.ts`.
 
 ## Why it wins, in three lines
 - **Social and gamified:** unique usernames with profile photos and bios, public profiles with a portfolio view, free follow or copy with Flash, a feed with story rings, levels, streaks, quests, badges, squads, a Hot pick and share cards. The game rewards safe behaviour: brackets, copying trades with stops, and researching before you copy.
+- **Tribe Trading Cards:** making a trade earns an Original card and copying one earns a numbered Copy card, unlocked on screen right after the trade, each an SVG at `/card/<id>.svg`. Cards go BASE → GLITTER → HOLO on performance and keep the highest tier reached; the thresholds are in `src/card-tiers.ts`. Each card is minted as a transferable ERC-721 on Base Sepolia (`contracts/BasketCards.sol`, `npm run cards:deploy`), with Tribe paying the gas and recording tier upgrades. Metadata is at `/card/<id>.json`, and cards are marked as practice when their fills were simulated. In the feed, a trade wears the Glitter or Holo finish while its return since launch is in that range.
 - **CRE security:** Chainlink CRE checks every trader and writes the verdict onchain. Tribe reads that contract right before every copy, and if CRE goes quiet, auto-copies wait for your OK.
 
 ## How Tribe meets the tracks
@@ -73,7 +75,7 @@ flowchart LR
 | --- | --- |
 | `src/flash.ts` | Flash client: quotes, setup transactions, attached brackets, orders, fills, cancel, update, balances |
 | `src/tracker.ts` | Places and tracks orders; turns an attached bracket into the position's protective order once the entry fills; simulated fills in dry-run |
-| `src/baskets.ts` | Baskets: versions, copying, per-copy holdings, partial fills, rebalancing, the index |
+| `src/baskets.ts` | Trades: versions, copying, per-copy holdings, partial fills, rebalancing, the index |
 | `src/copy.ts`, `src/rules.ts` | Fan-out to followers of a bot or trader by their rules |
 | `src/guard.ts`, `contracts/CopyGuard.sol` | Risk snapshot for CRE, onchain halt watcher, the CRE receiver contract |
 | `src/ask.ts` | Order proposals, used by bots and the trade form |
@@ -87,7 +89,7 @@ Needs Node 22.5+.
 
 ```bash
 npm install
-npm run demo:reset     # deletes demo.db, then seeds traders, baskets, followers, squads, and @kestrel's bot
+npm run demo:reset     # deletes demo.db, then seeds traders, trades, followers, squads, and @kestrel's bot
 npm run demo           # http://localhost:8787 → /demo signs you in, /director drives the story
 ```
 Offline: simulated prices, fills and balances. `npm run demo` always runs dry, whatever `.env` says. See `DEMO.md` for the video script.
@@ -120,10 +122,11 @@ The workflows call Tribe over HTTP, so expose it (`cloudflared tunnel --url http
 - 42 app tests, including attached brackets sized from the fill, and the copy-time CopyGuard gate against the contract over JSON-RPC. In that test, a trader halted onchain is blocked; a silent CRE or an unreachable chain means copies are held for approval.
 
 ## Not verified yet, or not built
-- Real-money baskets: blocked in code until Privy automatic signing is connected and Flash's limits are checked. A stop on a basket's total value, automatic rebalancing and a per-basket Guard pause are not built.
+- Real-money rebalancing is blocked in code until it's proven on live Flash. A stop on a trade's total value, automatic rebalancing and a per-basket Guard pause are not built.
 - A real Flash order submitted and filled (needs a funded wallet; the flow is complete and `flash:check --live` does it).
 - `cre workflow simulate` itself (needs `cre login`), and CopyGuard on Base Sepolia (needs test ETH).
-- Wallets are server-held demo keys (non-custodial signing via Privy is planned, not connected). Fine for a hackathon demo with fresh wallets, not for real users.
+- Wallets: accounts sign in with their own wallet and approve each trade there. Automatic signing (Wallet page) moves an account to a Privy embedded wallet with Tribe as a policy-limited signer. Run `npm run privy:check` after changing the policy in `src/privy.ts`.
+- The installable app (`src/pwa.ts`): checked in desktop Chrome only, not on a real iPhone or Android phone. Wallet sign-in from the installed app is untested, and there is no web push: the Push notifications toggle only saves a setting.
 - Alert toggles for fills, stop/target hits, payouts and the weekly summary are saved but have no sender yet. Squad XP is lifetime, not per season.
 
 Copy trading is risky. Nothing in Tribe is financial advice.

@@ -9,7 +9,12 @@ const cache = new Map<string, { at: number; price: number }>();
 const flashPrice: PriceFn = async (token) => {
   const hit = cache.get(token);
   if (hit && Date.now() - hit.at < 15_000) return hit.price;
-  const a = await searchAsset(token);
+  // The price source allows one call a second, so a recent price stands in when it's busy.
+  const a = await searchAsset(token).catch((e) => {
+    if (hit && Date.now() - hit.at < 120_000) return undefined;
+    throw e;
+  });
+  if (!a && hit) return hit.price;
   const price = Number(a?.price);
   if (!price) throw new Error(`no price for ${token}`);
   cache.set(token, { at: Date.now(), price });

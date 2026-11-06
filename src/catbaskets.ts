@@ -71,7 +71,7 @@ export async function prepareCopy(uid: number, v: BasketView, usdIn: number): Pr
   return {
     summary: `Copy ${v.name}: $${usd} across ${n}`, trades: [], basket: { id: v.id, usd },
     card: {
-      title: `${v.name} · Basket`, usd, kind: v.weights.length === 1 ? "One market order" : `${v.weights.length} market orders, one per token`, token: v.name, href: `/b/${v.id}#copy`,
+      title: `${v.name} · Trade`, usd, kind: v.weights.length === 1 ? "One market order" : `${v.weights.length} market orders, one per token`, token: v.name, href: `/b/${v.id}#copy`,
       fee: copyFee(v.owner, usd).fee, stopPct: v.stopPct || undefined, tpPct: v.tpPct || undefined,
       maxLoss: v.stopPct ? (usd * v.stopPct) / 100 : undefined, maxGain: v.tpPct ? (usd * v.tpPct) / 100 : undefined,
     },
@@ -114,10 +114,10 @@ function worstCase(v: BasketView, usd: number): string {
 export async function basketAnswer(uid: number, text: string, pinned?: number): Promise<BasketAnswer | undefined> {
   if (/\bmy (baskets?|cop(y|ies))\b|\bbaskets? (do|am) i\b/i.test(text)) {
     const mine = await myBasketFacts(uid);
-    if (!mine.length) return { reply: "You don't copy any baskets yet. Tell me what you're after: major coins, US stocks, altcoins or memes.", follow: [{ label: "Find a steady basket", text: "show me steady baskets" }, { label: "All baskets", href: "/feed?tab=top" }] };
+    if (!mine.length) return { reply: "You don't copy any trades yet. Tell me what you're after: major coins, US stocks, altcoins or memes.", follow: [{ label: "Find a steady basket", text: "show me steady baskets" }, { label: "All baskets", href: "/feed?tab=top" }] };
     const waiting = mine.filter((m) => m.rebalanceWaiting);
     return {
-      reply: `You copy ${mine.length} basket${mine.length === 1 ? "" : "s"}: ${mine.map((m) => `${m.basket} $${m.valueUsd.toFixed(2)} (${signed(m.profitPct)})`).join(", ")}.${waiting.length ? ` ${waiting.map((m) => m.basket).join(", ")} ${waiting.length === 1 ? "has a rebalance" : "have rebalances"} waiting for you.` : ""}`,
+      reply: `You copy ${mine.length} trade${mine.length === 1 ? "" : "s"}: ${mine.map((m) => `${m.basket} $${m.valueUsd.toFixed(2)} (${signed(m.profitPct)})`).join(", ")}.${waiting.length ? ` ${waiting.map((m) => m.basket).join(", ")} ${waiting.length === 1 ? "has a rebalance" : "have rebalances"} waiting for you.` : ""}`,
       follow: mine.slice(0, 3).map((m) => ({ label: m.basket, href: m.url })),
     };
   }
@@ -150,21 +150,21 @@ export async function basketAnswer(uid: number, text: string, pinned?: number): 
   const found = await findBaskets(uid, { ...asked, limit: 3 });
   const what = [asked.risk ? RISK_LEVELS[asked.risk].label.toLowerCase() : "", asked.assetClass ? ASSET_CLASSES[asked.assetClass].label : ""].filter(Boolean).join(" ");
   if (!found.length) {
-    if (!(await liveBaskets()).length) return { reply: "There are no baskets yet. You can build the first one from Portfolio, under Creating.", follow: [{ label: "Build a basket", href: "/baskets/new" }] };
-    return { reply: `Nothing fits ${what || "that"} right now, because I leave out paused creators and baskets you already copy. You could build one, or look wider.`, follow: [{ label: "All baskets", href: "/feed?tab=top" }, { label: "Build a basket", href: "/baskets/new" }] };
+    if (!(await liveBaskets()).length) return { reply: "There are no trades yet. You can build the first one from Portfolio, under Creating.", follow: [{ label: "Build a basket", href: "/baskets/new" }] };
+    return { reply: `Nothing fits ${what || "that"} right now, because I leave out paused creators and trades you already copy. You could build one, or look wider.`, follow: [{ label: "All baskets", href: "/feed?tab=top" }, { label: "Build a basket", href: "/baskets/new" }] };
   }
   const line = ({ v, read }: { v: BasketView; read: BasketRead }) => `${v.name} by @${v.handle} (${mixText(v)}; ${RISK_LEVELS[v.risk].label}; ${v.stopPct ? `stop −${v.stopPct}%` : "no stop"}; ${read.label})`;
   return {
     reply: `${what ? `For ${what}` : "Best protected first"}: ${found.map(line).join("; ")}. I rank on protection and fit, not on return: a basket's return is an index from prices, not profit anyone banked. These are options, not advice.`,
-    follow: found.map(({ v }) => ({ label: `Is ${v.name} worth copying?`, text: `Is the basket "${v.name}" worth copying?` })),
+    follow: found.map(({ v }) => ({ label: `Is ${v.name} worth copying?`, text: `Is the trade "${v.name}" worth copying?` })),
   };
 }
 
 /** Rules for the model, kept with the tools they belong to. */
 export const basketRules = () => [
-  `Baskets are Tribe's main product: a creator publishes a set of tokens with target weights, and a follower copies it into their own wallet with one Flash order per token. New weights never move anyone's money until they approve a rebalance. Each basket shows its make-up by class (Major coins, US stocks, Altcoins, Meme coins, Unclassified) and a risk band (Steady, Balanced, Aggressive).`,
-  `Think like a careful trader. Lead with make-up, risk band, stop and the creator's Guard status. Never rank or recommend on return: simulatedIndexReturnPct comes from token prices, not profit anyone banked, so always call it simulated and give its age, and treat a young basket's number as noise. Point out concentration, and that a basket of correlated coins isn't really diversified. "Unclassified" means nobody has reviewed that token: say so.`,
+  `Trades are Tribe's main product: a creator publishes a set of tokens with target weights, and a follower copies it into their own wallet with one Flash order per token. New weights never move anyone's money until they approve a rebalance. Each trade shows its make-up by class (Major coins, US stocks, Altcoins, Meme coins, Unclassified) and a risk band (Steady, Balanced, Aggressive).`,
+  `Think like a careful trader. Lead with make-up, risk band, stop and the creator's Guard status. Never rank or recommend on return: simulatedIndexReturnPct comes from token prices, not profit anyone banked, so always call it simulated and give its age, and treat a young basket's number as noise. Point out concentration, and that a trade of correlated coins isn't really diversified. "Unclassified" means nobody has reviewed that token: say so.`,
   `Stops are triggers, not guarantees: in a fast market or a thin pool they can fill worse, so call max loss an estimate. US stocks here are Coinbase tokenized stocks (NVDAc, AAPLc and others) and the deSPXA S&P 500 fund token. They trade around the clock on onchain pools, but the underlying market closes and their Chainlink feeds freeze on nights, weekends and holidays, so a pool price can drift from the last real price and a stop can fire on a thin overnight market. They aren't shares in a brokerage account. The issuer offers them only in eligible places outside the US, and wallets can be blocked. A broad fund spreads risk; one stock doesn't, and several big tech names tend to move together. MSTRc trades like leveraged Bitcoin, so MSTRc with cbBTC is one bet, not two.`,
-  `Give facts and trade-offs, never personal advice: don't say "you should", don't promise returns, and offer up to three options that fit. If someone asks what to invest in and hasn't said, ask what they're after and how much risk they want. Use find_baskets to search, basket_info for one basket, my_baskets for what they hold. To copy, call propose_basket_copy; they confirm on the card. If they say "buy" with a basket's name they mean copying it. If no amount was given, ask for one. Rebalances are approved on the basket's page, so link it.`,
-  isDry() ? "" : `Baskets are practice-only right now: real-money copies are switched off, so say that instead of offering one.`,
+  `Give facts and trade-offs, never personal advice: don't say "you should", don't promise returns, and offer up to three options that fit. If someone asks what to invest in and hasn't said, ask what they're after and how much risk they want. Use find_baskets to search, basket_info for one trade, my_baskets for what they hold. To copy, call propose_basket_copy; they confirm on the card. If they say "buy" with a basket's name they mean copying it. If no amount was given, ask for one. Rebalances are approved on the basket's page, so link it.`,
+  isDry() ? "" : `Trade copies use real money right now, so make that clear before offering one.`,
 ].filter(Boolean);

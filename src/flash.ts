@@ -60,6 +60,7 @@ export class FlashError extends Error {
  * 2+ calls per follower, so pace each bucket client-side instead of finding the limit through 429s.
  */
 const LIMIT_PER_SEC = 5;
+const SEARCH_PER_SEC = 1; // search runs on the shared public key (see below), which allows one call a second
 const sent = new Map<string, number[]>();
 const bucketOf = (method: string, path: string) => {
   const p = path.split("?")[0];
@@ -70,7 +71,7 @@ export async function pace(bucket: string) {
   for (;;) {
     const now = Date.now();
     const recent = (sent.get(bucket) ?? []).filter((t) => now - t < 1000);
-    if (recent.length < LIMIT_PER_SEC) { recent.push(now); sent.set(bucket, recent); return; }
+    if (recent.length < (bucket === "search" ? SEARCH_PER_SEC : LIMIT_PER_SEC)) { recent.push(now); sent.set(bucket, recent); return; }
     await new Promise((res) => setTimeout(res, 1000 - (now - recent[0]) + 5));
   }
 }

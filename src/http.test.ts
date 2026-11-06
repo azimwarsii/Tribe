@@ -411,7 +411,11 @@ test("web chrome: shell for signed-in pages, landing and sign-in when logged out
   // focus pages stay chrome-free
   assert.doesNotMatch((await anon("/onboarding")).text, /class="rail"/);
   // active sidebar item follows the path
-  assert.match((await c("/guard")).text, /class="side-item on" href="\/guard"/);
+  assert.match((await c("/trades")).text, /class="side-item on" href="\/trades"/);
+  assert.match((await c("/portfolio")).text, /class="side-item on" href="\/trades"/);
+  assert.match((await c("/guard")).text, /class="side-item on" href="\/settings"/); // Guard lives in Settings now
+  assert.doesNotMatch((await c("/feed")).text, /class="side-item[^"]*" href="\/(guard|portfolio)"/);
+  assert.match((await c("/settings")).text, /href="\/guard"/);
   // desktop profile copy opens the embedded wizard
   const lead = client();
   await lead("/api/signup", { handle: "lead9", persona: "Sniper" });
@@ -501,7 +505,7 @@ test("baskets over HTTP: build, copy, change weights, approve, close, and every 
   // The creator's page has their controls, the follower's the copy form; the builder only opens for its owner.
   assert.match((await maker(`/b/${id}`)).text, /Change weights/);
   assert.match((await fan(`/b/${id}`)).text, /action="\/api\/basket-copy"/);
-  assert.match((await fan(`/b/${id}/edit`)).text, /Basket not found/);
+  assert.match((await fan(`/b/${id}/edit`)).text, /Trade not found/);
   assert.match((await maker(`/u/basketmaker`)).text, new RegExp(`href="/b/${id}"`));
 
   const copied = await fan("/api/basket-copy", { basket: id, usd: 20 });
@@ -511,9 +515,10 @@ test("baskets over HTTP: build, copy, change weights, approve, close, and every 
   assert.match(mine, /Close this copy/);
   assert.equal((await fan("/baskets")).status, 404);
   const studio = (await maker("/portfolio?tab=creating")).text;
-  assert.match(studio, /Your baskets/);
-  assert.match(studio, /New basket/);
-  assert.doesNotMatch(studio, /New trade|New bot|href="\/trade\/new"|href="\/bots\/new"/);
+  assert.match(studio, /Your trades/);
+  assert.match(studio, /New trade/);
+  assert.doesNotMatch(studio, /New bot|href="\/trade\/new"|href="\/bots\/new"/); // every new trade starts in the 1-to-10 token builder
+  assert.match(studio, /href="\/trades\/new"/);
   assert.match((await fan("/feed?tab=top")).text, /Half &lt;b&gt;Half/);
   assert.match((await fan("/portfolio")).text, /Half &lt;b&gt;Half/);
   assert.match((await fan("/activity")).text, /Half &lt;b&gt;Half/);
@@ -535,7 +540,7 @@ test("baskets over HTTP: build, copy, change weights, approve, close, and every 
   assert.ok(!(await fan(`/b/${id}`)).text.includes("Your copy"));
 
   assert.equal((await fan(`/api/baskets/${id}/retire`, {})).status, 400);
-  assert.equal((await maker(`/api/baskets/${id}/retire`, {})).json.toast, "Basket retired");
+  assert.equal((await maker(`/api/baskets/${id}/retire`, {})).json.toast, "Trade retired");
   assert.match((await fan(`/b/${id}`)).text, /retired/);
 });
 
@@ -618,13 +623,13 @@ test("discover deck: one basket at a time, requests first, swipe to skip or copy
   let deck = (await me("/feed")).text;
   assert.ok(deck.includes(`data-basket="${b1}"`) && deck.includes(`data-basket="${b2}"`));
   assert.ok(!/class="swcard[^"]*" data-trade=/.test(deck), "no single trades in the deck");
-  assert.match(deck, /Safety read/);
-  assert.match(deck, /Copied by<\/div><div class="v" data-live="copiers">0 people/);
+  assert.doesNotMatch(deck, /Safety read|Guard passed/); // the card is the Basket Card design; the read lives on the basket's page
+  assert.match(deck, /COPIERS<\/span><span class="fv" data-live="copiers">0</);
   assert.doesNotMatch(deck, /id="swfollow"|class="dtabs"/); // no follow button, no feed tabs
   assert.match(deck, /data-open="mytribe"/); // portfolio, quests and the tribe sit behind one button on phones
   // The page keeps itself current: fresh numbers for the cards on screen, and new cards as baskets are published.
   const live = (await me(`/api/deck/live?ids=${b1},${b2}`)).json;
-  assert.ok(live[b1] && /people/.test(live[b1].copiers) && "since" in live[b1]);
+  assert.ok(live[b1] && /^\d+$/.test(live[b1].copiers) && "since" in live[b1]);
   const more = (await me(`/api/deck/cards?have=b${b1},b${b2}`)).json.html as string;
   assert.ok(!more.includes(`data-basket="${b1}"`) && !more.includes(`data-basket="${b2}"`), "cards already on screen aren't sent again");
   assert.ok((await me(`/api/deck/cards?have=b${b1}`)).json.html.includes(`data-basket="${b2}"`));
@@ -649,8 +654,8 @@ test("discover deck: one basket at a time, requests first, swipe to skip or copy
   assert.match(brief, /\d+ fills? read/);
   assert.match(bj.stats, /max DD/); // their record goes in its own card under the brief
   assert.match((await me("/api/deck/brief?h=nobody-here")).json.html, /couldn't find/i);
-  assert.equal((await me(`/api/deck/live?ids=${b2}`)).json[b2].copiers, "1 person"); // a count, not names
-  assert.match((await lead("/api/basket-copy", { basket: b2, usd: 5 })).json.error, /your own basket/);
+  assert.equal((await me(`/api/deck/live?ids=${b2}`)).json[b2].copiers, "1"); // a count, not names
+  assert.match((await lead("/api/basket-copy", { basket: b2, usd: 5 })).json.error, /your own trade/);
 
   // Ask-first copy requests jump to the front of the deck with their countdown.
   await publish("Deck Three");
@@ -696,7 +701,6 @@ test("leaderboard: in the nav next to Baskets, with search and new traders", asy
 
   const board = (await viewer("/feed?tab=top")).text;
   assert.match(board, /aria-label="Leaderboard"/);
-  assert.doesNotMatch(board, /aria-label="Baskets"/);
   assert.doesNotMatch(board, /aria-label="Signals"/);
   assert.equal((await fresh("/signals")).status, 404); // the Signals feature is gone; bots still trade through /cre/signal
   assert.match(board, /name="q"/);
@@ -814,7 +818,7 @@ test("every trade has a public page: details, share, comments; old links forward
   await c("/api/comment", { trade: tradeId, text: "Tight stop on this one" });
   // Signed out: the page opens for anyone, with the trade, its details, sharing and comments, and invites sign-in.
   const anon = await (await fetch(`${base}/t/${tradeId}`)).text();
-  for (const s of ['aria-label="Trade details"', "2300", "2800", 'aria-label="Share this trade"', `/t/${tradeId}`, "x.com/intent/post", "t.me/share", "wa.me", "Tight stop on this one", "On Tribe you copy baskets", "Sign in to react and comment", 'property="og:image"']) {
+  for (const s of ['aria-label="Trade details"', "2300", "2800", 'aria-label="Share this trade"', `/t/${tradeId}`, "x.com/intent/post", "t.me/share", "wa.me", "Tight stop on this one", "On Tribe you copy trades", "Sign in to react and comment", 'property="og:image"']) {
     assert.ok(anon.includes(s), `signed-out page shows ${s}`);
   }
   // Signed in as someone else: the comment box and a way to their baskets, but no copying this one trade.
@@ -854,7 +858,7 @@ test("Creator studio: trade ticket, bot trial, publish, copies and pay", async (
   const copiesOf = (trade: number) => (db.db.prepare("SELECT COUNT(*) AS n FROM copies WHERE trade_id = ? AND follower = ? AND status IN ('executed','dry-run')").get(trade, fan) as { n: number }).n;
 
   // A trade by hand needs a stop, then lands on its own page and is copied.
-  for (const p of ["/portfolio?tab=creating", "/trade/new", "/bots/new", "/creator/verify"]) assert.equal((await c(p)).status, 200, p);
+  for (const p of ["/portfolio?tab=creating", "/trades/new", "/bots/new", "/creator/verify"]) assert.equal((await c(p)).status, 200, p);
   assert.equal((await c("/api/trade/new", { usd: 20, stop: 0 })).status, 400, "no trade without a stop");
   const t = await c("/api/trade/new", { usd: 20, stop: 5, tp: 10, note: "Range low held" });
   assert.match(t.json.redirect, /^\/t\/\d+$/);
@@ -942,6 +946,31 @@ test("Deleting an account frees its wallet and ends the wallet session", async (
   assert.equal((await c("/feed")).status, 302, "signed out");
 });
 
+test("automatic signing: the embedded wallet takes over, auto copies open up, and open positions block the move", async () => {
+  const c = client();
+  await c("/api/signup", { handle: "autosign", persona: "Hodler" });
+  const u = db.userByHandle("autosign")!;
+  const embedded = "0x8aAB6863d537e47D75f2fF7Ddbbb7C5b076c4Eb8";
+  db.db.prepare("UPDATE users SET wallet_kind = 'external', pk = '', privy_user_id = 'did:privy:auto' WHERE id = ?").run(u.id);
+  const { enrollWallet, pickEmbedded } = await import("./privy-api.js");
+  const { isExternal } = await import("./wallet.js");
+
+  const outside = { type: "wallet", chain_type: "ethereum", address: "0x1", id: null, wallet_client_type: "metamask", connector_type: "injected" };
+  const inside = { type: "wallet", chain_type: "ethereum", address: embedded, id: "w1", wallet_client_type: "privy", connector_type: "embedded" };
+  assert.equal(pickEmbedded([outside, inside])?.id, "w1");
+  assert.equal(pickEmbedded([outside]), undefined, "an outside wallet can't delegate");
+
+  db.db.prepare("INSERT INTO positions (trader, token, qty, cost) VALUES (?, '0xabc', 1, 10)").run(u.id);
+  assert.throws(() => enrollWallet(u.id, "w1", embedded), /Close your open positions/);
+  db.db.prepare("DELETE FROM positions WHERE trader = ?").run(u.id);
+
+  enrollWallet(u.id, "w1", embedded);
+  const after = db.getUser(u.id);
+  assert.deepEqual([after.address, after.wallet_kind, after.privy_wallet_id, after.pk], [embedded, "privy", "w1", ""]);
+  assert.equal(isExternal(u.id), false, "copies no longer need a prompt");
+  assert.match((await c("/wallet")).text, /Tribe wallet/);
+});
+
 test("MetaMask bridge: an action's signature request reaches the open tab and the answer comes back", async () => {
   const c = client();
   await c("/api/signup", { handle: "mmuser", persona: "Hodler" });
@@ -1007,9 +1036,169 @@ test("Closing a position asks everyone holding a copy to sell theirs, and their 
 test("Every inline script on the main pages parses (a stray quote breaks a whole page)", async () => {
   const c = client();
   await c("/api/signup", { handle: "scriptcheck", persona: "Hodler" });
-  for (const path of ["/feed", "/baskets/new", "/trade/new", "/bots/new", "/portfolio?tab=creating", "/portfolio", "/settings", "/feed?tab=top"]) {
+  for (const path of ["/feed", "/trades/new", "/bots/new", "/portfolio?tab=creating", "/portfolio", "/settings", "/feed?tab=top"]) {
     const html = (await c(path)).text;
     const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
     for (const code of scripts) assert.doesNotThrow(() => new Function(code), `${path}: inline script has a syntax error`);
   }
+});
+
+test("basket cards: a published basket's card is served, shown to its owner, and a bad id is a 404", async () => {
+  const maker = client();
+  await maker("/api/signup", { handle: "cardmaker", avatar: 1, persona: "Sniper" });
+  const made = await maker("/api/baskets", { name: "Card <b>Basket", stopPct: 10, tpPct: 30, weights: basketWeights });
+  const basket = Number(/\/b\/(\d+)/.exec(made.json.redirect)![1]);
+  const { id } = db.db.prepare("SELECT id FROM basket_cards WHERE basket = ? AND kind = 'original'").get(basket) as { id: number };
+
+  const svg = await fetch(`${base}/card/${id}.svg`);
+  assert.equal(svg.status, 200);
+  assert.match(svg.headers.get("content-type") ?? "", /image\/svg\+xml/);
+  const text = await svg.text();
+  assert.match(text, /ORIGINAL/);
+  assert.ok(text.includes("Card &lt;b&gt;Basket"));
+
+  const meta = await (await fetch(`${base}/card/${id}.json`)).json() as { name: string; attributes: { trait_type: string; value: unknown }[] };
+  assert.equal(meta.attributes.find((a) => a.trait_type === "Tier")?.value, "BASE");
+
+  assert.match((await maker(`/b/${basket}`)).text, new RegExp(`/card/${id}\\.svg`));
+  assert.match((await maker("/trades")).text, new RegExp(`/card/${id}\\.svg`));
+  assert.match((await maker("/trades?tab=copied")).text, /No copies yet/);
+  assert.match((await maker("/trades")).text, /Minting…|class="ctile"/);
+  // Once minted, the card links to its NFT.
+  db.db.prepare("UPDATE basket_cards SET chain_tx = '0xabc' WHERE id = ?").run(id);
+  assert.match((await maker("/trades")).text, /class="cnft"[^>]*>View NFT|View NFT/);
+  assert.match((await maker(`/b/${basket}`)).text, /View NFT/);
+  db.db.prepare("UPDATE basket_cards SET chain_tx = NULL WHERE id = ?").run(id);
+
+  // A copy answers with the card it unlocked, so the page can show it; so does publishing by buying.
+  const copier = client();
+  await copier("/api/signup", { handle: "cardcopier", avatar: 1, persona: "Sniper" });
+  const copied = await copier("/api/basket-copy", { basket, usd: 20 });
+  assert.equal(copied.json.unlock.label, "Copy #1");
+  assert.equal(copied.json.unlock.href, `/b/${basket}#yours`);
+  assert.ok(Number(copied.json.unlock.card) > 0);
+  const published = await maker("/api/baskets", { name: "Bought Basket", stopPct: 10, tpPct: 30, usd: 20, weights: basketWeights });
+  assert.equal(published.json.unlock.label, "Original");
+  assert.match((await fetch(`${base}/app.js`).then((r) => r.text())), /function unlock\(u\)/);
+  assert.equal((await client()("/trades")).loc, "/signin");
+  assert.doesNotMatch((await client()(`/b/${basket}`)).text, /Your Tribe Trading Card/);
+  assert.equal((await fetch(`${base}/card/999999.svg`)).status, 404);
+  assert.equal((await fetch(`${base}/card/nope.json`)).status, 404);
+});
+
+test("the feed dresses a basket by its return since launch, and live updates carry the change", async () => {
+  const you = client();
+  await you("/api/signup", { handle: "finishviewer", avatar: 1, persona: "Sniper" });
+  const maker = client();
+  await maker("/api/signup", { handle: "finishmaker", avatar: 1, persona: "Sniper" });
+  const made = await maker("/api/baskets", { name: "Finish Line", stopPct: 10, tpPct: 30, weights: basketWeights });
+  const id = Number(/\/b\/(\d+)/.exec(made.json.redirect)![1]);
+  const card = async () => (new RegExp(`<article class="([^"]*)" data-basket="${id}"`).exec((await you("/feed")).text) ?? [])[1];
+  const live = async () => (await you(`/api/deck/live?ids=${id}`)).json[id].finish;
+
+  assert.equal(await card(), "swcard fin-base");
+  assert.equal(await live(), "base");
+  const face = (await you("/feed")).text.split(`data-basket="${id}"`)[1].split("</article>")[0];
+  assert.match(face, /Aim <b class="up">\+30%/); // the basket's target, where the worst case used to be
+  assert.doesNotMatch(face, /Worst case/);
+  try {
+    prices.setPriceProvider(async () => 2500 * 1.12);
+    assert.equal(await card(), "swcard fin-glitter");
+    assert.equal(await live(), "glitter");
+    prices.setPriceProvider(async () => 2500 * 1.3);
+    assert.equal(await card(), "swcard fin-holo");
+    assert.equal(await live(), "holo");
+  } finally {
+    prices.setPriceProvider(async () => 2500);
+  }
+  assert.equal(await card(), "swcard fin-base"); // the feed follows the return back down
+});
+
+test("old links land on the new addresses, and a new trade of any size starts in one builder", async () => {
+  const c = client();
+  await c("/api/signup", { handle: "oldlinks", avatar: 1, persona: "Sniper" });
+  assert.equal((await c("/collection?tab=copied")).loc, "/trades?tab=copied");
+  assert.equal((await c("/baskets/new")).loc, "/trades/new");
+  assert.equal((await c("/trade/new")).loc, "/trades/new");
+  assert.equal((await c("/trades")).status, 200);
+  const builder = (await c("/trades/new")).text;
+  assert.match(builder, /New trade/);
+  assert.match(builder, /1 to 10 tokens/);
+  // A single token is just a trade with one token: it publishes, and it earns a card like any other.
+  const one = await c("/api/baskets", { name: "One Token", stopPct: 10, usd: 20, weights: [basketWeights[0] && { token: basketWeights[0].token, weight: 100 }] });
+  assert.equal(one.json.unlock.label, "Original");
+});
+
+test("a swipe doesn't call the follow button that was removed", async () => {
+  // A leftover call makes every swipe throw, and a copy that worked then ends on "Network error".
+  const me = client();
+  await me("/api/signup", { handle: "swipescript", avatar: 1, persona: "Sniper" });
+  const html = (await me("/feed")).text;
+  assert.match(html, /function fly\(/);
+  assert.doesNotMatch(html, /[^.\w]follow\(\)/);
+});
+
+test("every page links the manifest, and the manifest's icons are real PNGs of the stated size", async () => {
+  const html = await (await fetch(`${base}/signin`)).text();
+  assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/);
+  const r = await fetch(`${base}/manifest.webmanifest`);
+  assert.match(r.headers.get("content-type") ?? "", /application\/manifest\+json/);
+  const m = await r.json();
+  assert.equal(m.display, "standalone");
+  assert.equal((await fetch(base + m.start_url, { redirect: "manual" })).headers.get("location"), "/signin");
+  assert.ok(m.icons.some((i: { purpose?: string }) => i.purpose === "maskable"));
+  for (const i of [...m.icons, { src: "/apple-touch-icon.png", sizes: "180x180" }]) {
+    const png = Buffer.from(await (await fetch(base + i.src)).arrayBuffer());
+    assert.equal(png.subarray(1, 4).toString(), "PNG", i.src);
+    assert.equal(`${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`, i.sizes, i.src);
+  }
+});
+
+test("the offline page the worker stores carries no account data, even when a signed-in browser fetches it", async () => {
+  const me = client();
+  await me("/api/signup", { handle: "offlineuser", avatar: 1, persona: "Sniper" });
+  const { text } = await me("/offline");
+  assert.match(text, /You're offline/);
+  assert.doesNotMatch(text, /offlineuser|class="side"/);
+});
+
+test("the service worker answers navigations only, falls back to the offline page, and stores nothing else", async () => {
+  const r = await fetch(`${base}/sw.js`);
+  assert.equal(r.headers.get("cache-control"), "no-cache");
+  const on: Record<string, (e: any) => void> = {};
+  const stored: string[] = [];
+  const deleted: string[] = [];
+  const cache = { add: async (u: string) => void stored.push(u), put: async (u: string) => void stored.push(u) };
+  const caches = { open: async () => cache, keys: async () => ["tribe-old"], delete: async (k: string) => void deleted.push(k), match: async (u: string) => `cached:${u}` };
+  const self = { addEventListener: (t: string, f: (e: any) => void) => (on[t] = f), skipWaiting: async () => {}, clients: { claim: async () => {} }, registration: {} };
+  let online = true;
+  const net = async () => { if (!online) throw new TypeError("offline"); return "network"; };
+  new Function("self", "caches", "fetch", await r.text())(self, caches, net);
+
+  let installed: Promise<unknown> | undefined;
+  on.install({ waitUntil: (p: Promise<unknown>) => (installed = p) });
+  await installed;
+  assert.deepEqual(stored, ["/offline"]);
+  on.activate({ waitUntil: (p: Promise<unknown>) => (installed = p) });
+  await installed;
+  assert.deepEqual(deleted, ["tribe-old"]);
+
+  const go = (mode: string) => {
+    let res: Promise<unknown> | undefined;
+    on.fetch({ request: { mode }, preloadResponse: Promise.resolve(undefined), respondWith: (p: Promise<unknown>) => (res = p) });
+    return res;
+  };
+  assert.equal(go("cors"), undefined); // API calls, orders and the signing long-poll never touch the worker
+  assert.equal(go("same-origin"), undefined);
+  assert.equal(await go("navigate"), "network");
+  online = false;
+  assert.equal(await go("navigate"), "cached:/offline");
+  assert.deepEqual(stored, ["/offline"]); // a page that loaded fine was not kept
+});
+
+test("Settings offers the install, hidden until the browser can do it", async () => {
+  const me = client();
+  await me("/api/signup", { handle: "installer", avatar: 1, persona: "Sniper" });
+  assert.match((await me("/settings")).text, /<div data-install hidden>/);
+  assert.match(await (await fetch(`${base}/app.js`)).text(), /serviceWorker\.register\('\/sw\.js'\)/);
 });

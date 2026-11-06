@@ -2,11 +2,23 @@
 export const CLIENT_JS = `(function(){
 var $=function(s,r){return (r||document).querySelector(s)},$$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
 var tt;function toast(m){var t=$('#toast');if(!t)return;$('#toast-t').textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('show')},2800)}
-window.tribe={toast:toast,sheet:sheet};
+window.tribe={toast:toast,sheet:sheet,unlock:unlock};
 try{var p=sessionStorage.getItem('toast');if(p){sessionStorage.removeItem('toast');toast(p)}}catch(e){}
 function post(url,body){return fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().catch(function(){return {}}).then(function(j){j.ok=r.ok;return j})})}
+// A trade just earned a card: it arrives locked, the lock opens, and the card shows. Close stays here; Go to trade opens it.
+function unlock(u){var old=$('.unlock');if(old)old.remove();
+ var d=document.createElement('div');d.className='unlock';d.setAttribute('role','dialog');d.setAttribute('aria-modal','true');d.setAttribute('aria-label','Tribe Trading Card unlocked');
+ d.innerHTML='<div class="uncard"><div class="unglow"></div><img alt="" width="360" height="504"><div class="unsheen"></div><svg class="unlockicon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="unshackle" d="M8 11V7a4 4 0 0 1 8 0v4"/><rect x="5" y="11" width="14" height="10" rx="2.5" fill="rgba(0,0,0,.55)"/></svg></div><div class="untext"><b>Card unlocked</b><span data-l></span></div><div class="unbtns"><button class="btn" type="button" data-close>Close</button><button class="btn p" type="button" data-go>Go to trade</button></div>';
+ $('img',d).src='/card/'+u.card+'.svg';$('[data-l]',d).textContent='Tribe Trading Card \u00b7 '+u.label;
+ var here=location.pathname==='/feed';
+ function leave(){location.href=u.href;if(new URL(u.href,location.href).pathname===location.pathname)location.reload()}
+ function close(){document.removeEventListener('keydown',esc);if(here)d.remove();else leave()}
+ function esc(e){if(e.key==='Escape')close()}
+ $('[data-close]',d).onclick=close;$('[data-go]',d).onclick=leave;document.addEventListener('keydown',esc);
+ document.body.appendChild(d);$('[data-go]',d).focus()}
 function done(res){
   if(res.error){toast(res.error);return}
+  if(res.unlock){if(res.toast)try{sessionStorage.setItem('toast',res.toast)}catch(e){};unlock(res.unlock);return}
   if(res.redirect){if(res.toast)try{sessionStorage.setItem('toast',res.toast)}catch(e){};var to=new URL(res.redirect,location.href);location.href=res.redirect;if(to.pathname===location.pathname&&to.search===location.search)location.reload();return}
   if(res.reload){if(res.toast)try{sessionStorage.setItem('toast',res.toast)}catch(e){};location.reload();return}
   if(res.toast)toast(res.toast)
@@ -51,6 +63,14 @@ document.addEventListener('input',function(e){var i=e.target;if(!i.name)return;v
 $$('[data-autoopen]').forEach(function(a){sheet(a.dataset.autoopen,true)});
 $$('[data-auto]').forEach(function(a){setTimeout(function(){location.href=a.dataset.auto},Number(a.dataset.delay||2200))});
 $$('[data-autogrow]').forEach(function(a){a.addEventListener('input',function(){a.style.height='auto';a.style.height=a.scrollHeight+'px'})});
+
+// Installed app: register the worker, and let Settings offer the install where this browser can do it.
+(function(){if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})});
+var box=$('[data-install]');if(!box||matchMedia('(display-mode: standalone)').matches||navigator.standalone)return;
+var btn=$('[data-install-btn]',box);
+if(/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){$('[data-install-text]',box).textContent='In Safari, tap Share, then Add to Home Screen';btn.style.display='none';box.hidden=false}
+addEventListener('beforeinstallprompt',function(e){e.preventDefault();box.hidden=false;btn.onclick=function(){e.prompt();e.userChoice.then(function(c){if(c.outcome==='accepted')box.hidden=true})}});
+addEventListener('appinstalled',function(){box.hidden=true})})();
 
 // MetaMask bridge (live mode, own-wallet accounts): when an action needs a signature, the server queues it, this tab
 // claims it, MetaMask shows it, and the answer goes back. Nothing is signed without the user confirming in MetaMask.

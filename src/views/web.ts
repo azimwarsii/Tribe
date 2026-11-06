@@ -1,10 +1,10 @@
+import { openCopies } from "../baskets.js";
 import { basketHoldingsHtml } from "./baskets.js";
-import { statSync } from "node:fs";
 import { allHalts, db, followingOf, getMeta, pendingFor, userById } from "../db.js";
 import { face, copyPnlByLeader, initials, money, monthlyHistory, ORDER_LABEL, openPositions, pct, portfolio, ago, topTraders, type MonthRow } from "../data.js";
 import { creatorEarnings } from "./me.js";
 import { creatingTabHtml } from "./creator.js";
-import { esc, header, icon, money2, page, seg, signCls } from "../ui.js";
+import { bundleVersion, esc, header, icon, money2, page, seg, signCls } from "../ui.js";
 import type { Trade } from "../flash.js";
 
 const BOT = () => process.env.BOT_USERNAME ?? "TribeTradeBot";
@@ -66,7 +66,7 @@ export type PortfolioTab = "investing" | "creating";
 export const portfolioTab = (t: unknown): PortfolioTab => (t === "creating" ? t : "investing");
 
 export async function portfolioPage(uid: number, tab: PortfolioTab = "investing"): Promise<string> {
-  const head = `${header("Portfolio", tab === "creating" ? "Build baskets, get paid when people copy you" : "Positions, requests, traders and funds", "/feed", tab === "creating" ? `<a class="ic" href="/share/me" aria-label="Share your profile">${icon("share", 17, "currentColor", 2)}</a>` : "")}
+  const head = `${header("Portfolio", tab === "creating" ? "Build trades, get paid when people copy you" : "Positions, requests, traders and funds", "/feed", tab === "creating" ? `<a class="ic" href="/share/me" aria-label="Share your profile">${icon("share", 17, "currentColor", 2)}</a>` : "")}
 <div class="main" style="flex:none;padding-bottom:14px">${seg([{ label: "Investing", href: "/portfolio", on: tab === "investing" }, { label: "Creating", href: "/portfolio?tab=creating", on: tab === "creating" }], false, "Portfolio")}</div>`;
   if (tab === "creating") return page({ title: "Portfolio", nav: "me", body: `${head}${await creatingTabHtml(uid)}` });
   const pf = await portfolio(uid);
@@ -86,12 +86,12 @@ export async function portfolioPage(uid: number, tab: PortfolioTab = "investing"
 
   const history = madeByMonth(monthlyHistory(uid), true);
   const body = `${head}<main class="main" style="gap:16px">
-<div class="grid2 pgrid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">${tile("Wallet balance", money(pf.total), `${money(pf.free)} free`)}${tile("In copies", money(pf.inCopies), `${follows.length} traders`)}${tile("Unrealized PnL", `${unreal >= 0 ? "+" : "−"}${money(Math.abs(unreal))}`, `${open.length} positions`, signCls(unreal))}${tile("Creator earned", money(cr.accrued), `${cr.copiers} copiers`, "up")}</div>
+<div class="grid2 pgrid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">${tile("Wallet balance", money(pf.total), `${money(pf.free)} free`)}${tile("In copies", money(pf.inCopies), `Copying ${follows.length + openCopies(uid)}`)}${tile("Unrealized PnL", `${unreal >= 0 ? "+" : "−"}${money(Math.abs(unreal))}`, `${open.length} positions`, signCls(unreal))}${tile("Creator earned", money(cr.accrued), `${cr.copiers} copiers`, "up")}</div>
 <div class="col" style="gap:16px">
 <section class="card" style="padding:0"><div class="row sp" style="padding:16px 16px 8px"><h2>Positions</h2><span class="sm mut">Each keeps its own stop and target</span></div>
-<div class="only-d" style="padding:0 8px 8px;overflow-x:auto"><table class="tbl"><thead><tr><th>Token</th><th>From</th><th>Size</th><th>Stop / target</th><th>PnL</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="mut">Nothing open. Copy a basket from the feed.</td></tr>'}</tbody></table></div>
+<div class="only-d" style="padding:0 8px 8px;overflow-x:auto"><table class="tbl"><thead><tr><th>Token</th><th>From</th><th>Size</th><th>Stop / target</th><th>PnL</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="mut">Nothing open. Copy a trade from the feed.</td></tr>'}</tbody></table></div>
 <div class="only-m" style="padding:0 16px 12px">${cards || '<div class="sm mut" style="padding:8px 0">Nothing open.</div>'}<a class="sm" href="/positions" style="display:block;padding-top:10px">Manage positions ›</a></div></section>
-<section class="card"><div class="row sp"><h2>Baskets</h2><a class="sm" href="/feed?tab=top">All baskets ›</a></div>${await basketHoldingsHtml(uid)}</section>
+<section class="card"><div class="row sp"><h2>Trades</h2><a class="sm" href="/feed?tab=top">All trades ›</a></div>${await basketHoldingsHtml(uid)}</section>
 ${history}
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px;align-items:start">
 <section class="card"><div class="row sp"><h2>Copy requests</h2><span class="sm mut">${pend.length} pending</span></div>
@@ -131,21 +131,13 @@ export function landingPage(): string {
 <div class="row" style="left:40px;bottom:10px;gap:12px;padding:14px 18px;border-radius:26px;background:#161616;border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 40px rgba(0,0,0,.5)"><span class="orb" style="width:30px;height:30px"><i></i></span><span style="font-size:15px;color:#E5E5E5">“buy $50 ETH with a 5% stop”</span></div></div></section>
 <section id="guard" class="feat">${feat("bolt", "#34D399", "Flash copy trading", "Entry, stop and target copy together as one Flash order, at the size you choose. Approve each trade or let it run.")}${feat("shield", "#34D399", "CRE Guard", "Every 5 minutes Chainlink CRE checks each trader. Risky ones are paused onchain, and anyone can verify why.")}</section>
 <section id="how" class="lsec"><h2>How copying works</h2><ol class="steps" style="padding:0">${step("01", "Pick a trader", "Real onchain results, Guard record and copy slippage.")}${step("02", "Set your limits", "Budget, size per trade, stops required.")}${step("03", "They trade", "Guard checks them, then your filters.")}${step("04", "You copy", "Approve in a tap, or let it run. Stops come along.")}</ol></section>
-<section id="creators" class="cta"><div style="flex:1"><h2 style="margin:0;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em">Good trader? Get paid when people copy you.</h2><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.55">Publish a basket or a bot you build. Every copy earns you a share of the Flash fee.</p></div><a class="btn w big" href="/onboarding" style="width:auto;padding:0 26px">Become a creator</a></section>
+<section id="creators" class="cta"><div style="flex:1"><h2 style="margin:0;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em">Good trader? Get paid when people copy you.</h2><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.55">Publish a trade or a bot you build. Every copy earns you a share of the Flash fee.</p></div><a class="btn w big" href="/onboarding" style="width:auto;padding:0 26px">Become a creator</a></section>
 <footer style="padding:26px 24px;border-top:1px solid #1A1A1A;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font-size:13px;color:#8A8A8A"><span style="max-width:760px">Copy trading is risky. Past results don't predict future ones. Guard reduces but can't remove losses. Not financial advice.</span><span>Terms · Privacy · Risk disclosure</span></footer>
 `;
   return page({ title: "Copy great traders", body, focus: true, extraClass: "landing" });
 }
 
 /** Changes whenever the bundle is rebuilt, so browsers never run a stale cached copy. */
-function bundleVersion(file: string): string {
-  try {
-    return Math.round(statSync(new URL(`../../public/${file}`, import.meta.url)).mtimeMs).toString(36);
-  } catch {
-    return "0";
-  }
-}
-
 export function signinPage(demo: boolean): string {
   const ready = !!process.env.PRIVY_APP_ID;
   const body = `${header("Sign in", "Tribe", "/")}<main class="main"><div class="card col" style="gap:10px"><h2>Welcome to Tribe</h2><p class="mut md" style="margin:0;line-height:1.5">Sign in with your wallet. New here? You'll pick a username next.</p>

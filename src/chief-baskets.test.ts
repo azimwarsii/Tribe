@@ -119,8 +119,8 @@ test("the feed has no filter row and no Basket labels, and an old saved filter h
   assert.doesNotMatch(page, /class="dfilter"|data-asset=/);
   assert.ok(shown((await deckCards(me)).html).includes("Blue Test"), "every basket is dealt");
   const body = page.replace(/<style>[\s\S]*?<\/style>/g, "").replace(/<script[\s\S]*?<\/script>/g, "");
-  assert.doesNotMatch(body, />Baskets?</);
-  assert.doesNotMatch(body, /Basket · /);
+  assert.doesNotMatch(body, />Trades?</);
+  assert.doesNotMatch(body, /Trade · /);
 });
 
 test("active trades from a basket open the basket: its orders have no trade page", async () => {
@@ -139,8 +139,8 @@ test("Portfolio holds both jobs: Investing by default, Creating as a tab, with o
   assert.match(invest, /Wallet balance/);
   assert.match(invest, /href="\/portfolio\?tab=creating"/);
   const create = await portfolioPage(creator, "creating");
-  assert.match(create, /New basket/);
-  assert.match(create, /Your baskets/);
+  assert.match(create, /New trade/);
+  assert.match(create, /Your trades/);
   assert.match(create, /Earned · all time/);
   assert.doesNotMatch(create, /Wallet balance/);
 });
@@ -173,7 +173,7 @@ test("offline: 'buy $20 of' a basket prepares a copy of it, never a token order"
   assert.ok(done.ok, done.reply);
   assert.match(done.reply, /Copied \$20 across 2 tokens/);
   assert.equal(db.prepare("SELECT status FROM basket_copies WHERE follower = ?").get(me)!.status, "filled");
-  assert.match((await ask(me, "how are my baskets doing?")).reply, /You copy 1 basket: Blue Test/);
+  assert.match((await ask(me, "how are my baskets doing?")).reply, /You copy 1 trade: Blue Test/);
 });
 
 test("offline: copying asks how much, and your limits answer back", async () => {
@@ -236,16 +236,15 @@ test("confirming tells the page whether it was practice, so it never claims onch
 test("plain token orders still work next to all this", async () => {
   const r = await ask(user(), "buy $20 ETH with 5% stop");
   assert.ok(r.proposalId);
-  assert.doesNotMatch(r.card!.title, /Basket/);
+  assert.doesNotMatch(r.card!.title, /Trade/);
   assert.equal(r.card!.href, undefined);
 });
 
-test("real money stays off through Chief too", async () => {
+test("the real-money cap applies through Chief too", async () => {
   process.env.DRY_RUN = "false";
   try {
-    const r = await ask(user(), "copy $20 of Blue Test");
+    const r = await ask(user(), "copy $400 of Blue Test");
     assert.equal(r.proposalId, undefined);
-    assert.match(r.reply, /practice mode/);
   } finally {
     process.env.DRY_RUN = "true";
   }
@@ -286,7 +285,7 @@ test("model: Chief is told about baskets, and given the tools to work with them"
   const names = requests[0].tools.map((t) => t.function.name);
   for (const t of ["find_baskets", "basket_info", "my_baskets", "propose_basket_copy"]) assert.ok(names.includes(t), t);
   const system = requests[0].messages[0].content!;
-  assert.match(system, /Baskets are Tribe's main product/);
+  assert.match(system, /Trades are Tribe's main product/);
   assert.match(system, /Never rank or recommend on return/);
   assert.match(system, /triggers, not guarantees/);
   assert.match(system, /never personal advice/);
@@ -310,7 +309,7 @@ test("model: basket_info shows Chief's read and pins the chat to that basket", a
   const r = await withModel([call("basket_info", { basket: "Naked Test" }), say("It has no stop.")], () => ask(me, "tell me about Naked Test"));
   assert.ok(r.verdict);
   await withModel([say("Still that one.")], () => ask(me, "and the risk?", r.chatId));
-  assert.match(requests[0].messages[0].content!, /This chat is about the basket "Naked Test"/);
+  assert.match(requests[0].messages[0].content!, /This chat is about the trade "Naked Test"/);
 });
 
 test("model: it can prepare a copy, the user confirms, and a refused amount comes back as the reason", async () => {

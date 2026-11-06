@@ -18,21 +18,21 @@ Reset between takes with `npm run demo:reset` (stop and restart `npm run demo`).
 ## Beats
 | # | Say | Do | What the viewer sees |
 | --- | --- | --- | --- |
-| 0 | "Copy trading usually means blind trust in one trade. Tribe lets you copy a whole basket, with a safety net." | Phone: Feed. | A basket card: its mix by asset class, risk band, make-up bar, return since launch, the safety read. |
-| 1 | "Anyone can build one." | Phone: Portfolio → **Creating** → **New basket**. Add tokens, set weights, pick a stop, publish. | Weights must reach 100% before **Publish basket** unlocks. |
-| 2 | "@nightowl publishes a basket." | Director: **1 · A creator publishes a basket**. | It slides into the feed. |
-| 3 | "One tap copies it. Each token is its own Flash order with its own stop, in my own wallet." | Director: **2 · You copy it**, or swipe right in the Feed and **Confirm & sign**. | Portfolio → Baskets, with each token's value and weight. |
-| 4 | "When the creator changes the weights, nothing happens to my money until I say so." | Director: **3 · The creator changes the weights**. Phone: Portfolio → the basket marked rebalance waiting. | A rebalance request with the exact sells and buys. Tap **Approve**. |
+| 0 | "Copy trading usually means blind trust in one trade. Tribe lets you copy a whole trade, with a safety net." | Phone: Feed. | A trade card: its mix by asset class, risk band, make-up bar, return since launch, the safety read. |
+| 1 | "Anyone can build one." | Phone: Portfolio → **Creating** → **New trade**. Add tokens, set weights, pick a stop, publish. | Weights must reach 100% before **Publish trade** unlocks. |
+| 2 | "@nightowl publishes a trade." | Director: **1 · A creator publishes a trade**. | It slides into the feed. |
+| 3 | "One tap copies it. Each token is its own Flash order with its own stop, in my own wallet." | Director: **2 · You copy it**, or swipe right in the Feed and **Confirm & sign**. | Portfolio → Trades, with each token's value and weight. |
+| 4 | "When the creator changes the weights, nothing happens to my money until I say so." | Director: **3 · The creator changes the weights**. Phone: Portfolio → the trade marked rebalance waiting. | A rebalance request with the exact sells and buys. Tap **Approve**. |
 | 5 | "If a token won't fill, I'm not stuck." | Director: **4 · One token won't fill**. Phone: Portfolio → the copy marked partly filled → **Try again**. | The missing token fills. **Close this copy** sells everything instead. |
-| 6 | "Baskets move by what's in them." | Director: **5 · The market pumps**. | Volatile baskets move more than steady ones. |
-| 7 | "Now a creator blows up." | Director: **6 · CRE Guard pauses @traderx**. | Guard tab: red paused card, "Proof onchain". Their basket **All Gas** can't be copied. |
+| 6 | "Trades move by what's in them." | Director: **5 · The market pumps**. | Volatile trades move more than steady ones. |
+| 7 | "Now a creator blows up." | Director: **6 · CRE Guard pauses @traderx**. | Guard tab: red paused card, "Proof onchain". Their trade **All Gas** can't be copied. |
 | 8 | "Chainlink CRE read their drawdown, an AI judged the grey zone, and the verdict landed in a contract." | Phone: Guard → open the incident. | The reason and the proof onchain. |
-| 9 | "I can check before I copy." | Phone: the safety read on any basket card in the feed. | The safety read: the make-up, the stop, the spread and the creator's Guard status. |
-| 10 | "And it is social." | Phone: Feed → **Top**, then a basket's share button. | Basket leaderboard and share image. |
+| 9 | "I can check before I copy." | Phone: the safety read on any trade card in the feed. | The safety read: the make-up, the stop, the spread and the creator's Guard status. |
+| 10 | "And it is social." | Phone: Feed → **Top**, then a trade's share button. | Trade leaderboard and share image. |
 | 11 | "Guard clears them when risk falls." | Director: **7 · Guard clears @traderx**. | Guard history shows halt then clear. |
 
 ## Live segment (real onchain, about 45 seconds)
-Baskets are practice-only for now, so this segment shows single Flash orders from `flash:check` or the trade form at `/trade/new`, not a live basket.
+Real-money trades are in testing, so this segment shows single Flash orders from `flash:check` or the trade form at `/trade/new`, not a live trade.
 
 Do this off camera first, then record.
 1. **Flash, a real order.** Record the seeded app with real prices and real orders: put `LIVE_WALLETS=you:0x…,kestrel:0x…` in `.env` (Base mainnet, each about $25 USDC and $1 of ETH; kestrel's bot trades $25, or set it lower on its Your bot page), then `npm run demo:reset:live && npm run demo:live`. Either run `npm run flash:check -- --live 5` on camera (prints the approval tx, the order id, the fill and its basescan link), or place one at `/trade/new` and tap **filled onchain ↗**. Show the bracket resting on Positions, then **move the stop** (a signed Flash update, no gas).

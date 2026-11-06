@@ -3,7 +3,7 @@
  * only allows what Tribe needs to trade on Flash for that user:
  *   - Flash orders (EIP-712 FlashOrder on the Flash contract) whose swapper and recipient are the user's own wallet,
  *   - Permit2 permits whose spender is the Flash contract,
- *   - ERC-20 approve() calls whose spender is the Flash contract or Permit2,
+ *   - ERC-20 approve() calls on Base, carrying no ETH, whose spender is the Flash contract or Permit2,
  *   - Flash's plain-text cancel and stop-update messages.
  * Anything else (a transfer out, an order paying someone else, any other contract) is refused by Privy, so even a
  * compromised Tribe server cannot move a user's funds away. The private key never leaves Privy.
@@ -56,6 +56,9 @@ export function walletPolicy(address: string) {
   ];
   const order = (field: string) => ({ field_source: "ethereum_typed_data_message", typed_data: { primary_type: "FlashOrder", types: FLASH_ORDER_TYPES }, field, operator: "in", value: spellings(address) });
   const approve = [
+    // Without these, approve() calldata sent to any address could carry the wallet's ETH with it.
+    { field_source: "ethereum_transaction", field: "chain_id", operator: "eq", value: BASE_CHAIN_ID },
+    { field_source: "ethereum_transaction", field: "value", operator: "eq", value: "0" },
     { field_source: "ethereum_calldata", abi: APPROVE_ABI, field: "function_name", operator: "eq", value: "approve" },
     { field_source: "ethereum_calldata", abi: APPROVE_ABI, field: "approve.spender", operator: "in", value: spellings(FLASH_CONTRACT, PERMIT2) },
   ];
@@ -83,6 +86,10 @@ export async function createWalletPolicy(address: string, ownerUserId?: string):
   const p = await privy().policies().create(body as never);
   return p.id;
 }
+
+/** Is Tribe a signer on this wallet, limited by exactly this policy? An unlimited signer doesn't count. */
+export const tribeSignerActive = (wallet: { additional_signers?: { signer_id: string; override_policy_ids?: string[] }[] }, quorumId: string, policyId: string) =>
+  (wallet.additional_signers ?? []).some((s) => s.signer_id === quorumId && s.override_policy_ids?.length === 1 && s.override_policy_ids[0] === policyId);
 
 /** A viem account that signs through Privy as Tribe's signer on the user's wallet (subject to the wallet's policy). */
 export const privyAccount = (walletId: string, address: `0x${string}`) => createViemAccount(privy(), { walletId, address, authorizationContext: tribeAuth() });

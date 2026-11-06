@@ -60,7 +60,7 @@ ${reactBar(c.id, viewer)}
 ${onPage ? `<button type="button" class="chip" data-open="comments" aria-label="${c.comments} comments">${icon("chat", 14, "currentColor", 2)}${c.comments}</button>` : `<a class="chip" href="/t/${c.id}#comments" aria-label="${c.comments} comments">${icon("chat", 14, "currentColor", 2)}${c.comments}</a>`}
 ${own && !c.copiers ? '<span class="grow"></span>' : copiedBy(c)}</div>
 ${onPage ? "" : `<div style="display:grid;grid-template-columns:minmax(0,1fr) 46px;gap:8px">
-${own ? `<a class="btn" href="/u/${esc(c.handle)}">Your trade</a>` : paused ? `<a class="btn" href="/guard">${icon("shield", 15, "currentColor", 1.9)}Why paused</a>` : copying ? `<a class="btn" href="/traders">Copying · manage</a>` : c.trade.side === "buy" ? `<a class="btn p" href="/u/${esc(c.handle)}#baskets">${icon("list", 14, "currentColor", 2)}Their baskets</a>` : `<button class="btn" data-act="/api/watch" data-body='{"leader":"${esc(c.handle)}"}'>Follow @${esc(c.handle)}</button>`}
+${own ? `<a class="btn" href="/u/${esc(c.handle)}">Your trade</a>` : paused ? `<a class="btn" href="/guard">${icon("shield", 15, "currentColor", 1.9)}Why paused</a>` : copying ? `<a class="btn" href="/traders">Copying · manage</a>` : c.trade.side === "buy" ? `<a class="btn p" href="/u/${esc(c.handle)}#baskets">${icon("cards", 14, "currentColor", 2)}Their trades</a>` : `<button class="btn" data-act="/api/watch" data-body='{"leader":"${esc(c.handle)}"}'>Follow @${esc(c.handle)}</button>`}
 <a class="btn" style="padding:0" href="/t/${c.id}#share" aria-label="Share">${icon("share", 16, "currentColor", 2)}</a></div>`}</article>`;
 }
 

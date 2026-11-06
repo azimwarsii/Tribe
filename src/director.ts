@@ -19,7 +19,7 @@ let launched = 0;
 /** The newest basket @nightowl published. */
 const latest = () => {
   const b = db.prepare("SELECT id FROM baskets WHERE owner = ? ORDER BY id DESC LIMIT 1").get(who("nightowl")) as { id: number } | undefined;
-  if (!b) throw new Error("Run beat 1 first: @nightowl has no basket yet.");
+  if (!b) throw new Error("Run beat 1 first: @nightowl has no trade yet.");
   return b.id;
 };
 
@@ -27,7 +27,7 @@ const latest = () => {
 export const BEATS: Beat[] = [
   {
     id: "basket-launch",
-    title: "1 · A creator publishes a basket",
+    title: "1 · A creator publishes a trade",
     say: "@nightowl picks tokens and weights and publishes. It slides into the feed for anyone to copy.",
     run: async () => {
       const id = await createBasket(who("nightowl"), { name: `Night Index ${++launched}`, thesis: "Half ETH, the rest spread across Base.", stopPct: 10, tpPct: 40, weights: [{ token: sym("ETH"), weight: 50 }, { token: sym("cbBTC"), weight: 25 }, { token: sym("AERO"), weight: 25 }] });
@@ -61,7 +61,7 @@ export const BEATS: Beat[] = [
       breakToken(sym("VIRTUAL"), true);
       try {
         const out = await copyBasket(who("you"), id, 20);
-        return `${out.placed} of ${out.placed + out.failed} tokens filled. Open the basket to try again.`;
+        return `${out.placed} of ${out.placed + out.failed} tokens filled. Open the trade to try again.`;
       } finally {
         breakToken(sym("VIRTUAL"), false);
       }
@@ -70,7 +70,7 @@ export const BEATS: Beat[] = [
   {
     id: "pump",
     title: "5 · The market pumps",
-    say: "ETH +4%, and every other token moves by how volatile it is. Basket values change by what's in them, and any take-profit hit fills on its own.",
+    say: "ETH +4%, and every other token moves by how volatile it is. Trade values change by what's in them, and any take-profit hit fills on its own.",
     run: async () => {
       nudgeDemoPrice(4);
       await pollOrders();
@@ -80,7 +80,7 @@ export const BEATS: Beat[] = [
   {
     id: "guard",
     title: "6 · CRE Guard pauses @traderx",
-    say: "The CRE workflow reads drawdown, bursts and token flags, the AI confirms, and a report lands in CopyGuard. Their baskets can't be copied.",
+    say: "The CRE workflow reads drawdown, bursts and token flags, the AI confirms, and a report lands in CopyGuard. Their trades can't be copied.",
     run: async () => {
       const id = who("traderx");
       db.prepare("INSERT INTO snapshots (trader, at, pnl_pct) VALUES (?, ?, ?)").run(id, Date.now(), -22);

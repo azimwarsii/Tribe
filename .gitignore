@@ -53,3 +53,4 @@ desktop.ini
 
 # Built browser bundle (npm run web:build)
 public/signin.js
+public/wallet.js

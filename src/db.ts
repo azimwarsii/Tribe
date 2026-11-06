@@ -93,7 +93,28 @@ CREATE TABLE IF NOT EXISTS basket_requests (
 );
 CREATE TABLE IF NOT EXISTS basket_nav (basket INTEGER NOT NULL, at INTEGER NOT NULL, nav REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS basket_nav_by ON basket_nav (basket, at);
+CREATE TABLE IF NOT EXISTS basket_cards (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, basket INTEGER NOT NULL, owner INTEGER NOT NULL, kind TEXT NOT NULL, copy_id INTEGER UNIQUE,
+  edition INTEGER NOT NULL, tier TEXT NOT NULL DEFAULT 'base', tier_at INTEGER, at INTEGER NOT NULL, UNIQUE (basket, edition)
+);
+CREATE INDEX IF NOT EXISTS basket_cards_owner ON basket_cards (owner);
 `);
+
+// Basket Cards: see cards.ts. Minting is one statement each, so editions can't collide and a repeat does nothing.
+export function mintOriginalCard(basket: number, owner: number) {
+  db.prepare("INSERT OR IGNORE INTO basket_cards (basket, owner, kind, edition, at) VALUES (?, ?, 'original', 0, ?)").run(basket, owner, Date.now());
+}
+export function mintCopyCard(copyId: number) {
+  db.prepare(`INSERT OR IGNORE INTO basket_cards (basket, owner, kind, copy_id, edition, at)
+    SELECT c.basket, c.follower, 'copy', c.id, (SELECT COALESCE(MAX(k.edition), 0) + 1 FROM basket_cards k WHERE k.basket = c.basket), ? FROM basket_copies c WHERE c.id = ?`).run(Date.now(), copyId);
+}
+/** Cards for baskets and copies from before cards existed, numbered in the order they happened. Safe to run on every start. */
+export function backfillCards() {
+  db.exec(`INSERT OR IGNORE INTO basket_cards (basket, owner, kind, edition, at) SELECT id, owner, 'original', 0, at FROM baskets;
+    INSERT OR IGNORE INTO basket_cards (basket, owner, kind, copy_id, edition, at)
+    SELECT c.basket, c.follower, 'copy', c.id, (SELECT COALESCE(MAX(k.edition), 0) FROM basket_cards k WHERE k.basket = c.basket) + ROW_NUMBER() OVER (PARTITION BY c.basket ORDER BY c.id), c.at
+    FROM basket_copies c JOIN baskets b ON b.id = c.basket WHERE c.follower != b.owner AND c.status IN ('filled','partial','closed') AND c.id NOT IN (SELECT copy_id FROM basket_cards WHERE copy_id IS NOT NULL);`);
+}
 
 function addCol(table: string, col: string, def: string) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
@@ -104,6 +125,9 @@ addCol("users", "avatar", "INTEGER NOT NULL DEFAULT 0");
 addCol("users", "persona", "TEXT");
 addCol("users", "created_at", "INTEGER NOT NULL DEFAULT 0");
 // Privy embedded wallet: the user owns it, Tribe signs as a policy-limited signer. Once linked, pk is cleared.
+addCol("basket_cards", "chain_tx", "TEXT"); // the mint transaction, once the card is onchain (see card-chain.ts)
+addCol("basket_cards", "chain_to", "TEXT"); // who it was minted to; it may have been sold since
+addCol("basket_cards", "chain_tier", "TEXT"); // the tier last recorded onchain
 addCol("users", "privy_user_id", "TEXT");
 addCol("users", "privy_wallet_id", "TEXT");
 addCol("users", "privy_policy_id", "TEXT");

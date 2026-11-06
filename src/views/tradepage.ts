@@ -48,12 +48,12 @@ export async function tradePage(id: number, viewer: number | undefined): Promise
   // A trade is part of the trader's record: what people copy is their baskets. Following them stays free.
   const watching = signedIn && !own && isWatching(viewer!, c.leader);
   const followBtn = `<button class="btn" data-act="/api/watch" data-body='{"leader":"${esc(c.handle)}"}'>${watching ? `${icon("check", 14, "currentColor", 2)}Following` : "Follow"}</button>`;
-  const baskets = `<a class="btn p sm" style="width:auto" href="/u/${esc(c.handle)}#baskets">${icon("list", 14, "currentColor", 2)}Their baskets</a>`;
+  const baskets = `<a class="btn p sm" style="width:auto" href="/u/${esc(c.handle)}#baskets">${icon("cards", 14, "currentColor", 2)}Their trades</a>`;
   const copyPanel = !signedIn
-    ? `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">Part of @${esc(c.handle)}'s record. On Tribe you copy baskets.</span><a class="btn p sm" style="width:auto" href="/signin">${icon("wallet", 14)}Sign in</a></section>`
+    ? `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">Part of @${esc(c.handle)}'s record. On Tribe you copy trades.</span><a class="btn p sm" style="width:auto" href="/signin">${icon("wallet", 14)}Sign in</a></section>`
     : own
       ? `<section class="card row" style="gap:10px;padding:12px" id="copy"><b class="grow sm">Your trade</b><button type="button" class="btn sm" style="width:auto" onclick="document.getElementById('share-btn').click()">${icon("share", 14, "currentColor", 2)}Share</button></section>`
-      : `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">${c.guard === "paused" ? "Guard paused this trader: copies are blocked." : "Part of their record. On Tribe you copy baskets."}</span>${baskets}<div style="width:96px">${followBtn}</div></section>`;
+      : `<section class="card row" style="gap:10px;padding:12px" id="copy"><span class="grow sm" style="line-height:1.4">${c.guard === "paused" ? "Guard paused this trader: copies are blocked." : "Part of their record. On Tribe you copy trades."}</span>${baskets}<div style="width:96px">${followBtn}</div></section>`;
 
   // Sharing is one small button in the header: on phones and tablets, the device's own share menu (Instagram, WhatsApp,
   // Messages…); on computers, a small panel with the link and the main apps. Links ending in #share open the panel.

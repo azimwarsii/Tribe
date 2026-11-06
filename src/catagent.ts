@@ -184,7 +184,7 @@ export async function catAgent(uid: number, chatId: number, opts: { live?: boole
   const pinned = opts.pinned ? await tradeCard(opts.pinned, uid) : undefined;
   const pinnedBasket = opts.basket ? await basketNamed(opts.basket) : undefined;
   const context = [
-    pinnedBasket ? `This chat is about the basket "${pinnedBasket.name}" by @${pinnedBasket.handle} (id ${pinnedBasket.id}).` : "",
+    pinnedBasket ? `This chat is about the trade "${pinnedBasket.name}" by @${pinnedBasket.handle} (id ${pinnedBasket.id}).` : "",
     follows.length ? `They copy: ${follows.map((h) => "@" + h).join(", ")}.` : "They don't copy anyone yet.",
     rules.length ? `Their rules for you: ${rules.join("; ")}.` : "",
     pinned ? `This chat is about @${pinned.handle}'s trade: ${pinned.trade.side} ${pinned.symbol} (${pinned.detail}).` : "",

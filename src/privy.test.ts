@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FLASH_CONTRACT, PERMIT2, walletPolicy } from "./privy.js";
+import { FLASH_CONTRACT, PERMIT2, tribeSignerActive, walletPolicy } from "./privy.js";
 
 const ADDR = "0x8aAB6863d537e47D75f2fF7Ddbbb7C5b076c4Eb8";
 const p = walletPolicy(ADDR);
@@ -20,4 +20,18 @@ test("approvals only to Flash or Permit2, and nothing else is allowed", () => {
   assert.ok(p.rules.every((r) => r.action === "ALLOW"), "no rule may be broader than an allow-list entry");
   assert.deepEqual(new Set(p.rules.map((r) => r.method)), new Set(["eth_signTypedData_v4", "eth_signTransaction", "eth_sendTransaction", "personal_sign"]));
   assert.deepEqual(conds("personal_sign").map((x) => x.value), ["Definitive Flash v1 — Cancel Order", "Definitive Flash — Update Order"]);
+});
+
+test("approvals carry no ETH and stay on Base, so approve() calldata can't smuggle a transfer", () => {
+  for (const method of ["eth_signTransaction", "eth_sendTransaction"]) {
+    const tx = conds(method).filter((x) => x.field_source === "ethereum_transaction");
+    assert.deepEqual(tx.map((x) => [x.field, x.operator, x.value]), [["chain_id", "eq", "8453"], ["value", "eq", "0"]]);
+  }
+});
+test("Tribe only counts as enrolled when it is limited by the wallet's own policy", () => {
+  assert.equal(tribeSignerActive({ additional_signers: [{ signer_id: "q", override_policy_ids: ["p"] }] }, "q", "p"), true);
+  assert.equal(tribeSignerActive({ additional_signers: [{ signer_id: "q" }] }, "q", "p"), false, "a signer with no policy is unlimited");
+  assert.equal(tribeSignerActive({ additional_signers: [{ signer_id: "q", override_policy_ids: ["other"] }] }, "q", "p"), false);
+  assert.equal(tribeSignerActive({ additional_signers: [{ signer_id: "someone", override_policy_ids: ["p"] }] }, "q", "p"), false);
+  assert.equal(tribeSignerActive({}, "q", "p"), false);
 });

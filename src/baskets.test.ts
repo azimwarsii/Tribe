@@ -64,7 +64,7 @@ test("weights: 1 to 10 different tokens, 1% or more each, adding up to 100", () 
   assert.throws(() => b.checkWeights([]), /at least one token/);
   assert.equal(b.checkWeights([{ token: ETH, weight: 100 }]).length, 1);
   assert.throws(() => b.checkWeights([{ token: ETH, weight: 90 }]), /add up to 100/);
-  assert.throws(() => b.checkWeights([{ token: ETH, weight: 50 }, { token: ETH, weight: 50 }]), /only be in a basket once/);
+  assert.throws(() => b.checkWeights([{ token: ETH, weight: 50 }, { token: ETH, weight: 50 }]), /only be in a trade once/);
   assert.throws(() => b.checkWeights([{ token: ETH, weight: 50 }, { token: BTC, weight: 40 }]), /add up to 100/);
   assert.throws(() => b.checkWeights([{ token: ETH, weight: 99.5 }, { token: BTC, weight: 0.5 }]), /at least 1%/);
   assert.throws(() => b.checkWeights(Array.from({ length: 11 }, (_, i) => ({ token: `0x${i}`, weight: 100 / 11 }))), /up to 10/);
@@ -119,13 +119,13 @@ test("the follower's limits and Guard apply to the whole copy", async () => {
   const owner = user(), me = user(1000, 50);
   const id = await make(owner);
   await assert.rejects(b.copyBasket(me, id, 60), /max per copy/);
-  await assert.rejects(b.copyBasket(owner, id, 10), /your own basket/);
+  await assert.rejects(b.copyBasket(owner, id, 10), /your own trade/);
   await assert.rejects(b.copyBasket(user(5), id, 50), /Not enough balance/);
   await assert.rejects(b.copyBasket(me, id, 3), /Too small to split/);
   const noStop = await make(owner, { stopPct: 0, tpPct: 0 });
   const strict = user();
   setMeta(strict, { defaults: { ...getMeta(strict).defaults, stop: true } });
-  await assert.rejects(b.copyBasket(strict, noStop, 50), /only copy baskets with a stop/);
+  await assert.rejects(b.copyBasket(strict, noStop, 50), /only copy trades with a stop/);
   haltLeader(owner, "drawdown");
   await assert.rejects(b.copyBasket(me, id, 50), /paused by CopyGuard/);
   resumeLeader(owner);
@@ -318,16 +318,120 @@ test("a retired basket can't be copied, and its copiers keep what they hold", as
   assert.ok(!(await b.liveBaskets()).some((x) => x.id === id));
 });
 
-test("real money stays off: baskets refuse to place anything outside practice mode", async () => {
+test("real money: a copy over the cap is refused before anything is placed, and rebalancing stays off", async () => {
   const owner = user(), me = user();
   const id = await make(owner);
+  const out = await b.copyBasket(me, id, 50);
+  await pollOrders();
+  await b.updateWeights(owner, id, [{ token: ETH, weight: 100 }]);
+  const request = b.rebalanceRequests(me)[0];
+  const other = user();
   process.env.DRY_RUN = "false";
   try {
-    await assert.rejects(b.copyBasket(me, id, 50), /practice mode/);
+    await assert.rejects(b.checkCopy(other, id, b.liveCapUsd() + 1), /limited to \$/);
+    await assert.rejects(b.approveRebalance(me, request.id), /practice mode/);
   } finally {
     process.env.DRY_RUN = "true";
   }
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM basket_copies WHERE follower = ?").get(me)!.n, 0);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM basket_copies WHERE follower = ?").get(other)!.n, 0);
+  assert.ok(out.copy);
+});
+
+test("publishing buys the basket: the creator holds it, and it isn't counted as a copy", async () => {
+  const owner = user(1000);
+  const out = await b.publishBasket(owner, { name: "Backed Basket", stopPct: 10, tpPct: 30, weights: three, usd: 100 });
+  assert.deepEqual([out.placed, out.failed, out.usd], [3, 0, 100]);
+  await pollOrders();
+  const held = await b.liveCopy(owner, out.id);
+  assert.equal(held?.status, "filled");
+  const value = await b.copyValue(held!.id);
+  assert.equal(value.holdings.length, 3);
+  assert.ok(Math.abs(value.invested - 100) < 0.01);
+  const stops = db.prepare("SELECT COUNT(*) AS n FROM basket_legs WHERE copy_id = ? AND json_extract(trade, '$.attach.sl') IS NOT NULL").get(held!.id) as { n: number };
+  assert.equal(stops.n, 3); // every order carries its stop
+  const v = (await b.basketView(out.id))!;
+  assert.deepEqual([v.copiers, v.volume], [0, 0]);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM basket_cards WHERE basket = ? AND kind = 'copy'").get(out.id)!.n, 0);
+  await assert.rejects(b.copyBasket(owner, out.id, 10), /your own trade/);
+  // Someone else's copy counts, and only theirs.
+  await b.copyBasket(user(), out.id, 50);
+  assert.equal((await b.basketView(out.id))!.copiers, 1);
+});
+
+test("the Copying count is open copies, and a creator's own stake isn't one", async () => {
+  const owner = user(1000), fan = user();
+  const out = await b.publishBasket(owner, { name: "Counted", stopPct: 10, weights: three, usd: 100 });
+  await pollOrders();
+  assert.equal(b.openCopies(owner), 0);
+  assert.equal(b.openCopies(fan), 0);
+  const c = await b.copyBasket(fan, out.id, 50);
+  await pollOrders();
+  assert.equal(b.openCopies(fan), 1);
+  await b.closeCopy(fan, c.copy);
+  await pollOrders();
+  assert.equal(b.openCopies(fan), 0);
+});
+
+test("nothing bought, nothing published, and no orphan rows", async () => {
+  const owner = user(1000);
+  const saved = { ...px };
+  for (const k of Object.keys(px)) px[k] = 0;
+  const before = (db.prepare("SELECT COUNT(*) AS n FROM baskets").get() as { n: number }).n;
+  try {
+    // Prices are needed to publish at all, so break them after the basket's version is written.
+    await assert.rejects(b.publishBasket(owner, { name: "Never Bought", stopPct: 10, weights: three, usd: 100 }));
+  } finally {
+    Object.assign(px, saved);
+  }
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM baskets").get() as { n: number }).n, before);
+  await assert.rejects(b.publishBasket(owner, { name: "Too Much", stopPct: 10, weights: three, usd: 100000 }), /Not enough balance/);
+  await assert.rejects(b.publishBasket(owner, { name: "Too Little", stopPct: 10, weights: three, usd: 2 }), /Too small to split/);
+  assert.equal((db.prepare("SELECT COUNT(*) AS n FROM baskets").get() as { n: number }).n, before);
+  process.env.DRY_RUN = "false";
+  try {
+    await assert.rejects(b.publishBasket(owner, { name: "Over Cap", stopPct: 10, weights: three, usd: b.liveCapUsd() + 1 }), /limited to/);
+  } finally {
+    process.env.DRY_RUN = "true";
+  }
+});
+
+test("native ETH becomes wrapped ETH, because Flash can't attach a stop to a native asset", () => {
+  const out = b.checkWeights([{ token: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", weight: 100 }]);
+  assert.equal(out[0].token, ETH.toLowerCase());
+  assert.throws(() => b.checkWeights([{ token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", weight: 50 }, { token: ETH, weight: 50 }]), /only be in a trade once/);
+});
+
+test("no price means no order: a basket with a stop never buys without one", async () => {
+  const owner = user(), me = user();
+  const id = await make(owner);
+  const saved = px[AERO];
+  px[AERO] = 0;
+  try {
+    const out = await b.copyBasket(me, id, 100);
+    assert.deepEqual([out.status, out.placed, out.failed], ["partial", 2, 1]);
+    const leg = db.prepare("SELECT status, note FROM basket_legs WHERE copy_id = ? AND token = ?").get(out.copy, AERO.toLowerCase()) as { status: string; note: string };
+    assert.deepEqual({ ...leg }, { status: "failed", note: "Couldn't get a price to set the stop, so this wasn't bought" });
+    const orders = db.prepare("SELECT COUNT(*) AS n FROM orders o JOIN basket_legs l ON o.trade_id = -l.id WHERE l.copy_id = ? AND lower(json_extract(o.trade, '$.target')) = ?").get(out.copy, AERO.toLowerCase()) as { n: number };
+    assert.equal(orders.n, 0);
+  } finally {
+    px[AERO] = saved;
+  }
+});
+
+test("a live order takes a moment: a copy still filling isn't closed as sold out, and can't be closed yet", async () => {
+  const owner = user(), me = user();
+  const id = await make(owner);
+  const out = await b.copyBasket(me, id, 50);
+  // How a live copy looks just after placing: market orders open, nothing filled yet.
+  db.prepare("UPDATE orders SET status = 'open', tokens = NULL, usd = NULL WHERE trade_id IN (SELECT -id FROM basket_legs WHERE copy_id = ?) AND json_extract(trade, '$.orderType') = 'market'").run(out.copy);
+  assert.equal((await b.liveCopy(me, id))?.id, out.copy);
+  assert.equal(db.prepare("SELECT status FROM basket_copies WHERE id = ?").get(out.copy)!.status, "filled");
+  await assert.rejects(b.closeCopy(me, out.copy), /still filling/);
+
+  // Flash turns every order down: the copy failed, it wasn't "sold by its stops".
+  db.prepare("UPDATE orders SET status = 'closed' WHERE trade_id IN (SELECT -id FROM basket_legs WHERE copy_id = ?)").run(out.copy);
+  assert.equal(await b.liveCopy(me, id), undefined);
+  assert.deepEqual({ ...db.prepare("SELECT status, note FROM basket_copies WHERE id = ?").get(out.copy) }, { status: "failed", note: "None of the orders filled" });
 });
 
 test("a copied token is found whatever the case of its address", async () => {

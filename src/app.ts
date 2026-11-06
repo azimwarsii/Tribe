@@ -7,8 +7,10 @@ import { linkWallet, userByWallet } from "./wallet-api.js";
 import { userByPrivy } from "./privy-api.js";
 import { execute, mirror, mirrorStopMove, type PendingNotice } from "./copy.js";
 import { assetFilter, matchesFilter } from "./assets.js";
-import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, retireBasket, retryCopy, skipRebalance, tokensText, updateWeights } from "./baskets.js";
-import { basketBuilderPage, basketOgSvg, basketPage } from "./views/baskets.js";
+import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, liveCapUsd, publishBasket, retireBasket, retryCopy, skipRebalance, tokensText, updateWeights } from "./baskets.js";
+import { basketBuilderPage, basketOgSvg, basketPage, collectionPage, collectionTab } from "./views/baskets.js";
+import { cardById, cardFor, cardMetadata, cardOfCopy, cardView, unlockOf, type CardView } from "./cards.js";
+import { cardSvg } from "./views/card.js";
 import { activeHtml, briefHtml, deckCards, deckLive, deckPage, feedTopPage } from "./views/deck.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
@@ -33,7 +35,7 @@ import { answerRequest, interactive, nextRequest } from "./browsersign.js";
 import { popularTokens, searchTokens, tradableToken } from "./tokens.js";
 import { trendingTokens } from "./market.js";
 import { answerSignal, botById, controlBot, createBot, fastForwardTrial, publishBot, runBot, updateBot } from "./creator.js";
-import { BLOCKED_COUNTRIES, botBuilderPage, botDetailPage, tradeTicketPage, verifyPage } from "./views/creator.js";
+import { BLOCKED_COUNTRIES, botBuilderPage, botDetailPage, verifyPage } from "./views/creator.js";
 import { buildProposal } from "./ask.js";
 import { botPage, profileEditPage } from "./views/profile.js";
 import { landingPage, portfolioPage, portfolioTab, signinPage, topPage, topSvg } from "./views/web.js";
@@ -41,6 +43,7 @@ import { badgesPage, levelUpPage, progressPage, squadPage } from "./views/game.j
 import { questsOf, traderStats } from "./stats.js";
 import { BEATS, runBeat } from "./director.js";
 import { getPrice } from "./prices.js";
+import { pwaRouter } from "./pwa.js";
 
 /** Accounts without a wallet: only for the test suite (ALLOW_PLAIN_SIGNUP=1). The seeded demo viewer uses /demo. */
 const plainSignupAllowed = () => process.env.ALLOW_PLAIN_SIGNUP === "1";
@@ -106,7 +109,11 @@ export function appRouter(): Router {
   // The open tab's MetaMask bridge: wait for the next signature this user's action needs, then send back the answer.
   r.get("/api/sign/wait", async (req, res) => {
     const uid = me(req);
-    if (uid === undefined) return res.status(401).json({ error: "Sign in first" });
+    if (uid === undefined) {
+      // A slow no: a tab left open from an older build keeps asking, and this paces its loop to one call every few seconds.
+      await new Promise((done) => setTimeout(done, 3000));
+      return res.status(401).json({ error: "Sign in first" });
+    }
     res.json({ req: await nextRequest(uid, String(req.query.tab ?? "").slice(0, 40)) });
   });
   r.post("/api/sign/:id", json, (req, res) => {
@@ -120,9 +127,15 @@ export function appRouter(): Router {
     }
   });
 
+  r.use(pwaRouter());
   r.get("/app.js", (_q, res) => res.type("application/javascript").set("Cache-Control", "no-cache").send(`${CLIENT_JS};\n${REACT_JS};\n${SIDE_JS}`));
   r.get("/", (req, res) => (me(req) === undefined ? html(res, landingPage()) : res.redirect("/feed")));
   r.get("/signin", (_q, res) => html(res, signinPage(process.env.DEMO === "true")));
+  r.get("/trades", authed((uid, req) => collectionPage(uid, collectionTab(req.query.tab))));
+  // Old links: this page was /collection, and the builder /baskets/new. A new trade of any size starts in the builder.
+  r.get("/collection", (req, res) => res.redirect(301, req.url.replace("/collection", "/trades")));
+  r.get("/baskets/new", (_q, res) => res.redirect(301, "/trades/new"));
+  r.get("/trade/new", (_q, res) => res.redirect(302, "/trades/new"));
   r.get("/portfolio", authed((uid, req) => portfolioPage(uid, portfolioTab(req.query.tab))));
   // New accounts see the splash and the intro right after sign-up, then land on `next` (the feed, or the trader they
   // came to copy). Signed out, the intro ends at sign-in.
@@ -222,7 +235,6 @@ export function appRouter(): Router {
   // Creating (a tab of Portfolio): post trades by hand, build bots, publish them, get paid.
   r.get("/creator", (_q, res) => res.redirect("/portfolio?tab=creating")); // merged into Portfolio; old links keep working
   r.get("/creator/verify", authed((uid) => verifyPage(uid)));
-  r.get("/trade/new", authed((uid, req) => tradeTicketPage(uid, req.query as Record<string, unknown>)));
   r.get("/bots/new", authed((uid) => botBuilderPage(uid)));
   r.get("/bots/:id", async (req, res) => {
     const uid = me(req);
@@ -232,7 +244,7 @@ export function appRouter(): Router {
   });
   r.get("/strategy/new", authed((uid) => newStrategyPage(uid)));
   // Every trade has one page, open to anyone: /t/<id>. The older thread and share links forward to it.
-  r.get("/baskets/new", authed((uid) => basketBuilderPage(uid)));
+  r.get("/trades/new", authed((uid) => basketBuilderPage(uid)));
   r.get("/b/:id/edit", authed((uid, req) => basketBuilderPage(uid, Number(req.params.id))));
   r.get("/b/:id", async (req, res) => {
     try {
@@ -272,6 +284,19 @@ export function appRouter(): Router {
     const v = await basketView(Number(req.params.id));
     v ? res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(basketOgSvg(v))) : res.sendStatus(404);
   });
+  // A card is public by link, like a basket. It carries no handle or dollar amount.
+  const cardRoute = (send: (v: CardView, res: express.Response) => void): express.RequestHandler => async (req, res) => {
+    try {
+      const row = cardById(Number(req.params.id));
+      const v = row && (await cardView(row));
+      v ? send(v, res.set("Cache-Control", "public, max-age=300")) : res.sendStatus(404);
+    } catch (e) {
+      console.error(req.path, e);
+      res.sendStatus(500);
+    }
+  };
+  r.get("/card/:id.svg", cardRoute((v, res) => res.type("image/svg+xml").send(cardSvg(v))));
+  r.get("/card/:id.json", cardRoute((v, res) => res.json(cardMetadata(v, process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`))));
   r.get("/og/t/:id.png", async (req, res) => {
     const t = await tradeCard(Number(req.params.id));
     const s = t ? await (req.query.f === "story" ? storySvg : ogSvg)(t.handle, t.id) : undefined;
@@ -572,8 +597,11 @@ export function appRouter(): Router {
   // ---- Baskets ----
   r.post("/api/baskets", json, act(async (uid, req) => {
     const b = req.body ?? {};
-    const id = await createBasket(uid, { name: b.name, thesis: b.thesis, stopPct: b.stopPct, tpPct: b.tpPct, weights: b.weights });
-    return { redirect: `/b/${id}`, toast: "Basket published" };
+    const input = { name: b.name, thesis: b.thesis, stopPct: b.stopPct, tpPct: b.tpPct, weights: b.weights };
+    // With real money a basket is published by buying it. Practice mode can still publish an empty one.
+    if (b.usd === undefined && isDry()) return { redirect: `/b/${await createBasket(uid, input)}`, toast: "Trade published" };
+    const out = await publishBasket(uid, { ...input, usd: Number(b.usd) });
+    return { redirect: `/b/${out.id}#yours`, unlock: unlockOf(cardFor(uid, out.id), out.id), toast: out.failed ? `Published. ${out.placed} of ${tokensText(out.placed + out.failed)} bought: try the rest from your holding` : `Published, and bought $${out.usd} across ${tokensText(out.placed)}` };
   }));
   r.post("/api/baskets/:id/weights", json, act(async (uid, req) => {
     const id = Number(req.params.id);
@@ -582,13 +610,13 @@ export function appRouter(): Router {
   }));
   r.post("/api/baskets/:id/retire", json, act((uid, req) => {
     retireBasket(uid, Number(req.params.id));
-    return { reload: true, toast: "Basket retired" };
+    return { reload: true, toast: "Trade retired" };
   }));
   r.post("/api/basket-copy", express.urlencoded({ extended: false }), json, act(async (uid, req) => {
     const basket = Number(req.body?.basket);
     const out = await copyBasket(uid, basket, Number(req.body?.usd));
     if (out.status === "failed") throw new Error("None of the tokens could be bought, so nothing was copied");
-    return { redirect: `/b/${basket}#yours`, toast: out.failed ? `${out.placed} of ${tokensText(out.placed + out.failed)} filled. Try the rest from your copy.` : `Copied $${out.usd} across ${tokensText(out.placed)}` };
+    return { redirect: `/b/${basket}#yours`, unlock: unlockOf(cardOfCopy(out.copy), basket), toast: out.failed ? `${out.placed} of ${tokensText(out.placed + out.failed)} filled. Try the rest from your copy.` : `Copied $${out.usd} across ${tokensText(out.placed)}` };
   }));
   r.post("/api/basket-copy/:id/retry", json, act(async (uid, req) => {
     const out = await retryCopy(uid, Number(req.params.id));

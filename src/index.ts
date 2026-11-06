@@ -17,9 +17,11 @@ import { isDry, startTracker } from "./tracker.js";
 import { startOrderStream } from "./stream.js";
 import { ranking } from "./stats.js";
 import { researchTrade, verdictText } from "./research.js";
-import { latestChat } from "./db.js";
+import { backfillCards, latestChat } from "./db.js";
 import { enableDemoPrices } from "./prices.js";
 import { snapshotBaskets } from "./baskets.js";
+import { refreshCards } from "./cards.js";
+import { syncCards } from "./card-chain.js";
 import { assertSafeConfig } from "./preflight.js";
 import { rateLimit } from "./ratelimit.js";
 import { privyRouter } from "./privy-api.js";
@@ -174,7 +176,9 @@ app.use(creRouter({ pending: notifyPending, halt: notifyHalt }));
 // Per IP and minute: sign-in links are guessable only by brute force; the rest is headroom
 // for the deck's polling (about 16 requests a minute per open tab).
 app.use(["/signin", "/login", "/demo"], rateLimit(20, 60_000));
-app.use("/api", rateLimit(300, 60_000));
+// The signing long-poll is exempt: it holds each call for 25s when signed in, and one forgotten tab mustn't lock anyone out of sign-in.
+const apiLimit = rateLimit(300, 60_000);
+app.use("/api", (req, res, next) => (req.path === "/sign/wait" ? next() : apiLimit(req, res, next)));
 app.get("/api/recent", (_q, r) => r.json(recentTrades()));
 // Privy wallets: the Connect wallet page and its API (src/privy-api.ts), and the page's browser bundle (web/).
 app.use("/static", express.static(new URL("../public", import.meta.url).pathname, { maxAge: "1h" }));
@@ -191,8 +195,11 @@ startLocalCre();
 
 // Creators' bots: record prices and give every running bot a look, once a minute (BOT_TICK_MS to change).
 setInterval(() => void tickBots().catch((e) => console.error("bots:", (e as Error).message)), Number(process.env.BOT_TICK_MS ?? 60_000));
-// Every basket's index value, for its chart.
-setInterval(() => void snapshotBaskets().catch((e) => console.error("baskets:", (e as Error).message)), Number(process.env.BASKET_TICK_MS ?? 300_000));
+// Cards for anything made before cards existed, then any upgrades already earned.
+backfillCards();
+void refreshCards().then(() => syncCards()).catch((e) => console.error("cards:", (e as Error).message));
+// Every basket's index value, for its chart, then the card upgrades that value earned.
+setInterval(() => void snapshotBaskets().then(refreshCards).then(() => syncCards()).catch((e) => console.error("baskets:", (e as Error).message)), Number(process.env.BASKET_TICK_MS ?? 300_000));
 
 app.listen(Number(process.env.PORT ?? 8787), () => console.log(`Tribe on ${baseUrl()} (bot ${bot ? "on" : "off: set TELEGRAM_BOT_TOKEN"}, DRY_RUN=${process.env.DRY_RUN !== "false"})`));
 void bot?.start();
