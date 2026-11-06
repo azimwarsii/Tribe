@@ -11,7 +11,8 @@ export async function totalPnl(trader: number): Promise<{ usd: number; pct: numb
   for (const p of positionsOf(trader)) {
     invested += p.invested;
     usd += p.realized;
-    if (p.qty > 1e-12) usd += p.qty * (await getPrice(p.token)) - p.cost;
+    // With no price, value it at cost: every page's header reads this, so a network blip mustn't take the page down.
+    if (p.qty > 1e-12) usd += p.qty * (await getPrice(p.token).catch(() => p.cost / p.qty)) - p.cost;
   }
   return { usd, invested, pct: invested > 0 ? (usd / invested) * 100 : 0 };
 }

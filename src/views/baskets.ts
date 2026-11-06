@@ -1,4 +1,4 @@
-import { basketById, basketRead, basketView, copiesOf, copyValue, liveCapUsd, liveCopy, MAX_TOKENS, MIN_TOKENS, navSeries, navSince, rebalancePlan, rebalanceRequests, tokensText, versionOf, versionsOf, type BasketRead, type BasketView, type CopyRow, type CopyValue, type RequestRow, type Weight } from "../baskets.js";
+import { basketById, basketRead, basketView, copiesOf, copyValue, liveCapUsd, liveCopy, MAX_TOKENS, MIN_TOKENS, navSeries, navSince, rebalancePlan, rebalanceRequests, tokensText, versionOf, versionsOf, type BasketRead, type BasketView, type CopyRow, type CopyValue, type RequestRow, type TokenOrder, type Weight } from "../baskets.js";
 import { RISK_LEVELS } from "../assets.js";
 import { finishOf, progressOf } from "../card-tiers.js";
 import { cardChainOn, cardExplorerUrl } from "../card-chain.js";
@@ -18,6 +18,12 @@ const px = (n: number) => `$${n >= 1 ? n.toLocaleString("en-US", { maximumFracti
 const flatCls = (n: number) => (Math.abs(n) < 0.05 ? "mut" : signCls(n));
 const flatPct = (n: number) => (Math.abs(n) < 0.05 ? "flat" : pct(n));
 const TONE = { ok: "#34D399", warn: "#FCD34D", bad: "#F87171" };
+
+/** A token's advanced order in a few words, so copiers see what they'd be getting. */
+export const orderNote = (o: TokenOrder, stopPct: number) => [
+  o.entry === "limit" ? `Limit at ${px(o.price!)}` : o.entry === "twap" ? `TWAP over ${o.minutes} min` : "",
+  o.trail ? `Trailing stop ${stopPct}%${o.activation ? ` from ${px(o.activation)}` : ""}` : "",
+].filter(Boolean).join(" · ");
 
 /** The basket's make-up as one bar. */
 export const allocBar = (weights: { symbol: string; weight: number }[]) =>
@@ -62,6 +68,7 @@ ${social}${mixTags(v)}
 <div class="fstats"><div><span class="fk">RETURN</span><span class="fv" data-live="since">${sinceHtml(v.returnPct)}</span></div><div><span class="fk">COPIERS</span><span class="fv" data-live="copiers">${v.copiers}</span></div><div><span class="fk">LIVE</span><span class="fv">${days}d</span></div></div>
 <div class="fnext" data-live="next">${nextHtml(v, finish)}</div>
 <div class="fnote"><span>You'd copy <b>${money(usd)}</b></span><span>Aim <b${v.tpPct ? ' class="up"' : ""}>${v.tpPct ? `+${v.tpPct}%` : "No target"}</b></span></div>
+${v.weights.some((w) => w.order) ? `<div class="fnote"><span>${esc(v.weights.filter((w) => w.order).map((w) => `${w.symbol}: ${orderNote(w.order!, v.stopPct)}`).join(" · "))}</span></div>` : ""}
 ${needStop ? `<div class="sm warn row" style="gap:6px">${icon("shield", 13, "currentColor", 2)}No stop-loss: your rules won't copy this one</div>` : ""}
 ${v.thesis ? `<p class="fthesis">“${esc(v.thesis)}”</p>` : ""}
 </article>`;
@@ -158,7 +165,7 @@ export async function basketPage(id: number, viewer: number | undefined): Promis
   const needStop = signedIn && getMeta(viewer!).defaults.stop && !(v.stopPct > 0);
   const summary = `<section class="card col" style="gap:10px"><div class="row sp" style="align-items:flex-end;gap:12px"><div style="min-width:0"><div class="sm mut">Index ${v.nav.toFixed(2)} · started at 100</div><div style="font-size:30px;font-weight:700" class="${flatCls(v.returnPct)}">${flatPct(v.returnPct)}</div></div><span class="pill ${paused ? "bad" : "ok"}">${icon("shield", 11, "currentColor", 2)}${paused ? "Paused by Guard" : "Guard passed"}</span></div>${navChart([...navSeries(id), v.nav])}
 ${v.thesis ? `<p class="md" style="margin:0;line-height:1.45;color:#D4D4D4">“${esc(v.thesis)}”</p>` : ""}</section>`;
-  const makeup = `<section class="card col" style="gap:10px" aria-label="What's in it"><div class="row sp"><b class="md">What's in it</b><span class="xs mut">Version ${v.version}</span></div>${mixTags(v)}${allocBar(v.weights)}<div class="col">${v.weights.map((w, i) => `<div class="line"><i aria-hidden="true" style="width:10px;height:10px;border-radius:3px;flex:none;background:${SLICE[i % SLICE.length]}"></i><span class="grow" style="min-width:0"><b class="sm">${esc(w.symbol)}</b><span class="xs mut" style="display:block">${px(w.price)}</span></span><span style="text-align:right"><b class="sm">${w.weight}%</b><span class="xs ${flatCls(w.changePct)}" style="display:block">${flatPct(w.changePct)}</span></span></div>`).join("")}</div></section>`;
+  const makeup = `<section class="card col" style="gap:10px" aria-label="What's in it"><div class="row sp"><b class="md">What's in it</b><span class="xs mut">Version ${v.version}</span></div>${mixTags(v)}${allocBar(v.weights)}<div class="col">${v.weights.map((w, i) => `<div class="line"><i aria-hidden="true" style="width:10px;height:10px;border-radius:3px;flex:none;background:${SLICE[i % SLICE.length]}"></i><span class="grow" style="min-width:0"><b class="sm">${esc(w.symbol)}</b><span class="xs mut" style="display:block">${px(w.price)}${w.order ? ` · ${esc(orderNote(w.order, v.stopPct))}` : ""}</span></span><span style="text-align:right"><b class="sm">${w.weight}%</b><span class="xs ${flatCls(w.changePct)}" style="display:block">${flatPct(w.changePct)}</span></span></div>`).join("")}</div></section>`;
   const config = `<div class="grid3">${stat("Stop per token", v.stopPct ? `−${v.stopPct}%` : "None", v.stopPct ? "" : "warn")}${stat("Target per token", v.tpPct ? `+${v.tpPct}%` : "None")}${stat("Copied by", copiersText(v.copiers))}</div>`;
   const history = versionsOf(id);
   const versions = history.length > 1 ? `<section class="flat col" style="gap:8px"><h2 style="font-size:16px">Changes</h2>${history.map((h) => `<div class="col" style="gap:4px"><div class="row sp xs mut"><span>Version ${h.n}${h.note ? ` · ${esc(h.note)}` : ""}</span><span>${ago(h.at)} ago</span></div>${allocBar(h.weights)}</div>`).join("")}</section>` : "";
@@ -252,9 +259,15 @@ function e(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;
 function total(){return Math.round(rows.reduce(function(a,r){return a+(Number(r.weight)||0)},0)*100)/100}
 function sum(){var t=total(),ok=rows.length>=${MIN_TOKENS}&&Math.abs(t-100)<=0.01&&rows.every(function(r){return Number(r.weight)>=1});tot.textContent=t+'%';tot.className=ok?'up':(t>100?'down':'');go.disabled=!ok;
  bar.innerHTML=rows.map(function(r,i){return '<i style="width:'+Math.min(100,Number(r.weight)||0)+'%;background:'+COL[i%COL.length]+'"></i>'}).join('')}
-function draw(){box.innerHTML='';rows.forEach(function(r,i){var d=document.createElement('div');d.className='row';d.style.gap='8px';
+function adv(r,d){var a=r.adv=r.adv||{entry:'market',minutes:30},p=d.querySelector('.tkadv');if(!p)return;
+ function show(){p.querySelector('[data-show=limit]').hidden=a.entry!=='limit';p.querySelector('[data-show=twap]').hidden=a.entry!=='twap';p.querySelector('[data-show=trail]').hidden=!a.trail}
+ [].forEach.call(p.querySelectorAll('[data-k]'),function(f){var k=f.dataset.k;if(f.type==='checkbox')f.checked=!!a[k];else if(a[k]!==undefined)f.value=a[k];f.onchange=f.oninput=function(){a[k]=f.type==='checkbox'?f.checked:f.value;show()}});
+ d.querySelector('[data-adv]').onclick=function(){p.hidden=!p.hidden;this.setAttribute('aria-expanded',String(!p.hidden))};show()}
+function draw(){box.innerHTML='';rows.forEach(function(r,i){var w=document.createElement('div');w.className='col';w.style.gap='6px';var d=document.createElement('div');d.className='row';d.style.gap='8px';
  d.innerHTML='<i aria-hidden="true" style="width:10px;height:10px;border-radius:3px;flex:none;background:'+COL[i%COL.length]+'"></i><b class="grow sm">'+e(r.symbol)+'</b><label class="chip cust" style="width:92px;height:36px"><input type="number" inputmode="decimal" min="1" max="100" step="any" aria-label="'+e(r.symbol)+' weight in percent" value="'+e(r.weight)+'" style="width:100%"><span>%</span></label><button type="button" class="ic s" aria-label="Remove '+e(r.symbol)+'">\\u00d7</button>';
- d.querySelector('input').oninput=function(){r.weight=this.value;sum()};d.querySelector('button').onclick=function(){rows.splice(i,1);draw()};box.appendChild(d)});add.hidden=rows.length>=MAX;if(rows.length>=MAX)list.hidden=true;sum()}
+ d.querySelector('input').oninput=function(){r.weight=this.value;sum()};d.querySelector('button').onclick=function(){rows.splice(i,1);draw()};w.appendChild(d);
+ if(!editing){var x=document.createElement('div');x.innerHTML='<button type="button" class="chip" data-adv aria-expanded="false" style="height:28px;font-size:12px">Advanced</button><div class="tkadv col" hidden><label class="sm">Order<select class="f" data-k="entry"><option value="market">Market</option><option value="limit">Limit</option><option value="twap">TWAP</option></select></label><label class="sm" data-show="limit">Limit price, in $<input class="f" data-k="price" type="number" inputmode="decimal" step="any" min="0"></label><label class="sm" data-show="twap">Spread over, in minutes<input class="f" data-k="minutes" type="number" inputmode="numeric" min="5" max="1440"></label><label class="sm row" style="gap:8px"><input type="checkbox" data-k="trail">Trailing stop instead of a fixed stop and target</label><label class="sm" data-show="trail">Start trailing at, in $ (optional)<input class="f" data-k="activation" type="number" inputmode="decimal" step="any" min="0"></label></div>';w.appendChild(x);adv(r,x)}
+ box.appendChild(w)});add.hidden=rows.length>=MAX;if(rows.length>=MAX)list.hidden=true;sum()}
 function even(){var n=rows.length;if(!n)return;var w=Math.floor(10000/n)/100;rows.forEach(function(r){r.weight=w});rows[n-1].weight=Math.round((100-w*(n-1))*100)/100;draw()}
 document.getElementById('bk-even').onclick=even;
 function row(t){var b=document.createElement('button');b.type='button';b.className='tkrow'+(t.ok?'':' off');b.setAttribute('role','option');b.disabled=!t.ok;var taken=rows.some(function(r){return r.token===t.address.toLowerCase()});if(taken)b.disabled=true;
@@ -265,7 +278,7 @@ add.onclick=function(){var open=list.hidden;list.hidden=!open;add.setAttribute('
 q.oninput=function(){clearTimeout(tm);tm=setTimeout(function(){load(q.value.trim())},300)};
 function val(i){var el=document.getElementById(i);return el?el.value:''}
 function pick(n){var i=document.querySelector('#bk input[name="'+n+'"]');return i?Number(i.value):0}
-go.onclick=function(){go.disabled=true;var w=rows.map(function(r){return {token:r.token,weight:Number(r.weight)}});
+go.onclick=function(){go.disabled=true;var w=rows.map(function(r){var a=r.adv,on=a&&(a.entry!=='market'||a.trail);return {token:r.token,weight:Number(r.weight),order:on?a:undefined}});
  var url=editing?'/api/baskets/'+editing+'/weights':'/api/baskets',body=editing?{weights:w,note:val('bk-note')}:{name:val('bk-name'),thesis:val('bk-thesis'),stopPct:pick('stop'),tpPct:pick('tp'),usd:Number(val('bk-usd')),weights:w};
  fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(j){if(j.error){tribe.toast(j.error);sum();return}if(j.toast)tribe.toast(j.toast);if(j.unlock){tribe.unlock(j.unlock);return}location.href=j.redirect}).catch(function(){tribe.toast('Network error');sum()})};
 draw()})()`;

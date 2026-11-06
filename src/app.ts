@@ -10,7 +10,7 @@ import { assetFilter, matchesFilter } from "./assets.js";
 import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, liveCapUsd, publishBasket, retireBasket, retryCopy, skipRebalance, tokensText, updateWeights } from "./baskets.js";
 import { basketBuilderPage, basketOgSvg, basketPage, collectionPage, collectionTab } from "./views/baskets.js";
 import { cardById, cardFor, cardMetadata, cardOfCopy, cardView, unlockOf, type CardView } from "./cards.js";
-import { cardSvg } from "./views/card.js";
+import { cardSvg, sampleCardSvg } from "./views/card.js";
 import { activeHtml, briefHtml, deckCards, deckLive, deckPage, feedTopPage } from "./views/deck.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
@@ -44,6 +44,7 @@ import { questsOf, traderStats } from "./stats.js";
 import { BEATS, runBeat } from "./director.js";
 import { getPrice } from "./prices.js";
 import { pwaRouter } from "./pwa.js";
+import { TIERS, type Tier } from "./card-tiers.js";
 
 /** Accounts without a wallet: only for the test suite (ALLOW_PLAIN_SIGNUP=1). The seeded demo viewer uses /demo. */
 const plainSignupAllowed = () => process.env.ALLOW_PLAIN_SIGNUP === "1";
@@ -295,6 +296,10 @@ export function appRouter(): Router {
       res.sendStatus(500);
     }
   };
+  r.get("/card/sample/:tier.svg", (req, res) => {
+    const tier = req.params.tier as Tier;
+    TIERS.includes(tier) ? res.type("image/svg+xml").set("Cache-Control", "public, max-age=3600").send(sampleCardSvg(tier)) : res.sendStatus(404);
+  });
   r.get("/card/:id.svg", cardRoute((v, res) => res.type("image/svg+xml").send(cardSvg(v))));
   r.get("/card/:id.json", cardRoute((v, res) => res.json(cardMetadata(v, process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`))));
   r.get("/og/t/:id.png", async (req, res) => {

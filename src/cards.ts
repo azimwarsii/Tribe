@@ -31,7 +31,7 @@ export const cardFor = (owner: number, basket: number) => db.prepare("SELECT * F
 
 /** What the page needs to show a card being unlocked, right after the trade that earned it. */
 export const unlockOf = (row: CardRow | undefined, basket: number) =>
-  row ? { card: row.id, label: row.kind === "original" ? "Original" : `Copy #${row.edition}`, href: `/b/${basket}#yours` } : undefined;
+  row ? { card: row.id, label: row.kind === "original" ? "Original" : `Card #${row.edition}`, href: `/b/${basket}#yours` } : undefined;
 /** The card a copy earned. */
 export const cardOfCopy = (copyId: number) => db.prepare("SELECT * FROM basket_cards WHERE copy_id = ?").get(copyId) as unknown as CardRow | undefined;
 
@@ -52,7 +52,7 @@ export async function cardView(row: CardRow): Promise<CardView | undefined> {
     const end = c.closed_at ?? Date.now();
     const chart = navSince(row.basket, c.at, end);
     // A closed copy's return is final: value counts only what it sold for, so it can still earn its last upgrade.
-    view = { ...shared, editionLabel: `Copy #${row.edition}`, weights: versionOf(row.basket, c.version).weights, returnPct: value.pnlPct, days: Math.floor((end - c.at) / DAY), chart: c.closed_at ? chart : [...chart, b.nav] };
+    view = { ...shared, editionLabel: `Card #${row.edition}`, weights: versionOf(row.basket, c.version).weights, returnPct: value.pnlPct, days: Math.floor((end - c.at) / DAY), chart: c.closed_at ? chart : [...chart, b.nav] };
   }
   let tier = row.tier;
   if (upgrades) {

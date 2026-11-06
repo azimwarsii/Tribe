@@ -129,7 +129,8 @@ export function quoteBody(t: Trade, funder: string, slippage?: string, auth: Aut
     flashIntegratorFeeBps: FEE(),
     ...(t.triggers ? { triggers: t.triggers } : {}),
     ...(t.trailingStop ? { trailingStop: { trailPercent: t.trailingStop.trailPercent, ...(t.trailingStop.activationPrice ? { activationPrice: t.trailingStop.activationPrice } : {}) } } : {}),
-    ...(t.limitNotionalPrice ? { limitNotionalPrice: t.limitNotionalPrice } : {}),
+    // With a bracket attached, Flash takes a limit only as a cross price. Tribe's contra is USDC, so that's the same number.
+    ...(t.limitNotionalPrice ? (t.attach && t.orderType === "limit" ? { limitCrossPrice: t.limitNotionalPrice } : { limitNotionalPrice: t.limitNotionalPrice }) : {}),
     ...(timed ? { durationSeconds: Math.max(300, t.durationSeconds ?? 300), ...(t.twapBucketCount ? { twapBucketCount: t.twapBucketCount } : {}) } : {}),
     ...(t.orderType === "market" && slippage ? { maxSlippage: slippage } : {}),
     ...(t.attach && ["market", "limit", "twap"].includes(t.orderType) ? { attachedBracket: { takeProfit: { notionalPrice: t.attach.tp }, stopLoss: { notionalPrice: t.attach.sl } } } : {}),

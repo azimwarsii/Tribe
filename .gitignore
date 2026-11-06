@@ -54,3 +54,8 @@ desktop.ini
 # Built browser bundle (npm run web:build)
 public/signin.js
 public/wallet.js
+
+# Chainlink CRE: kept locally, not in the repo
+/cre-workflow/
+/contracts/CopyGuard.sol
+/contracts/SeasonBoard.sol

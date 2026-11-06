@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { decodeFunctionData, erc20Abi } from "viem";
+import { GAS_TOP_UP_WEI, parseUsdc, usdcTransferData } from "../web/fund.js";
 import { FLASH_CONTRACT, PERMIT2, tribeSignerActive, walletPolicy } from "./privy.js";
 
 const ADDR = "0x8aAB6863d537e47D75f2fF7Ddbbb7C5b076c4Eb8";
@@ -34,4 +36,17 @@ test("Tribe only counts as enrolled when it is limited by the wallet's own polic
   assert.equal(tribeSignerActive({ additional_signers: [{ signer_id: "q", override_policy_ids: ["other"] }] }, "q", "p"), false);
   assert.equal(tribeSignerActive({ additional_signers: [{ signer_id: "someone", override_policy_ids: ["p"] }] }, "q", "p"), false);
   assert.equal(tribeSignerActive({}, "q", "p"), false);
+});
+
+test("funding: typed amounts become exact USDC units, and anything unclear sends nothing", () => {
+  assert.equal(parseUsdc("25"), 25_000_000n);
+  assert.equal(parseUsdc(" 0.5 "), 500_000n);
+  assert.equal(parseUsdc("1.000001"), 1_000_001n);
+  for (const bad of ["", "0", "0.00", "-1", "1.2345678", "1e3", "abc", "1,000"]) assert.equal(parseUsdc(bad), undefined, bad);
+  assert.equal(BigInt(GAS_TOP_UP_WEI), 500_000_000_000_000n, "the ETH top-up is 0.0005 ETH");
+});
+test("funding: the transfer pays the given wallet the exact amount", () => {
+  const data = usdcTransferData(ADDR, 25_000_000n);
+  assert.deepEqual(decodeFunctionData({ abi: erc20Abi, data: data as `0x${string}` }), { functionName: "transfer", args: [ADDR, 25_000_000n] });
+  assert.throws(() => usdcTransferData("not-an-address", 1n));
 });

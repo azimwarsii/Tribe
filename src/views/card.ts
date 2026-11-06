@@ -1,6 +1,6 @@
 import { CARD_FONTS } from "../card-fonts.js";
 import type { CardView } from "../cards.js";
-import type { CardKind, Tier } from "../card-tiers.js";
+import { progressOf, type CardKind, type Tier } from "../card-tiers.js";
 import { pct } from "../data.js";
 import { esc } from "../ui.js";
 
@@ -101,8 +101,8 @@ export function feedChartHtml(id: number, chart: number[], tier: Tier): string {
   return `<div class="fchart" aria-hidden="true"><svg viewBox="0 0 ${WIDTH} ${CHART_H}" preserveAspectRatio="none"><defs><linearGradient id="${g}">${stops}</linearGradient><linearGradient id="${a}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--a1);stop-opacity:var(--ao)"/><stop offset="1" style="stop-color:var(--a2);stop-opacity:var(--ao2)"/></linearGradient></defs>${rows}<path d="${line} L${WIDTH} ${CHART_H} L0 ${CHART_H} Z" fill="url(#${a})"/><path d="${line}" fill="none" stroke="url(#${g})" vector-effect="non-scaling-stroke" style="stroke-width:var(--f-lw)"/></svg><i style="top:${((lastY / CHART_H) * 100).toFixed(1)}%"></i></div>`;
 }
 
-/** "ORIGINAL · #0003", "COPY · #0007". */
-export const editionText = (kind: CardKind, n: number) => `${kind.toUpperCase()} · #${String(n).padStart(4, "0")}`;
+/** "ORIGINAL · #0003" on a creator's card; just "#0007" on the card someone mints by copying. */
+export const editionText = (kind: CardKind, n: number) => `${kind === "original" ? "ORIGINAL · " : ""}#${String(n).padStart(4, "0")}`;
 export const whenText = (days: number) => (days === 0 ? "today" : `${days} day${days === 1 ? "" : "s"} ago`);
 
 /** The split as labels, four to a row: the biggest tokens, and how many more when they don't all fit. */
@@ -204,7 +204,7 @@ export function cardSvg(v: CardView): string {
     ? `<rect class="${v.tier === "holo" ? "hue" : ""}" x="${LEFT}" y="27" width="${badgeW}" height="24" rx="12" fill="url(#${p}badge)"/>`
     : `<rect x="${LEFT + 0.5}" y="27.5" width="${badgeW - 1}" height="23" rx="11.5" fill="none" stroke="#4a4f57"/>`;
   const panelFill = v.tier === "glitter" ? `url(#${p}fill)` : v.tier === "holo" ? "#0d1020" : "#16181c";
-  const by = `by @${v.handle} · ${v.kind === "original" ? "minted" : "copied"} ${whenText(v.days)}`;
+  const by = `by @${v.handle} · minted ${whenText(v.days)}`;
   const alt = `${v.name}, ${v.editionLabel}, ${t.label} tier, ${ret}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W}" height="${CARD_H}" viewBox="0 0 ${CARD_W} ${CARD_H}" role="img" aria-label="${esc(alt)}" font-family="${SANS}"><title>${esc(alt)}</title><style>${CARD_FONTS}${v.tier === "base" ? "" : MOTION}</style>
 ${defsSvg(v.tier, t, p)}
@@ -222,4 +222,17 @@ ${statSvg("RETURN", ret, LEFT, 347, t, retColour)}${statSvg("COPIERS", String(v.
 <line x1="${LEFT}" y1="386" x2="${RIGHT}" y2="386" stroke="${t.rule}"/>
 <text x="${CARD_W / 2}" y="428" fill="${t.sub}" fill-opacity=".7" font-size="10" text-anchor="middle">${v.practice ? "Practice · simulated fills" : "Real orders on Base"}</text>
 ${progressSvg(v, t, p)}</svg>`;
+}
+
+const SAMPLE_RETURNS: Record<Tier, number> = { base: 3.2, glitter: 12.5, holo: 31.2 };
+
+/** An example card for the landing page and intro, marked practice so it never reads as a real result. */
+export function sampleCardSvg(tier: Tier): string {
+  const returnPct = SAMPLE_RETURNS[tier];
+  return cardSvg({
+    id: 7, kind: "copy", edition: 7, editionLabel: "Card #7", tier, basket: 1, name: "Base Blue Chips", handle: "nightowl", returnPct, copiers: 12, days: 21, practice: true,
+    weights: [{ symbol: "ETH", weight: 50 }, { symbol: "cbBTC", weight: 30 }, { symbol: "AERO", weight: 20 }],
+    chart: [100, 99, 101, 100, 103, 102, 100 + returnPct * 0.7, 100 + returnPct * 0.6, 100 + returnPct],
+    progress: progressOf("copy", tier, { returnPct, copiers: 0 }),
+  });
 }

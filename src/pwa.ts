@@ -20,7 +20,7 @@ const MANIFEST = {
   id: "/",
   name: "Tribe",
   short_name: "Tribe",
-  description: "Copy trader-built baskets with your own limits, guarded onchain.",
+  description: "Copy custom ETF-style trades and mint cards that upgrade with your profit.",
   start_url: "/feed", // signed out, this lands on sign-in rather than the marketing page
   scope: "/",
   display: "standalone",

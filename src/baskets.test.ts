@@ -401,6 +401,110 @@ test("native ETH becomes wrapped ETH, because Flash can't attach a stop to a nat
   assert.throws(() => b.checkWeights([{ token: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", weight: 50 }, { token: ETH, weight: 50 }]), /only be in a trade once/);
 });
 
+test("a sell never asks for more than the wallet holds", () => {
+  // The two real amounts Flash refused, when rounding to 12 digits went up.
+  assert.ok(Number(b.sellableQty(1.600458895789929)) <= 1.600458895789929);
+  assert.ok(Number(b.sellableQty(0.000410018921941548)) <= 0.000410018921941548);
+  assert.ok(Number(b.sellableQty(1.600458895789929)) > 1.6004588957);
+  for (const q of [1, 0.1, 123456.789012345678, 9.99999999999999, 0.000000123456789987654, 5e-7, 1234567890123.456]) {
+    const n = Number(b.sellableQty(q));
+    assert.ok(n <= q && n > q * 0.999999999, `${q} -> ${n}`);
+  }
+  assert.equal(b.sellableQty(0), "0");
+});
+
+test("closing twice at once sells once: the second tap is turned away", async () => {
+  const owner = user(), me = user();
+  const id = await make(owner);
+  const out = await b.copyBasket(me, id, 100);
+  await pollOrders();
+  const [first, second] = await Promise.allSettled([b.closeCopy(me, out.copy), b.closeCopy(me, out.copy)]);
+  assert.equal(first.status, "fulfilled");
+  assert.equal(second.status, "rejected");
+  assert.match(String((second as PromiseRejectedResult).reason), /already closing/);
+  const sells = db.prepare("SELECT COUNT(*) AS n FROM basket_legs WHERE copy_id = ? AND kind = 'close'").get(out.copy) as { n: number };
+  assert.equal(sells.n, 3); // one sell per token, not two
+});
+
+test("advanced orders are checked, and a trailing stop needs a stop size", async () => {
+  const w = (order: object) => [{ token: ETH, weight: 100, order }];
+  assert.throws(() => b.checkWeights(w({ entry: "limit" })), /limit price/);
+  assert.throws(() => b.checkWeights(w({ entry: "twap", minutes: 2 })), /5 minutes to 24 hours/);
+  assert.throws(() => b.checkWeights(w({ entry: "twap", minutes: 2000 })), /5 minutes to 24 hours/);
+  assert.throws(() => b.checkWeights(w({ entry: "wat" })), /market, limit or TWAP/);
+  assert.equal(b.checkWeights(w({ entry: "market" }))[0].order, undefined); // nothing to record for a plain buy
+  await assert.rejects(b.createBasket(user(), { name: "No Stop Trail", stopPct: 0, weights: w({ entry: "market", trail: true }) }), /needs a stop size/);
+});
+
+test("a limit waits for its price with the stop measured from it; the copy stays open, and closing cancels it", async () => {
+  reset();
+  const owner = user(), me = user();
+  const id = await b.createBasket(owner, { name: "Limit Trade", stopPct: 10, tpPct: 20, weights: [{ token: ETH, weight: 100, order: { entry: "limit", price: 2000 } }] });
+  const out = await b.copyBasket(me, id, 100);
+  await pollOrders();
+  const buy = db.prepare("SELECT status, trade FROM orders WHERE trader = ? AND json_extract(trade, '$.side') = 'buy'").get(me) as { status: string; trade: string };
+  const t = JSON.parse(buy.trade);
+  assert.equal(buy.status, "open");
+  assert.equal(t.limitNotionalPrice, "2000.00");
+  assert.equal(t.attach.sl, "1800.00"); // 10% under the limit, not under today's price
+  assert.ok(Date.parse(t.expireTime) > Date.now() + 6 * 86400e3);
+  assert.equal((await b.liveCopy(me, id))?.id, out.copy); // holding nothing yet isn't being sold out
+
+  await b.closeCopy(me, out.copy);
+  assert.equal((db.prepare("SELECT status FROM orders WHERE trader = ? AND json_extract(trade, '$.side') = 'buy'").get(me) as { status: string }).status, "closed");
+
+  // And when the price does come down, it fills and its stop goes on.
+  const fan = user();
+  await b.copyBasket(fan, id, 100);
+  px[ETH] = 1990;
+  await pollOrders();
+  assert.ok(db.prepare("SELECT 1 FROM orders WHERE trader = ? AND status = 'filled' AND json_extract(trade, '$.side') = 'buy'").get(fan));
+  assert.ok(db.prepare("SELECT 1 FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.orderType') = 'bracket'").get(fan));
+  reset();
+});
+
+test("a limit with a stop attached goes to Flash as a cross price, which is all it accepts", async () => {
+  const { quoteBody } = await import("./flash.js");
+  const base = { chain: "base", target: ETH, contra: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", side: "buy" as const, qty: "3", orderType: "limit" as const, limitNotionalPrice: "2000.00" };
+  const withStop = quoteBody({ ...base, attach: { sl: "1800", tp: "2400" } }, ETH) as Record<string, unknown>;
+  assert.equal(withStop.limitCrossPrice, "2000.00");
+  assert.equal(withStop.limitNotionalPrice, undefined);
+  const plain = quoteBody(base, ETH) as Record<string, unknown>;
+  assert.deepEqual([plain.limitNotionalPrice, plain.limitCrossPrice], ["2000.00", undefined]);
+});
+
+test("a TWAP carries its duration and stop; a trailing stop goes on after the buy, in place of the fixed one", async () => {
+  reset();
+  const owner = user(), me = user();
+  const id = await b.createBasket(owner, { name: "Mixed Trade", stopPct: 10, tpPct: 20, weights: [
+    { token: ETH, weight: 50, order: { entry: "twap", minutes: 30 } },
+    { token: BTC, weight: 50, order: { entry: "market", trail: true, activation: 70000 } },
+  ] });
+  await b.copyBasket(me, id, 100);
+  await pollOrders();
+  const legs = db.prepare("SELECT kind, trade FROM basket_legs WHERE copy_id = (SELECT id FROM basket_copies WHERE follower = ?) ORDER BY id").all(me) as { kind: string; trade: string }[];
+  const [twap, buy, trail] = legs.map((l) => JSON.parse(l.trade));
+  assert.deepEqual([twap.orderType, twap.durationSeconds, !!twap.attach], ["twap", 1800, true]);
+  assert.deepEqual([buy.orderType, buy.attach, buy.hasStop], ["market", undefined, true]);
+  assert.equal(trail.orderType, "trailing-stop");
+  assert.deepEqual(trail.trailingStop, { trailPercent: "0.1", activationPrice: "70000.00" });
+  assert.equal(legs[2].kind, "protect");
+  assert.ok(db.prepare("SELECT 1 FROM orders WHERE trader = ? AND status = 'open' AND json_extract(trade, '$.orderType') = 'trailing-stop'").get(me));
+});
+
+test("MetaMask can't take a trailing stop: it's refused before anything is placed", async () => {
+  reset();
+  const owner = user(), me = user();
+  const id = await b.createBasket(owner, { name: "Trail Only", stopPct: 10, weights: [{ token: ETH, weight: 100, order: { entry: "market", trail: true } }] });
+  db.prepare("UPDATE users SET wallet_kind = 'external' WHERE id = ?").run(me);
+  process.env.DRY_RUN = "false";
+  try {
+    await assert.rejects(b.checkCopy(me, id, 20), /automatic signing/);
+  } finally {
+    process.env.DRY_RUN = "true";
+  }
+});
+
 test("no price means no order: a basket with a stop never buys without one", async () => {
   const owner = user(), me = user();
   const id = await make(owner);

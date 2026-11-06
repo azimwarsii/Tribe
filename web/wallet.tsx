@@ -6,10 +6,11 @@
  */
 import React, { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { PrivyProvider, useCreateWallet, useExportWallet, usePrivy, useSigners, useWallets } from "@privy-io/react-auth";
+import { PrivyProvider, useConnectWallet, useCreateWallet, useExportWallet, usePrivy, useSigners, useWallets } from "@privy-io/react-auth";
+import { BASE_CHAIN_ID, GAS_TOP_UP_ETH, GAS_TOP_UP_WEI, parseUsdc, USDC, usdcTransferData } from "./fund";
 
 declare global {
-  interface Window { TRIBE: { appId: string; auto?: boolean } }
+  interface Window { TRIBE: { appId: string; auto?: boolean; fundTo?: string; needsGas?: boolean } }
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -17,6 +18,60 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error ?? `Request failed (${r.status})`);
   return j as T;
+}
+
+/** Move USDC (and a little ETH for fees, when the wallet is low) from the user's outside wallet into their Tribe wallet. */
+function AddFunds({ auto, to, needsGas }: { auto: boolean; to?: string; needsGas: boolean }) {
+  const { wallets } = useWallets();
+  const { connectWallet } = useConnectWallet();
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState("");
+  const outside = wallets.find((w) => w.walletClientType !== "privy");
+  const units = parseUsdc(amount);
+
+  const send = async () => {
+    if (!outside || units === undefined || !to) return;
+    setBusy(true);
+    setError("");
+    setSent("");
+    try {
+      await outside.switchChain(BASE_CHAIN_ID);
+      const provider = await outside.getEthereumProvider();
+      // Never send on the wrong network: funds sent there wouldn't arrive.
+      if (Number(await provider.request({ method: "eth_chainId" })) !== BASE_CHAIN_ID) throw new Error("Switch your wallet to Base, then try again.");
+      const hash = await provider.request({ method: "eth_sendTransaction", params: [{ from: outside.address, to: USDC, data: usdcTransferData(to, units) }] });
+      setSent(hash as string);
+      if (needsGas) await provider.request({ method: "eth_sendTransaction", params: [{ from: outside.address, to, value: GAS_TOP_UP_WEI }] });
+      setAmount("");
+    } catch (e) {
+      setError((e as { code?: number }).code === 4001 ? "You cancelled in your wallet." : (e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  const blocked = !auto ? "Turn on automatic signing first, so you have a Tribe wallet to fund." : !to ? "This is a practice server, so it uses simulated funds. Add USDC works on the real-money app." : "";
+  return (
+    <section className="card col" aria-label="Add USDC" style={{ gap: 10, padding: 16, borderRadius: 18, borderColor: "rgba(255,255,255,.14)" }}>
+      <b style={{ fontSize: 17 }}>Add USDC</b>
+      {blocked ? (
+        <span className="sm mut" style={{ lineHeight: 1.5 }}>{blocked}</span>
+      ) : outside ? (
+        <>
+          <span className="sm" style={{ lineHeight: 1.5 }}>
+            Real USDC on Base, straight from your wallet.{needsGas ? ` You'll approve a second transfer of ${GAS_TOP_UP_ETH} ETH (about $1) for network fees.` : ""}
+          </span>
+          <input className="f" aria-label="Amount in USDC" inputMode="decimal" placeholder="Amount in USDC" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          {error && <div className="sm down" role="alert">{error}</div>}
+          {sent && <a className="sm" href={`https://basescan.org/tx/${sent}`} target="_blank" rel="noopener">Sent. It arrives in a moment: view on Basescan ↗</a>}
+          <button className="btn p" disabled={busy || units === undefined} onClick={() => void send()}>{busy ? "Check your wallet…" : "Add USDC"}</button>
+        </>
+      ) : (
+        <button className="btn p" onClick={() => connectWallet()}>Connect your wallet</button>
+      )}
+    </section>
+  );
 }
 
 function Signing() {
@@ -68,30 +123,35 @@ function Signing() {
     location.href = (await post<{ redirect: string }>("/api/privy/wallet/disable", { accessToken })).redirect;
   });
 
-  if (!ready || !walletsReady) return <div className="card"><span className="sm mut">Loading…</span></div>;
-  if (!authenticated) {
-    return (
-      <div className="card col" style={{ gap: 8 }}>
-        <b>Automatic signing</b>
-        <span className="sm" style={{ lineHeight: 1.5 }}>Connect your wallet again to manage automatic signing.</span>
-        <button className="btn" onClick={login}>Connect wallet</button>
+  const hero = (control: React.ReactNode, text: string) => (
+    <section className="card col" aria-label="Automatic signing" style={{ gap: 10, padding: 16, borderRadius: 18, borderColor: auto ? "rgba(52,211,153,.45)" : "rgba(252,211,77,.45)", background: auto ? "rgba(52,211,153,.07)" : "rgba(252,211,77,.06)" }}>
+      <div className="row sp" style={{ gap: 12 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <b style={{ fontSize: 17 }}>Automatic signing</b>
+          <span className={auto ? "pill ok" : "pill warn"}>{auto ? "On" : "Off"}</span>
+        </div>
+        {control}
       </div>
-    );
-  }
-  return (
-    <div className="card col" style={{ gap: 8 }}>
-      <b>Automatic signing</b>
-      <span className="sm" style={{ lineHeight: 1.5 }}>
-        {auto
-          ? "On. Tribe can place Flash trades from this wallet without asking each time. Turning it off removes Tribe as a signer. Funds stay in this wallet."
-          : "Lets Tribe place trades without a prompt each time. You get a Tribe wallet of your own, and you move USDC into it from MetaMask. Tribe can only sign Flash trades that pay back to that wallet. It can't send your funds anywhere else, and you can turn this off at any time."}
-      </span>
+      <span className="sm" style={{ lineHeight: 1.5 }}>{text}</span>
       {error && <div className="sm down" role="alert">{error}</div>}
-      <button className={auto ? "btn" : "btn p"} disabled={busy} onClick={auto ? turnOff : turnOn}>
-        {busy ? "Working…" : auto ? "Turn off automatic signing" : "Turn on automatic signing"}
-      </button>
+    </section>
+  );
+
+  if (!ready || !walletsReady) return hero(null, "Loading…");
+  if (!authenticated) return hero(<button className="btn sm p" onClick={login}>Connect wallet</button>, "Connect your wallet again to manage automatic signing and add USDC.");
+  return (
+    <>
+      {hero(
+        <button className="sw" role="switch" aria-checked={auto} aria-label="Automatic signing" disabled={busy} style={{ flex: "none", transform: "scale(1.25)", transformOrigin: "right center" }} onClick={auto ? turnOff : turnOn}><i></i></button>,
+        busy
+          ? "Working… approve anything your wallet asks for."
+          : auto
+            ? "Tribe places Flash trades from your Tribe wallet without asking each time. It can't send your funds anywhere else."
+            : "Trades run without a prompt each time. You get your own Tribe wallet, and you can turn this off at any time.",
+      )}
+      <AddFunds auto={auto} to={window.TRIBE.fundTo} needsGas={!!window.TRIBE.needsGas} />
       {embedded && <button className="btn sm" disabled={busy} onClick={() => void exportWallet({ address: embedded.address })}>Export wallet key</button>}
-    </div>
+    </>
   );
 }
 

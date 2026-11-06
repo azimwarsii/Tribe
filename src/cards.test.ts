@@ -87,7 +87,7 @@ test("creating gives an Original, each copy the next edition, and a copy that ne
   assert.deepEqual([original.kind, original.edition, original.tier], ["original", 0, "base"]);
 
   await b.copyBasket(a, id, 50);
-  assert.equal((await view(copyCard(a, id).id)).editionLabel, "Copy #1");
+  assert.equal((await view(copyCard(a, id).id)).editionLabel, "Card #1");
 
   px[ETH] = 0; // every order fails
   assert.equal((await b.copyBasket(d, id, 50)).status, "failed");

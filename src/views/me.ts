@@ -1,6 +1,7 @@
 import { addLedger, db, followCount, followingOf, getMeta, getUser, guardEvents, ledgerOf, seasonBoard, setMeta, strategiesOf, userById } from "../db.js";
 import { face, initials, money, openPositions, pct, portfolio, profile, seasonOf, seasonRange, seasonRanked, rankMin } from "../data.js";
 import { traderStats } from "../stats.js";
+import { signingBar } from "./chrome.js";
 import { isDry } from "../tracker.js";
 import { txUrl } from "../flash.js";
 import { sessionsOf, takeReveal, type Session } from "../auth.js";
@@ -34,6 +35,7 @@ export async function mePage(uid: number): Promise<string> {
 <div class="grow"><h1 style="font-size:20px">@${esc(u.handle)}</h1><div class="row" style="gap:6px;margin-top:4px"><span class="pill">${esc(u.persona ?? "Trader")}</span><a class="pill" href="/progress" style="color:#E5E5E5">Lv ${s.level} · ${s.xp.toLocaleString()} XP ›</a></div></div>
 <a class="ic" href="/share/me" aria-label="Share your profile">${icon("share", 17, "currentColor", 2)}</a></header>
 <main class="main" style="gap:18px">
+${signingBar(uid)}
 <a class="card row" href="/funds" style="color:#F5F5F5;gap:12px"><span class="grow"><span class="sm mut" style="display:block">Wallet balance • Base</span><span class="big" style="display:block;font-size:28px;margin-top:4px">${meta.hideBalance ? "••••" : money2(pf.total)}</span><span class="mut" style="display:block;font-size:13px">${money(pf.free)} free · ${money(pf.inCopies)} in copies</span></span>${icon("chev", 14, "#8A8A8A", 2)}</a>
 <div class="grid2">${tile("Positions", `${open.length} open · ${unreal >= 0 ? "+" : "−"}${money(Math.abs(unreal))}`, signCls(unreal), "/positions", "trend")}${tile("My traders", `${follows.length} copied`, "mut", "/traders", "people")}${tile("Portfolio", "Investing and creating", "", "/portfolio", "trend")}${tile("Activity", "Every fill, with receipts", "mut", "/activity", "clock")}${tile("My profile", "Photo, username, portfolio", "mut", `/u/${esc(u.handle)}`, "user")}${tile("Your bot", meta.bot.on ? `On · ${meta.bot.usd} a trade` : "Off · trades under your name", meta.bot.on ? "up" : "mut", "/bot", "bot")}</div>
 <section class="card" aria-label="Copy permission" style="padding:14px;border-radius:18px;display:flex;flex-direction:column;gap:10px;border-color:${permOn ? "rgba(52,211,153,.35)" : "rgba(248,113,113,.35)"};background:${permOn ? "rgba(52,211,153,.05)" : "rgba(248,113,113,.05)"}">
@@ -115,6 +117,7 @@ export async function fundsPage(uid: number, tab: string): Promise<string> {
 <div class="line"><span class="av sm">B</span><span class="grow"><span class="t" style="font-weight:600">Base</span><span class="s">${money(pf.free)} free · ${money(pf.inCopies)} in copies</span></span><b>${money(pf.total)}</b></div>
 <p class="note">Flash also supports Ethereum, Arbitrum, Solana and more. This build trades on Base; cross-chain copies are next.</p></section>`;
   const main = `<main class="main">
+${signingBar(uid)}
 <section class="card" aria-label="Balance"><div class="row" style="gap:10px;align-items:flex-end"><div class="grow"><div class="sm mut">Total • Base</div><div class="big" style="font-size:32px;margin-top:4px">${money2(pf.total)}</div></div><button class="btn sm w only-d" data-open="addf">${icon("plus", 14, "currentColor", 2.6)}Add funds</button><button class="btn sm only-d" data-open="outf">Withdraw</button></div>
 <div class="only-m"><div aria-hidden="true" style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px;margin-top:12px"><span style="flex:${Math.max(pf.free, 0.001)};background:#F5F5F5"></span><span style="flex:${Math.max(pf.inCopies, 0.001)};background:#34D399"></span></div>
 <div class="row sm mut" style="gap:14px;margin-top:8px"><span class="row" style="gap:5px"><i style="width:8px;height:8px;border-radius:2px;background:#F5F5F5;display:inline-block"></i>Free ${money(pf.free)}</span><span class="row" style="gap:5px"><i style="width:8px;height:8px;border-radius:2px;background:#34D399;display:inline-block"></i>In copies ${money(pf.inCopies)}</span></div></div>

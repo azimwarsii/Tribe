@@ -2,6 +2,7 @@ import { openCopies } from "../baskets.js";
 import { allHalts, db, followingOf, getMeta, getUser, pendingFor } from "../db.js";
 import { face, initials, money, pct, portfolio, topTraders } from "../data.js";
 import { lastGuardCheck } from "../guard.js";
+import { privyEnabled } from "../privy.js";
 import { ago } from "../data.js";
 import { esc, icon, money2, signCls } from "../ui.js";
 
@@ -63,4 +64,12 @@ ${top.map((t, i) => `<a class="row" href="/u/${esc(t.handle)}" style="gap:10px;m
   return html
     .replace("<!--SHELL_OPEN-->", `<div class="shell">${side}<div class="mainc">${topbar}`)
     .replace("<!--SHELL_CLOSE-->", `</div>${ownAside ? "" : rail}</div>`);
+}
+
+/** The shortcut at the top of money pages: is automatic signing on, and a way to add USDC. Both open the Wallet page, where the switch needs the user's own wallet. */
+export function signingBar(uid: number): string {
+  const u = getUser(uid);
+  if (!privyEnabled() || !process.env.PRIVY_KEY_QUORUM_ID || !u.privy_user_id) return "";
+  const on = u.wallet_kind === "privy";
+  return `<section class="card row" aria-label="Automatic signing" style="gap:10px;padding:10px 12px;border-radius:16px;border-color:${on ? "rgba(52,211,153,.45)" : "rgba(252,211,77,.45)"}"><a class="row grow" href="/wallet" style="gap:8px;color:#F5F5F5;min-width:0;min-height:40px"><span style="color:${on ? "var(--ac)" : "var(--warn)"};display:flex">${icon("bolt", 16)}</span><b class="sm" style="white-space:nowrap">Auto signing</b><span class="pill ${on ? "ok" : "warn"}">${on ? "On" : "Off"}</span></a><a class="btn sm p" href="/wallet" style="flex:none;white-space:nowrap">${icon("plus", 14, "currentColor", 2.2)}Add USDC</a></section>`;
 }

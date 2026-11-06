@@ -1,7 +1,9 @@
+import { CARD_TIERS } from "../card-tiers.js";
 import { openCopies } from "../baskets.js";
 import { basketHoldingsHtml } from "./baskets.js";
 import { allHalts, db, followingOf, getMeta, pendingFor, userById } from "../db.js";
 import { face, copyPnlByLeader, initials, money, monthlyHistory, ORDER_LABEL, openPositions, pct, portfolio, ago, topTraders, type MonthRow } from "../data.js";
+import { signingBar } from "./chrome.js";
 import { creatorEarnings } from "./me.js";
 import { creatingTabHtml } from "./creator.js";
 import { bundleVersion, esc, header, icon, money2, page, seg, signCls } from "../ui.js";
@@ -67,7 +69,7 @@ export const portfolioTab = (t: unknown): PortfolioTab => (t === "creating" ? t 
 
 export async function portfolioPage(uid: number, tab: PortfolioTab = "investing"): Promise<string> {
   const head = `${header("Portfolio", tab === "creating" ? "Build trades, get paid when people copy you" : "Positions, requests, traders and funds", "/feed", tab === "creating" ? `<a class="ic" href="/share/me" aria-label="Share your profile">${icon("share", 17, "currentColor", 2)}</a>` : "")}
-<div class="main" style="flex:none;padding-bottom:14px">${seg([{ label: "Investing", href: "/portfolio", on: tab === "investing" }, { label: "Creating", href: "/portfolio?tab=creating", on: tab === "creating" }], false, "Portfolio")}</div>`;
+<div class="main" style="flex:none;padding-bottom:14px">${signingBar(uid)}${seg([{ label: "Investing", href: "/portfolio", on: tab === "investing" }, { label: "Creating", href: "/portfolio?tab=creating", on: tab === "creating" }], false, "Portfolio")}</div>`;
   if (tab === "creating") return page({ title: "Portfolio", nav: "me", body: `${head}${await creatingTabHtml(uid)}` });
   const pf = await portfolio(uid);
   const open = await openPositions(uid);
@@ -105,36 +107,34 @@ ${follows.map((f) => { const lu = userById(f.leader)!; const st = halted.has(f.l
 // ---------- Public landing and sign-in ----------
 
 export function landingPage(): string {
-  const top = db.prepare("SELECT leader, COUNT(*) AS n FROM copies WHERE status IN ('executed','dry-run') AND at >= ? GROUP BY leader ORDER BY n DESC LIMIT 1").get(Date.now() - 7 * 86400e3) as { leader: number; n: number } | undefined;
-  const topHandle = top ? userById(top.leader)?.handle : undefined;
+  const { n: minted } = db.prepare("SELECT COUNT(*) AS n FROM basket_cards k LEFT JOIN basket_copies c ON c.id = k.copy_id WHERE k.at >= ? AND (c.status IS NULL OR c.status != 'failed')").get(Date.now() - 7 * 86400e3) as { n: number };
+  const { glitter, holo } = CARD_TIERS.copy;
   const feat = (ic: string, c: string, t: string, p: string) => `<article class="card" style="padding:24px"><span aria-hidden="true" style="width:44px;height:44px;border-radius:14px;background:#262626;color:${c};display:flex;align-items:center;justify-content:center">${icon(ic, 20)}</span><h3 style="margin:16px 0 0;font-size:20px;font-weight:600">${t}</h3><p style="margin:8px 0 0;font-size:15px;color:#A3A3A3;line-height:1.55">${p}</p></article>`;
-  const step = (n: string, t: string, p: string) => `<li style="padding:20px;border-radius:20px;border:1px solid rgba(255,255,255,.08)"><div style="font-size:13px;color:#34D399;font-weight:600">${n}</div><div style="font-size:17px;font-weight:600;margin-top:6px">${t}</div><div style="font-size:14px;color:#A3A3A3;margin-top:4px;line-height:1.5">${p}</div></li>`;
+  const step = (t: string, p: string) => `<li style="padding:20px 20px 20px 50px;border-radius:20px;border:1px solid rgba(255,255,255,.08)"><div style="font-size:17px;font-weight:600;color:#F5F5F5">${t}</div><div style="font-size:14px;color:#A3A3A3;margin-top:4px;line-height:1.5">${p}</div></li>`;
   const body = `<style>
 .landing{max-width:1280px!important;width:100%;background-image:radial-gradient(ellipse 60% 35% at 50% 0%,rgba(52,211,153,.10),rgba(255,255,255,0) 70%)!important}
 .lh{display:flex;align-items:center;gap:28px;padding:22px 24px}.lh nav{display:flex;gap:24px;font-size:14px}.lh nav a{color:#C4C4C4}
 .hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:center;padding:48px 24px 72px}
 .hero h1{margin:22px 0 0;font-size:clamp(38px,6vw,68px);line-height:1.02;font-weight:600;letter-spacing:-.035em}
 .feat,.steps{display:grid;gap:16px;padding:0 24px 64px}.feat{grid-template-columns:repeat(3,minmax(0,1fr))}.steps{grid-template-columns:repeat(4,minmax(0,1fr));list-style:none;margin:0}
-.lsec{padding:0 24px 48px}.lsec h2{margin:0 0 20px;font-size:clamp(26px,3.5vw,36px);letter-spacing:-.02em}
+.landing .steps li::before{left:18px;top:20px}.lsec{padding:0 24px 48px}.lsec h2{margin:0 0 20px;font-size:clamp(26px,3.5vw,36px);letter-spacing:-.02em}
 .cta{margin:0 24px 64px;padding:36px;border-radius:28px;background:linear-gradient(180deg,#1C1C1C,#121212);border:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:32px}
-.mock{position:relative;height:500px}.mock>*{position:absolute}
-@media (max-width:1099px){.hero,.feat{grid-template-columns:minmax(0,1fr)}.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.lh nav{display:none}.mock{height:470px}}
+.mock{position:relative;height:clamp(300px,calc(100vw - 48px),490px)}.mock img{position:absolute;width:min(250px,54%);height:auto;border-radius:18px;box-shadow:0 24px 48px rgba(0,0,0,.6)}.mock p{position:absolute;left:0;right:0;bottom:0;margin:0;text-align:center;font-size:12px;color:#8A8A8A}
+@media (max-width:1099px){.hero,.feat{grid-template-columns:minmax(0,1fr)}.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.lh nav{display:none}}
 @media (max-width:899px){.cta{flex-direction:column;align-items:flex-start}.steps{grid-template-columns:minmax(0,1fr)}.hero{padding-top:24px}}
 </style>
-<header class="lh"><span style="font-size:26px;font-weight:700;letter-spacing:-.05em">tribe<span style="color:#34D399">.</span></span><nav aria-label="Site"><a href="#how">How it works</a><a href="#guard">Guard</a><a href="#creators">Creators</a></nav><span style="flex:1"></span><a href="/signin" style="color:#F5F5F5;font-size:14px">Sign in</a><a class="btn sm w" href="/onboarding" style="height:42px;border-radius:21px">Get started</a></header>
-<section class="hero"><div><span class="pill ok" style="padding:6px 12px;font-size:13px;border-radius:16px"><span class="live" style="width:6px;height:6px"></span>${topHandle ? `${top!.n} copies of @${esc(topHandle)} this week` : "Copy trading with a safety net"}</span>
-<h1>Copy great traders.<br><span class="dim">With a safety net onchain.</span></h1><p style="margin:22px 0 0;font-size:19px;color:#B5B5B5;line-height:1.55;max-width:540px">Every trade copies with its stop and target. A Chainlink-powered Guard pauses risky traders before you copy them. Your wallet stays yours.</p>
+<header class="lh"><span style="font-size:26px;font-weight:700;letter-spacing:-.05em">tribe<span style="color:#34D399">.</span></span><nav aria-label="Site"><a href="#how">How it works</a><a href="#cards">Cards</a><a href="#creators">Creators</a></nav><span style="flex:1"></span><a href="/signin" style="color:#F5F5F5;font-size:14px">Sign in</a><a class="btn sm w" href="/onboarding" style="height:42px;border-radius:21px">Get started</a></header>
+<section class="hero"><div><span class="pill ok" style="padding:6px 12px;font-size:13px;border-radius:16px"><span class="live" style="width:6px;height:6px"></span>${minted ? `${minted} card${minted === 1 ? "" : "s"} minted this week` : "Custom ETF-style trades, collectible cards"}</span>
+<h1>Custom ETF-style trades.<br><span class="dim">Cards that level up with your profit.</span></h1><p style="margin:22px 0 0;font-size:19px;color:#B5B5B5;line-height:1.55;max-width:540px">Creators turn a thesis into a custom index of up to 10 tokens. Copy it in one swipe and you mint a trading card that upgrades as your profit grows. The tokens stay in your own wallet.</p>
 <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:32px"><a class="btn p big" href="/signin" style="width:auto;padding:0 24px">${icon("wallet", 14)}Connect wallet</a></div>
 <div class="sm dim" style="margin-top:14px">Non-custodial wallets by Privy · Flash orders · Chainlink CRE</div></div>
-<div class="mock" aria-hidden="true"><div class="card" style="left:30px;top:20px;width:min(400px,86%);padding:20px"><div class="row" style="gap:10px"><span class="av w">NO</span><b class="grow">@nightowl</b><b class="up" style="font-size:22px">+8.4%</b></div><div style="font-size:26px;font-weight:600;margin-top:14px">ETH long</div><div class="row" style="gap:6px;margin-top:10px"><span class="pill flash">FLASH BRACKET</span><span class="pill bad">SL −5%</span><span class="pill ok">TP +12%</span></div><div class="btn p" style="margin-top:18px">${icon("bolt", 14)}Copy with Flash</div></div>
-<div class="card" style="right:10px;top:230px;width:min(330px,80%);padding:18px;background:linear-gradient(180deg,#241818,#151313);border-color:rgba(248,113,113,.4)"><div class="row sp"><b>@traderx</b><span class="pill bad">Paused by Guard</span></div><div style="position:relative;height:6px;border-radius:3px;background:#262626;margin-top:14px"><div style="width:91%;height:6px;border-radius:3px;background:#F87171"></div><span style="position:absolute;left:65%;top:-4px;width:2px;height:14px;background:#F5F5F5"></span></div><div class="sm" style="color:#C4C4C4;margin-top:10px">Your $15 copy was blocked. Proof onchain ↗</div></div>
-<div class="row" style="left:40px;bottom:10px;gap:12px;padding:14px 18px;border-radius:26px;background:#161616;border:1px solid rgba(255,255,255,.1);box-shadow:0 20px 40px rgba(0,0,0,.5)"><span class="orb" style="width:30px;height:30px"><i></i></span><span style="font-size:15px;color:#E5E5E5">“buy $50 ETH with a 5% stop”</span></div></div></section>
-<section id="guard" class="feat">${feat("bolt", "#34D399", "Flash copy trading", "Entry, stop and target copy together as one Flash order, at the size you choose. Approve each trade or let it run.")}${feat("shield", "#34D399", "CRE Guard", "Every 5 minutes Chainlink CRE checks each trader. Risky ones are paused onchain, and anyone can verify why.")}</section>
-<section id="how" class="lsec"><h2>How copying works</h2><ol class="steps" style="padding:0">${step("01", "Pick a trader", "Real onchain results, Guard record and copy slippage.")}${step("02", "Set your limits", "Budget, size per trade, stops required.")}${step("03", "They trade", "Guard checks them, then your filters.")}${step("04", "You copy", "Approve in a tap, or let it run. Stops come along.")}</ol></section>
-<section id="creators" class="cta"><div style="flex:1"><h2 style="margin:0;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em">Good trader? Get paid when people copy you.</h2><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.55">Publish a trade or a bot you build. Every copy earns you a share of the Flash fee.</p></div><a class="btn w big" href="/onboarding" style="width:auto;padding:0 26px">Become a creator</a></section>
-<footer style="padding:26px 24px;border-top:1px solid #1A1A1A;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font-size:13px;color:#8A8A8A"><span style="max-width:760px">Copy trading is risky. Past results don't predict future ones. Guard reduces but can't remove losses. Not financial advice.</span><span>Terms · Privacy · Risk disclosure</span></footer>
+<div class="mock"><img src="/card/sample/base.svg" alt="" style="left:0;top:9%;transform:rotate(-8deg)"><img src="/card/sample/glitter.svg" alt="" style="right:0;top:9%;transform:rotate(8deg)"><img src="/card/sample/holo.svg" alt="Example Tribe trading card in its top Holo tier" style="left:50%;top:0;margin-left:calc(min(250px,54%) / -2);z-index:1"><p>Example cards, not real results.</p></div></section>
+<section id="cards" class="feat">${feat("bolt", "#34D399", "Custom ETF-style trades", "Like an ETF anyone can build: a theme, a set of tokens and target weights. Unlike a fund, nothing is pooled, and the tokens sit in your own wallet.")}${feat("trend", "#34D399", "Cards that upgrade", `Every copy mints a numbered card. Reach +${glitter.returnPct}% and it turns Glitter, reach +${holo.returnPct}% and it goes Holo. It never drops a tier.`)}${feat("shield", "#34D399", "CRE Guard", "Chainlink CRE checks creators and pauses risky ones onchain, so anyone can verify why.")}</section>
+<section id="how" class="lsec"><h2>How it works</h2><ol class="steps" style="padding:0">${step("Pick a trade", "See its tokens, weights, risk band and record.")}${step("Copy it", "Choose your amount. The tokens land in your own wallet.")}${step("Mint your card", "Your numbered card arrives right after the copy.")}${step("Watch it upgrade", "Your profit takes it from Base to Glitter to Holo.")}</ol></section>
+<section id="creators" class="cta"><div style="flex:1"><h2 style="margin:0;font-size:clamp(24px,3vw,32px);letter-spacing:-.02em">Launch your own index. Get paid when people copy it.</h2><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.55">Publish a custom trade of up to 10 tokens and you mint its Original card, which upgrades as its return and copiers grow. Every copy earns you a share of the Flash fee.</p></div><a class="btn w big" href="/onboarding" style="width:auto;padding:0 26px">Become a creator</a></section>
+<footer style="padding:26px 24px;border-top:1px solid #1A1A1A;display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap;font-size:13px;color:#8A8A8A"><span style="max-width:760px">Trading is risky. Past results don't predict future ones. Tribe trades are not ETFs or registered funds. Guard reduces but can't remove losses. Not financial advice.</span><span>Terms · Privacy · Risk disclosure</span></footer>
 `;
-  return page({ title: "Copy great traders", body, focus: true, extraClass: "landing" });
+  return page({ title: "Custom ETF-style trades", body, focus: true, extraClass: "landing" });
 }
 
 /** Changes whenever the bundle is rebuilt, so browsers never run a stale cached copy. */

@@ -90,7 +90,7 @@ Flash has no multi-token order, so a trade copy is one order per token, each wit
 
 | Flash feature | Why not |
 |---|---|
-| `limitCrossPrice`, trigger `crossPrice` | Tribe prices everything in USD (`notionalPrice`), which is clearer for people. |
+| Trigger `crossPrice`, and `limitCrossPrice` without a bracket | Tribe prices everything in USD (`notionalPrice`), which is clearer for people. A limit with an attached bracket is the exception: Flash only accepts `limitCrossPrice` there, and against USDC it's the same number. |
 | TWAP `startTime` | Scheduled TWAPs aren't a Tribe feature yet. They would be easy to add to the "twap" command. |
 | `maxPriceImpact` | Flash's default for triggered orders is kept on purpose. A stop that refuses to fill because of price impact is worse than one that fills. |
 | Cross-chain market orders (`recipientAddress`, `bridgeQuoteId`) | Tribe is Base-only. |

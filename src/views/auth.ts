@@ -1,3 +1,4 @@
+import { CARD_TIERS } from "../card-tiers.js";
 import { esc, icon, page } from "../ui.js";
 
 const wordmark = (size: number) => `<span style="font-size:${size}px;font-weight:700;letter-spacing:-.05em">tribe<span style="color:#34D399">.</span></span>`;
@@ -21,56 +22,57 @@ export function splashPage(next = "/feed"): string {
 @keyframes sp-bar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes sp-glow{0%,100%{opacity:.55}50%{opacity:.9}}</style>`,
     body: `<a href="/intro?next=${encodeURIComponent(next)}" data-auto="/intro?next=${encodeURIComponent(next)}" data-delay="2600" aria-label="Tribe. Tap to continue" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:inherit">
-<div class="glow" aria-hidden="true"></div><div class="w">tribe<i aria-hidden="true"></i></div><p>Copy great traders. Guarded onchain.</p>
+<div class="glow" aria-hidden="true"></div><div class="w">tribe<i aria-hidden="true"></i></div><p>Custom ETF-style trades. Cards that level up.</p>
 <div class="ld" aria-hidden="true"><div></div></div><div class="ft"><span>Flash orders</span><span aria-hidden="true">·</span><span>Chainlink CRE</span><span aria-hidden="true">·</span><span>Privy</span></div></a>`,
   });
 }
 
 const CARD = "padding:14px;border-radius:18px;background:linear-gradient(180deg,#262626,#171717);border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 40px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:10px";
 
+const { glitter: GLITTER, holo: HOLO } = CARD_TIERS.copy;
+
+const sampleCard = (tier: string, style: string) => `<img src="/card/sample/${tier}.svg" alt="" style="position:absolute;height:auto;border-radius:14px;box-shadow:0 16px 32px rgba(0,0,0,.55);${style}">`;
+
 /** The intro: how Tribe works, one feature per slide, in the order a new user meets them. */
 const SLIDES: { h: string; p: string; art: string }[] = [
   {
-    h: "Follow traders, copy the ones you trust",
-    p: "The feed shows real trades from real traders. Following is free and only shows you their trades. Copying is a separate choice: you pick the size and your limits.",
-    art: `<div style="width:260px;${CARD}">
-<div class="row"><span class="av w sm">NO</span><span class="grow md" style="font-weight:600">@nightowl</span><span class="up lg">+8.4%</span></div><div style="font-size:18px;font-weight:600">ETH long</div>
-<div class="row" style="gap:4px"><span class="pill flash">FLASH BRACKET</span><span class="pill bad">SL −5%</span><span class="pill ok">TP +12%</span></div>
-<div class="grid2" style="gap:6px"><div class="btn" style="height:36px;font-size:13px">Follow</div><div class="btn p" style="height:36px;font-size:13px">${icon("bolt", 12)} Copy</div></div></div>`,
+    h: "Custom ETF-style trades",
+    p: "Creators turn a thesis into a custom index of up to 10 tokens, each with its own weight and an optional stop and target. You copy the whole trade with one swipe.",
+    art: `<div style="width:270px;${CARD}"><div class="row sp"><b class="md">Base Blue Chips</b><span class="sm mut">@nightowl</span></div>
+<div class="row" style="gap:2px;height:6px"><i style="width:50%;height:6px;border-radius:3px;background:#34D399"></i><i style="width:30%;height:6px;border-radius:3px;background:#A7F3D0"></i><i style="width:20%;height:6px;border-radius:3px;background:#737373"></i></div>
+${[["ETH", "50%"], ["cbBTC", "30%"], ["AERO", "20%"]].map(([t, w]) => `<div class="row sp sm"><span>${t}</span><b>${w}</b></div>`).join("")}
+<div class="btn p" style="height:36px;font-size:13px">${icon("bolt", 12)} Copy trade</div></div>`,
+  },
+  {
+    h: "Copy it, mint your card",
+    p: "Every copy mints a numbered trading card for that trade. It stays in your collection, even after you close the trade.",
+    art: sampleCard("base", "width:186px;left:50%;top:18px;margin-left:-93px"),
+  },
+  {
+    h: "Your card upgrades with your profit",
+    p: `It starts at Base. Reach +${GLITTER.returnPct}% on your copy and it turns Glitter; reach +${HOLO.returnPct}% and it goes Holo. A card never drops a tier, even if the trade falls back.`,
+    art: `${sampleCard("base", "width:140px;left:50%;top:58px;margin-left:-158px;transform:rotate(-9deg)")}${sampleCard("glitter", "width:140px;left:50%;top:58px;margin-left:18px;transform:rotate(9deg)")}${sampleCard("holo", "width:164px;left:50%;top:36px;margin-left:-82px;z-index:1")}`,
   },
   {
     h: "Your wallet, your approval",
-    p: "Trades run from your own wallet (MetaMask, Coinbase Wallet, Rainbow or any other); Tribe never holds your key. Each copy arrives as a request you approve. Want copies while you sleep? Turn on auto-copy with a separate Privy wallet that can only make Flash trades for you.",
-    art: `<div style="width:270px;${CARD}"><div class="row sp"><b class="md">Copy request</b><span class="pill">0:42</span></div>
-<div class="sm mut">@nightowl bought ETH · your copy $25 with stop −5%</div><div class="grid2" style="gap:6px"><div class="btn" style="height:36px;font-size:13px">Skip</div><div class="btn p" style="height:36px;font-size:13px">Approve in wallet</div></div></div>`,
-  },
-  {
-    h: "Pro orders, built in",
-    p: "Every trade runs on Flash: market, limit, stop-loss, take-profit, brackets and TWAP. Add your own stop on any copy, and a chase limit so you never pay much more than the trader did.",
-    art: `<div style="width:270px;${CARD}"><div class="sm mut">Your copy of @nightowl</div>
-<div class="row" style="gap:4px;flex-wrap:wrap"><span class="pill flash">BRACKET</span><span class="pill">LIMIT</span><span class="pill">TWAP</span></div>
-<div class="tile sm" style="display:flex;justify-content:space-between"><span>My stop</span><b>−8%</b></div><div class="tile sm" style="display:flex;justify-content:space-between"><span>Chase limit</span><b>1%</b></div></div>`,
+    p: "The tokens sit in your own wallet and nothing is pooled. If a creator changes a trade, you see the exact sells and buys, and nothing moves until you approve.",
+    art: `<div style="width:270px;${CARD}"><b class="md">Rebalance request</b><div class="row sp sm"><span class="mut">Sell</span><span>AERO 10%</span></div><div class="row sp sm"><span class="mut">Buy</span><span>ETH 10%</span></div>
+<div class="grid2" style="gap:6px"><div class="btn" style="height:36px;font-size:13px">Skip</div><div class="btn p" style="height:36px;font-size:13px">Approve</div></div></div>`,
   },
   {
     h: "Guard: a safety net, onchain",
-    p: "Chainlink CRE checks every trader every 5 minutes and pauses risky ones before you copy them. The pause is written onchain, so anyone can verify why.",
+    p: "Chainlink CRE checks creators and pauses risky ones before you copy them. The pause is written onchain, so anyone can verify why.",
     art: `<div style="width:270px;${CARD.replace("rgba(255,255,255,.08)", "rgba(248,113,113,.4)")}">
 <div class="row sp"><span class="md" style="font-weight:600">@traderx</span><span class="pill bad">Paused by Guard</span></div>
 <div style="position:relative;height:6px;border-radius:3px;background:#262626"><div style="width:91%;height:6px;border-radius:3px;background:#F87171"></div><span style="position:absolute;left:65%;top:-4px;width:2px;height:14px;background:#F5F5F5"></span></div>
 <div class="row sp sm mut"><span>Risk 91</span><span>Pause line 65</span></div><div class="up sm">Proof onchain ↗</div></div>`,
   },
   {
-    h: "Climb the leaderboard",
-    p: "Traders are ranked by profit, copiers, streaks and safety. Seasons are recorded onchain so the rankings can't be rewritten. Quests, badges and squads reward trading with stops.",
-    art: `<div style="width:260px;${CARD}"><div class="row sp sm mut"><span>Season 3</span><span>Profit</span></div>
-${[["1", "@nightowl", "+18.2%"], ["2", "@kestrel", "+11.5%"], ["3", "@mav", "+9.1%"]].map(([n, h, v]) => `<div class="row" style="gap:10px"><b class="mut" style="width:14px">${n}</b><span class="grow md">${h}</span><span class="up">${v}</span></div>`).join("")}</div>`,
-  },
-  {
-    h: "Earn when people copy you",
-    p: "Publish your trades or switch on a bot that trades for you. Every copy pays you a share of the Flash fee.",
-    art: `<div style="width:270px;padding:16px;border-radius:18px;background:linear-gradient(180deg,#262626,#171717);border:1px solid rgba(255,255,255,.08)"><div class="sm mut">Creator earnings · this month</div>
-<div style="font-size:30px;font-weight:600;margin-top:4px">$186<span class="dim">.40</span></div><svg width="100%" height="50" viewBox="0 0 238 50" preserveAspectRatio="none"><path d="M0 44 L34 40 L68 41 L102 32 L136 28 L170 20 L204 14 L238 6" fill="none" stroke="#34D399" stroke-width="2"/></svg>
-<div class="row sp sm mut"><span>128 copiers</span><span class="up">Fee-share</span></div></div>`,
+    h: "Launch your own index",
+    p: "Publish a custom trade and you mint its Original card, which upgrades as its return and copiers grow. Every copy earns you a share of the Flash fee.",
+    art: `<div style="width:270px;${CARD}"><div class="row sp"><b class="md">Base Blue Chips</b><span class="pill ok">Original</span></div>
+<div class="grid2" style="gap:6px"><div class="tile sm"><div class="mut">Return</div><b class="up">+12.5%</b></div><div class="tile sm"><div class="mut">Copiers</div><b>12</b></div></div>
+<div class="sm mut">Next: Holo</div><div style="height:6px;border-radius:3px;background:#262626"><div style="width:50%;height:6px;border-radius:3px;background:#34D399"></div></div></div>`,
   },
 ];
 

@@ -10,7 +10,7 @@ import { getPrice } from "./prices.js";
 import { RISK_LINE } from "./rules.js";
 import { rememberToken, tradableToken, WETH } from "./tokens.js";
 import { heldTokens, isDry, placeAndTrack } from "./tracker.js";
-import { signerOf } from "./wallet.js";
+import { isExternal, signerOf } from "./wallet.js";
 
 /**
  * Baskets: what people copy on Tribe. A creator publishes a named set of tokens with target weights; a follower puts
@@ -33,7 +33,9 @@ const DUST_USD = 1; // a rebalance ignores moves smaller than this
 const OPEN = "('filling','filled','partial')";
 const NATIVE_ETH = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
-export interface Weight { token: string; symbol: string; weight: number }
+/** How one token is bought, when it isn't a plain market buy with a fixed stop. Copiers get the same order. */
+export interface TokenOrder { entry: "market" | "limit" | "twap"; price?: number; minutes?: number; trail?: boolean; activation?: number }
+export interface Weight { token: string; symbol: string; weight: number; order?: TokenOrder }
 export interface BasketRow { id: number; owner: number; name: string; thesis: string | null; stop_pct: number; tp_pct: number; status: string; at: number }
 export interface VersionRow { id: number; basket: number; n: number; weights: Weight[]; prices: Record<string, number>; nav_start: number; note: string | null; at: number }
 export interface CopyRow { id: number; basket: number; follower: number; version: number; usd: number; status: string; note: string | null; at: number; closed_at: number | null }
@@ -57,14 +59,43 @@ export const liveCapUsd = () => Number(process.env.BASKET_LIVE_MAX_USD ?? 25);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+const LIMIT_DAYS = 7;
+
+/** A token's advanced order, checked. Nothing to record for a plain market buy. */
+function checkOrder(o: Partial<TokenOrder> | undefined): TokenOrder | undefined {
+  if (!o) return undefined;
+  const entry = o.entry ?? "market";
+  if (!["market", "limit", "twap"].includes(entry)) throw new Error("Pick market, limit or TWAP");
+  const out: TokenOrder = { entry };
+  if (entry === "limit") {
+    if (!(Number(o.price) > 0)) throw new Error("Pick the limit price to buy at");
+    out.price = Number(o.price);
+  }
+  if (entry === "twap") {
+    if (!(Number(o.minutes) >= 5 && Number(o.minutes) <= 1440)) throw new Error("A TWAP runs 5 minutes to 24 hours");
+    out.minutes = Number(o.minutes);
+  }
+  if (o.trail) {
+    out.trail = true;
+    if (Number(o.activation) > 0) out.activation = Number(o.activation);
+  }
+  return entry === "market" && !out.trail ? undefined : out;
+}
+
+/** A trailing stop is signed after the entry fills, in the background, which only automatic signing can do. */
+function checkCanSign(user: number, weights: { order?: TokenOrder }[]) {
+  if (!isDry() && isExternal(user) && weights.some((w) => w.order?.trail)) throw new Error("A trailing stop is signed after the buy fills, which MetaMask can't do. Turn on automatic signing, or use a fixed stop");
+}
+
 /** Check a creator's tokens and weights: 1 to 10 different tokens, at least 1% each, adding up to 100%. */
-export function checkWeights(input: { token: string; weight: number }[]): { token: string; weight: number }[] {
+export function checkWeights(input: { token: string; weight: number; order?: Partial<TokenOrder> }[]): { token: string; weight: number; order?: TokenOrder }[] {
   if (!Array.isArray(input) || input.length < MIN_TOKENS) throw new Error("Pick at least one token");
   if (input.length > MAX_TOKENS) throw new Error(`A trade holds up to ${MAX_TOKENS} tokens`);
   // Flash can't attach a stop to native ETH, so a basket always holds its wrapped form.
   const out = input.map((w) => {
     const token = String(w.token ?? "").toLowerCase();
-    return { token: token === NATIVE_ETH ? WETH.toLowerCase() : token, weight: Number(w.weight) };
+    const order = checkOrder(w.order);
+    return { token: token === NATIVE_ETH ? WETH.toLowerCase() : token, weight: Number(w.weight), ...(order ? { order } : {}) };
   });
   if (new Set(out.map((w) => w.token)).size !== out.length) throw new Error("Each token can only be in a trade once");
   for (const w of out) if (!(Number.isFinite(w.weight) && w.weight >= 1)) throw new Error("Every token needs at least 1%");
@@ -82,13 +113,13 @@ export function splitUsd(usd: number, weights: { weight: number }[]): number[] {
 
 const pricesOf = async (tokens: string[]) => Object.fromEntries(await Promise.all(tokens.map(async (t) => [t, await getPrice(t)] as const)));
 
-async function resolveWeights(input: { token: string; weight: number }[]): Promise<Weight[]> {
+async function resolveWeights(input: { token: string; weight: number; order?: Partial<TokenOrder> }[]): Promise<Weight[]> {
   const checked = checkWeights(input);
   const out: Weight[] = [];
   for (const w of checked) {
     const t = await tradableToken(w.token); // not flagged, liquid enough
     rememberToken({ address: t.address, symbol: t.symbol, name: t.name });
-    out.push({ token: t.address.toLowerCase(), symbol: t.symbol, weight: w.weight });
+    out.push({ token: t.address.toLowerCase(), symbol: t.symbol, weight: w.weight, ...(w.order ? { order: w.order } : {}) });
   }
   return out;
 }
@@ -98,13 +129,14 @@ function addVersion(basket: number, n: number, weights: Weight[], prices: Record
     .run(basket, n, JSON.stringify(weights), JSON.stringify(prices), navStart, note?.slice(0, 200) ?? null, Date.now()).lastInsertRowid);
 }
 
-export async function createBasket(owner: number, input: { name: string; thesis?: string; stopPct?: number; tpPct?: number; weights: { token: string; weight: number }[] }): Promise<number> {
+export async function createBasket(owner: number, input: { name: string; thesis?: string; stopPct?: number; tpPct?: number; weights: { token: string; weight: number; order?: Partial<TokenOrder> }[] }): Promise<number> {
   const name = String(input.name ?? "").trim().slice(0, 40);
   if (name.length < 3) throw new Error("Give the trade a name of at least 3 characters");
   const stop = Number(input.stopPct ?? 0), tp = Number(input.tpPct ?? 0);
   if (!(stop === 0 || (stop >= 0.5 && stop <= 50))) throw new Error("Stop is none, or 0.5% to 50%");
   if (!(tp === 0 || (tp >= 0.5 && tp <= 500))) throw new Error("Target is none, or 0.5% to 500%");
   const weights = await resolveWeights(input.weights);
+  if (!(stop > 0) && weights.some((w) => w.order?.trail)) throw new Error("A trailing stop needs a stop size: pick one above");
   const prices = await pricesOf(weights.map((w) => w.token));
   const id = Number(db.prepare("INSERT INTO baskets (owner, name, thesis, stop_pct, tp_pct, at) VALUES (?, ?, ?, ?, ?, ?)")
     .run(owner, name, String(input.thesis ?? "").trim().slice(0, 200) || null, stop, tp, Date.now()).lastInsertRowid);
@@ -123,7 +155,9 @@ export async function publishBasket(owner: number, input: Parameters<typeof crea
   const usd = round2(Number(input.usd));
   if (!(usd >= 1)) throw new Error("Put in at least $1 to publish");
   if (!isDry() && usd > liveCapUsd()) throw new Error(`Real-money trades are limited to $${liveCapUsd()} for now`);
-  const parts = splitUsd(usd, checkWeights(input.weights));
+  const checked = checkWeights(input.weights);
+  checkCanSign(owner, checked);
+  const parts = splitUsd(usd, checked);
   if (parts.some((p) => p < MIN_LEG_USD)) throw new Error(`Too small to split: every token needs at least $${MIN_LEG_USD}`);
   const free = await freeBalance(owner);
   if (usd > free + 1e-6) throw new Error(`Not enough balance: $${free.toFixed(2)} free, publishing needs $${usd.toFixed(2)}`);
@@ -135,7 +169,7 @@ export async function publishBasket(owner: number, input: Parameters<typeof crea
   const c = copyById(copyId)!;
   let placed = 0, spent = 0;
   for (let i = 0; i < v.weights.length; i++) {
-    if (await buyLeg(c, b, v.weights[i].token, parts[i], "entry")) { placed++; spent += parts[i]; }
+    if (await buyLeg(c, b, v.weights[i].token, parts[i], "entry", v.weights[i].order)) { placed++; spent += parts[i]; }
   }
   if (!placed) {
     const why = (db.prepare("SELECT note FROM basket_legs WHERE copy_id = ? AND note IS NOT NULL ORDER BY id DESC LIMIT 1").get(copyId) as { note: string } | undefined)?.note;
@@ -268,7 +302,16 @@ export const openCopy = (viewer: number, basket: number) => db.prepare(`SELECT *
 export const openCopies = (viewer: number) => (db.prepare(`SELECT COUNT(*) AS n FROM basket_copies c JOIN baskets b ON b.id = c.basket WHERE c.follower = ? AND b.owner != ? AND c.status IN ${OPEN}`).get(viewer, viewer) as { n: number }).n;
 
 /** Is a market order of this copy still on its way? */
-const stillFilling = (copyId: number) => !!db.prepare(`SELECT 1 FROM orders o JOIN basket_legs l ON o.trade_id = -l.id WHERE l.copy_id = ? AND l.status = 'placed' AND o.status = 'open' AND json_extract(o.trade, '$.orderType') = 'market' LIMIT 1`).get(copyId);
+const stillFilling = (copyId: number) => !!db.prepare(`SELECT 1 FROM orders o JOIN basket_legs l ON o.trade_id = -l.id WHERE l.copy_id = ? AND l.status = 'placed' AND o.status = 'open' AND json_extract(o.trade, '$.orderType') IN ('market','limit','twap') LIMIT 1`).get(copyId);
+
+/** Cancel the limit buys of a copy that are still waiting for their price. */
+async function cancelRestingBuys(copyId: number, follower: number) {
+  const where = `status = 'open' AND json_extract(trade, '$.side') = 'buy' AND json_extract(trade, '$.orderType') = 'limit' AND trade_id IN (SELECT -id FROM basket_legs WHERE copy_id = ?)`;
+  const live = (db.prepare(`SELECT order_id FROM orders WHERE ${where} AND sim = 0 AND order_id IS NOT NULL`).all(copyId) as { order_id: string }[]).map((o) => o.order_id);
+  if (live.length === 1) await cancelOrder(live[0], signerOf(follower));
+  else if (live.length > 1) await cancelOrders(live, signerOf(follower));
+  db.prepare(`UPDATE orders SET status = 'closed', close_reason = 'CANCELLED_BY_USER' WHERE ${where}`).run(copyId);
+}
 
 /** A copy whose stops and targets sold everything is over: close it, and say whether it did. */
 async function settleCopy(c: CopyRow, value?: CopyValue): Promise<boolean> {
@@ -307,19 +350,42 @@ function exitsAt(b: BasketRow, mark: number): { tp: string; sl: string } | undef
   return { sl: priceStr(mark * (1 - b.stop_pct / 100)), tp: priceStr(mark * (b.tp_pct > 0 ? 1 + b.tp_pct / 100 : 10)) };
 }
 
-async function buyLeg(c: CopyRow, b: BasketRow, token: string, usd: number, kind: string): Promise<boolean> {
+async function buyLeg(c: CopyRow, b: BasketRow, token: string, usd: number, kind: string, order?: TokenOrder): Promise<boolean> {
   const mark = await getPrice(token).catch(() => 0);
-  const attach = mark > 0 ? exitsAt(b, mark) : undefined;
-  const trade: Trade = { chain: "base", target: token, contra: USDC, side: "buy", qty: String(usd), orderType: "market", ...(attach ? { attach, hasStop: true } : {}) };
+  const entry = order?.entry ?? "market", trail = !!order?.trail;
+  // Exits are measured from where it should fill: the limit price, else the price now.
+  const ref = entry === "limit" ? order!.price! : mark;
+  const attach = ref > 0 && !trail ? exitsAt(b, ref) : undefined;
+  const trade: Trade = {
+    chain: "base", target: token, contra: USDC, side: "buy", qty: String(usd), orderType: entry, ...(attach ? { attach, hasStop: true } : {}), ...(trail ? { hasStop: true } : {}),
+    ...(entry === "limit" ? { limitNotionalPrice: priceStr(order!.price!), expireTime: new Date(Date.now() + LIMIT_DAYS * 86400e3).toISOString() } : {}),
+    ...(entry === "twap" ? { durationSeconds: Math.round(order!.minutes! * 60) } : {}),
+  };
   // A stop is worked out from the price. With no price, don't buy at all: never place an order without the stop it promised.
-  if (b.stop_pct > 0 && !attach) {
+  if (b.stop_pct > 0 && !(attach || (trail && mark > 0))) {
     db.prepare("INSERT INTO basket_legs (copy_id, token, kind, trade, usd, status, note, at) VALUES (?, ?, ?, ?, ?, 'failed', ?, ?)").run(c.id, token, kind, JSON.stringify(trade), usd, "Couldn't get a price to set the stop, so this wasn't bought", Date.now());
     return false;
   }
-  return placeLeg(c, b.owner, token, kind, trade, usd);
+  if (!(await placeLeg(c, b.owner, token, kind, trade, usd))) return false;
+  if (trail) {
+    // Flash attaches only a fixed bracket to an entry: a trailing stop is its own order, and waits here for the fill.
+    const stop: Trade = {
+      chain: "base", target: token, contra: USDC, side: "sell", qty: sellableQty(usd / ref), orderType: "trailing-stop",
+      trailingStop: { trailPercent: String(+(b.stop_pct / 100).toFixed(4)), ...(order!.activation ? { activationPrice: priceStr(order!.activation) } : {}) },
+    };
+    await placeLeg(c, b.owner, token, "protect", stop, 0);
+  }
+  return true;
 }
 
-const sellTrade = (token: string, qty: number): Trade => ({ chain: "base", target: token, contra: USDC, side: "sell", qty: String(Number(qty.toPrecision(12))), orderType: "market" });
+/** A token amount to 12 significant digits, always rounded down: rounding up asks to sell more than the wallet holds, and Flash refuses. */
+export function sellableQty(qty: number): string {
+  if (!(qty > 0)) return "0";
+  const unit = 10 ** (Math.floor(Math.log10(qty)) - 11);
+  return String(Number((Math.floor(qty / unit) * unit).toPrecision(12)));
+}
+
+const sellTrade = (token: string, qty: number): Trade => ({ chain: "base", target: token, contra: USDC, side: "sell", qty: sellableQty(qty), orderType: "market" });
 
 /** Close the resting stops and targets of a copy's token, so they can't fire on what is about to be sold. */
 async function cancelExits(copyId: number, follower: number, token: string) {
@@ -337,7 +403,7 @@ async function reprotect(c: CopyRow, b: BasketRow, token: string, qty: number) {
   const mark = await getPrice(token).catch(() => 0);
   const ex = mark > 0 ? exitsAt(b, mark) : undefined;
   if (!ex || qty <= 1e-12) return;
-  const trade: Trade = { chain: "base", target: token, contra: USDC, side: "sell", qty: String(Number(qty.toPrecision(12))), orderType: "bracket", triggers: [{ notionalPrice: ex.tp, triggerType: "upper" }, { notionalPrice: ex.sl, triggerType: "lower" }] };
+  const trade: Trade = { chain: "base", target: token, contra: USDC, side: "sell", qty: sellableQty(qty), orderType: "bracket", triggers: [{ notionalPrice: ex.tp, triggerType: "upper" }, { notionalPrice: ex.sl, triggerType: "lower" }] };
   await placeLeg(c, b.owner, token, "protect", trade, 0);
 }
 
@@ -345,6 +411,7 @@ async function reprotect(c: CopyRow, b: BasketRow, token: string, qty: number) {
 /** Everything that must hold before a copy is placed. Copying runs it, and anything preparing a copy can run it first. */
 export async function checkCopy(viewer: number, id: number, usdIn: number) {
   const b = basketById(id);
+  if (b) checkCanSign(viewer, versionOf(id).weights);
   if (!b) throw new Error("Trade not found");
   if (b.status !== "live") throw new Error("This trade is retired");
   if (b.owner === viewer) throw new Error("That's your own trade");
@@ -382,7 +449,7 @@ export async function copyBasket(viewer: number, id: number, usdIn: number): Pro
   const c = copyById(copyId)!;
   let placed = 0, spent = 0;
   for (let i = 0; i < v.weights.length; i++) {
-    if (await buyLeg(c, b, v.weights[i].token, parts[i], "entry")) { placed++; spent += parts[i]; }
+    if (await buyLeg(c, b, v.weights[i].token, parts[i], "entry", v.weights[i].order)) { placed++; spent += parts[i]; }
   }
   const failed = v.weights.length - placed;
   const status = placed === 0 ? "failed" : failed ? "partial" : "filled";
@@ -451,8 +518,10 @@ export async function retryCopy(viewer: number, copyId: number): Promise<{ place
   let placed = 0, spent = 0;
   for (const l of legs) {
     db.prepare("UPDATE basket_legs SET status = 'retried' WHERE id = ?").run(l.id);
-    const trade = JSON.parse(l.trade) as Trade;
-    const ok = trade.side === "buy" ? await buyLeg(c, b, l.token, l.usd, l.kind) : await placeLeg(c, b.owner, l.token, l.kind, trade, l.usd);
+    const saved = JSON.parse(l.trade) as Trade;
+    // A sell goes by what's held now: the amount saved on a failed order may be why it failed.
+    const trade = saved.side === "sell" && saved.orderType === "market" ? sellTrade(l.token, Math.min(Number(saved.qty), heldTokens(c.follower, l.token))) : saved;
+    const ok = trade.side === "buy" ? await buyLeg(c, b, l.token, l.usd, l.kind, versionOf(c.basket, c.version).weights.find((w) => w.token === l.token)?.order) : await placeLeg(c, b.owner, l.token, l.kind, trade, l.usd);
     if (ok) { placed++; if (l.kind === "entry") spent += l.usd; }
   }
   const failed = legs.length - placed;
@@ -461,11 +530,25 @@ export async function retryCopy(viewer: number, copyId: number): Promise<{ place
   return { placed, failed };
 }
 
+const closing = new Set<number>();
+
 /** Sell everything in a copy at market, after cancelling its stops. Also how a partly filled copy is unwound. */
 export async function closeCopy(viewer: number, copyId: number): Promise<{ sold: number; failed: number; value: number }> {
+  // One at a time: a second tap would read the same holdings and sell them again. A wallet prompt can take minutes.
+  if (closing.has(copyId)) throw new Error("This copy is already closing. Finish the steps in your wallet");
+  closing.add(copyId);
+  try {
+    return await closeOnce(viewer, copyId);
+  } finally {
+    closing.delete(copyId);
+  }
+}
+
+async function closeOnce(viewer: number, copyId: number): Promise<{ sold: number; failed: number; value: number }> {
   const c = copyById(copyId);
   if (!c || c.follower !== viewer) throw new Error("Copy not found");
   if (c.status === "closed" || c.status === "failed") throw new Error("This copy is already closed");
+  await cancelRestingBuys(copyId, c.follower);
   if (stillFilling(copyId)) throw new Error("This copy's orders are still filling. Try again in a moment");
   const b = basketById(c.basket)!;
   const { holdings, value } = await copyValue(copyId);

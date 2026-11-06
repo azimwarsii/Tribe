@@ -5,6 +5,7 @@ import { base } from "viem/chains";
 import { currentUser, isAgent } from "./auth.js";
 import { db, getMeta, getUser, setMeta } from "./db.js";
 import { privyEnabled } from "./privy.js";
+import { isDry } from "./tracker.js";
 import { balancesOf } from "./wallet.js";
 import { bundleVersion, esc, header, icon, page } from "./ui.js";
 
@@ -93,15 +94,17 @@ export function walletRouter() {
     if (uid === undefined) return res.redirect("/signin");
     const u = getUser(uid);
     const auto = u.wallet_kind === "privy";
+    const b = u.wallet_kind === "demo" ? undefined : await balancesOf(u.address).catch(() => undefined);
+    // Funding sends real money, so a practice server never offers it. The address comes from here, not the browser.
+    const funding = auto && !isDry() ? { fundTo: u.address, needsGas: !!b && b.eth < 0.0002 } : {};
     // The browser part: turn automatic signing on or off, and export the key. Needs the Privy login behind the account.
     const signing = privyEnabled() && process.env.PRIVY_KEY_QUORUM_ID && u.privy_user_id
-      ? `<div id="wallet-root"></div><script>window.TRIBE=${JSON.stringify({ appId: process.env.PRIVY_APP_ID, auto }).replace(/</g, "\\u003c")}</script><script src="/static/wallet.js?v=${bundleVersion("wallet.js")}" defer></script>`
+      ? `<div id="wallet-root" class="col" style="gap:14px"><section class="card" aria-label="Automatic signing" style="padding:16px;border-radius:18px"><b style="font-size:17px">Automatic signing</b><div class="sm mut" style="margin-top:6px">Loading…</div></section></div><script>window.TRIBE=${JSON.stringify({ appId: process.env.PRIVY_APP_ID, auto, ...funding }).replace(/</g, "\\u003c")}</script><script src="/static/wallet.js?v=${bundleVersion("wallet.js")}" defer></script>`
       : "";
     let body: string;
     if (u.wallet_kind === "external" || auto) {
-      const b = await balancesOf(u.address).catch(() => undefined);
       const bal = (label: string, v: string, sub: string) => `<div class="line"><span class="grow"><span class="t">${label}</span><span class="s">${sub}</span></span><b>${v}</b></div>`;
-      body = `<div class="card col" style="gap:6px"><div class="sm mut">Your wallet · ${auto ? "Tribe wallet" : "MetaMask"} · Base</div><div class="md" style="font-family:ui-monospace,monospace;word-break:break-all">${esc(u.address)}</div>
+      body = `${signing}<div class="card col" style="gap:6px"><div class="sm mut">Your wallet · ${auto ? "Tribe wallet" : "MetaMask"} · Base</div><div class="md" style="font-family:ui-monospace,monospace;word-break:break-all">${esc(u.address)}</div>
 <div class="row" style="gap:8px;margin-top:6px"><button class="btn sm" data-copy="${esc(u.address)}">Copy address</button><a class="btn sm" href="https://basescan.org/address/${esc(u.address)}" target="_blank" rel="noopener">Basescan ↗</a></div></div>
 <section class="tile" style="padding:2px 14px">${
         b
@@ -114,7 +117,7 @@ export function walletRouter() {
           ? "Tribe never holds your key. It can sign Flash trades that pay back to this wallet, within your limits. It can't send your funds anywhere else."
           : "Tribe never holds your key. When a trader you copy trades, you get a request, and the trade runs only after you approve it in MetaMask."
       }</span></div>
-${signing}${
+${
         auto
           ? ""
           : `<div class="card col" style="gap:6px"><b>Switch to another wallet</b><span class="sm" style="line-height:1.5">You sign in with your wallet, so the new one must sign too before it replaces this one. Funds in this wallet stay in it.</span><div id="mm-msg" class="sm" role="status"></div><button class="btn" id="mm">${icon("wallet", 16)}Switch wallet in MetaMask</button></div>

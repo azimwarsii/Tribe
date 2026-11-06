@@ -384,7 +384,13 @@ test("web chrome: shell for signed-in pages, landing and sign-in when logged out
   const anon = client();
   const landing = await anon("/");
   assert.equal(landing.status, 200);
-  assert.match(landing.text, /Copy great traders/);
+  assert.match(landing.text, /Custom ETF-style trades\./);
+  assert.match(landing.text, /not ETFs or registered funds/); // the comparison must never read as a fund
+  assert.match(landing.text, /\/card\/sample\/holo\.svg/);
+  const sample = await fetch(`${base}/card/sample/holo.svg`);
+  assert.match(sample.headers.get("content-type") ?? "", /svg/);
+  assert.match(await sample.text(), /Practice · simulated fills/); // an example must never read as a real result
+  assert.equal((await fetch(`${base}/card/sample/gold.svg`)).status, 404);
   assert.doesNotMatch(landing.text, /class="side"/);
   assert.equal((await anon("/signin")).status, 200);
   assert.equal((await anon("/portfolio")).loc, "/signin");
@@ -969,6 +975,22 @@ test("automatic signing: the embedded wallet takes over, auto copies open up, an
   assert.deepEqual([after.address, after.wallet_kind, after.privy_wallet_id, after.pk], [embedded, "privy", "w1", ""]);
   assert.equal(isExternal(u.id), false, "copies no longer need a prompt");
   assert.match((await c("/wallet")).text, /Tribe wallet/);
+
+  // The shortcut sits at the top of the money pages, only for accounts that can use it.
+  assert.doesNotMatch((await c("/me")).text ?? "", /Auto signing/, "off until Privy is set up");
+  Object.assign(process.env, { PRIVY_APP_ID: "app", PRIVY_APP_SECRET: "secret", PRIVY_KEY_QUORUM_ID: "quorum" });
+  try {
+    for (const path of ["/me", "/portfolio", "/funds"]) {
+      const html = (await c(path)).text ?? "";
+      assert.match(html, /Auto signing<\/b><span class="pill ok">On/, path);
+      assert.match(html, /href="\/wallet"[^>]*>.*Add USDC/, path);
+    }
+    const wallet = (await c("/wallet")).text ?? "";
+    assert.ok(wallet.indexOf('id="wallet-root"') < wallet.indexOf("Your wallet ·"), "the switch comes before the address");
+    assert.doesNotMatch(wallet, /fundTo/, "a practice server never offers a real transfer");
+  } finally {
+    for (const k of ["PRIVY_APP_ID", "PRIVY_APP_SECRET", "PRIVY_KEY_QUORUM_ID"]) delete process.env[k];
+  }
 });
 
 test("MetaMask bridge: an action's signature request reaches the open tab and the answer comes back", async () => {
@@ -1074,7 +1096,7 @@ test("basket cards: a published basket's card is served, shown to its owner, and
   const copier = client();
   await copier("/api/signup", { handle: "cardcopier", avatar: 1, persona: "Sniper" });
   const copied = await copier("/api/basket-copy", { basket, usd: 20 });
-  assert.equal(copied.json.unlock.label, "Copy #1");
+  assert.equal(copied.json.unlock.label, "Card #1");
   assert.equal(copied.json.unlock.href, `/b/${basket}#yours`);
   assert.ok(Number(copied.json.unlock.card) > 0);
   const published = await maker("/api/baskets", { name: "Bought Basket", stopPct: 10, tpPct: 30, usd: 20, weights: basketWeights });
