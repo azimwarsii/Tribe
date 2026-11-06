@@ -693,66 +693,6 @@ test("social feed: why each basket is here, and the For you / Following / Trendi
   assert.ok((await me("/api/deck/cards?tab=following")).json.html !== undefined);
 });
 
-test("signals: post a call, scored by price, and the caller's showcase", async () => {
-  const caller = client(), fan = client();
-  await caller("/api/signup", { handle: "sigcaller", persona: "Sniper" });
-  await fan("/api/signup", { handle: "sigfan", persona: "Sniper" });
-  prices.setPriceProvider(async () => 2000);
-
-  // Bad calls are refused with a reason.
-  assert.match((await caller("/api/signal", { entry: 2000, target: 1900, stop: 1950, note: "nope" })).json.error, /target above the entry/);
-  assert.match((await caller("/api/signal", { entry: 3000, target: 3200, stop: 2900, note: "far away" })).json.error, /within 10%/);
-  assert.match((await caller("/api/signal", { entry: 2000, target: 2100, stop: 1950, note: "" })).json.error, /Say why/);
-
-  const ok = await caller("/api/signal", { entry: 2000, target: 2100, stop: 1950, horizon: "days", note: "Range low held." });
-  assert.ok(ok.json.id && ok.json.redirect === "/signals?tab=mine");
-  let page = (await fan("/signals")).text;
-  assert.match(page, /@sigcaller/);
-  assert.match(page, /Range low held/);
-  assert.ok(!page.includes("Copy with Flash"), "signals are for following and talking, not copying");
-  assert.match(page, /\+ Follow @sigcaller/);
-  assert.match(page, /Risks 1 to make 2\.0/);
-  assert.ok(!page.includes("Results"), "Live calls and Mine only");
-
-  // Custom reactions (one per person, swapped or removed) and a comment thread on each call.
-  assert.ok(page.includes(`data-react="${ok.json.id}" data-kind="signal"`));
-  let rx = await fan("/api/react", { signal: ok.json.id, emoji: "rocket" });
-  assert.match(rx.json.html, /rx-rocket/);
-  assert.match(rx.json.html, /<span>1<\/span>/);
-  rx = await fan("/api/react", { signal: ok.json.id, emoji: "bull" });
-  assert.match(rx.json.html, /rx-bull/);
-  assert.ok(!rx.json.html.includes('rxstack"><span class="rx rx-rocket'), "a new reaction replaces the old one");
-  assert.match((await fan("/api/react", { signal: 999999, emoji: "fire" })).json.error, /Signal not found/);
-  assert.match((await fan("/api/signal-comment", { signal: ok.json.id, text: "  " })).json.error, /Write something/);
-  const cm = await fan("/api/signal-comment", { signal: ok.json.id, text: "Clean level, watching the retest <b>" });
-  assert.equal(cm.json.count, 1);
-  assert.match(cm.json.html, /@sigfan/);
-  assert.match(cm.json.html, /watching the retest &lt;b&gt;/); // escaped
-  page = (await fan("/signals")).text;
-  assert.match(page, /Clean level, watching the retest/);
-  assert.match(page, /data-cmcount>1<\/span><span class="cml">comment</);
-  // Each call can go out to other platforms, linking to its public page.
-  assert.ok(page.includes(`data-share-id="${ok.json.id}"`));
-  for (const host of ["x.com/intent/post", "t.me/share", "wa.me", "linkedin.com/sharing", "warpcast.com", "reddit.com/submit"]) assert.ok(page.includes(host), host);
-  assert.ok(page.includes(`/signal/${ok.json.id}`));
-
-  // The shared link works for anyone, with a link preview.
-  const pub = await client()(`/signal/${ok.json.id}`);
-  assert.equal(pub.status, 200);
-  assert.match(pub.text, /property="og:title" content="@sigcaller: ETH long \$2,000 → \$2,100"/);
-  assert.match(pub.text, /Join and follow @sigcaller/);
-  assert.equal((await client()("/signal/999999")).status, 404);
-
-  // The price runs to the target: the call is scored a hit and counts on the caller's record.
-  prices.setPriceProvider(async () => 2110);
-  page = (await caller("/signals?tab=mine")).text;
-  assert.match(page, /Target hit/);
-  assert.match(page, /1\/1 calls hit/);
-  assert.match(page, /Your call/);
-  assert.match((await client()(`/signal/${ok.json.id}`)).text, /@sigcaller called it/); // the shared text says how it went
-  assert.match(page, /aria-label="Signals"/); // in the nav where Leaderboard was
-});
-
 test("leaderboard: in the nav next to Baskets, with search and new traders", async () => {
   const fresh = client();
   await fresh("/api/signup", { handle: "freshface", persona: "Sniper" });
@@ -765,6 +705,8 @@ test("leaderboard: in the nav next to Baskets, with search and new traders", asy
   const board = (await viewer("/ranks")).text;
   assert.match(board, /aria-label="Leaderboard"/);
   assert.match(board, /aria-label="Baskets"/);
+  assert.doesNotMatch(board, /aria-label="Signals"/);
+  assert.equal((await fresh("/signals")).status, 404); // the Signals feature is gone; bots still trade through /cre/signal
   assert.match(board, /name="q"/);
   assert.match((await viewer("/ranks?tab=New")).text, /@freshface/); // new traders show before they qualify for the ranked boards
   const found = (await viewer("/ranks?q=FRESH")).text;
@@ -1073,7 +1015,7 @@ test("Closing a position asks everyone holding a copy to sell theirs, and their 
 test("Every inline script on the main pages parses (a stray quote breaks a whole page)", async () => {
   const c = client();
   await c("/api/signup", { handle: "scriptcheck", persona: "Hodler" });
-  for (const path of ["/cat", "/feed", "/baskets", "/baskets/new", "/trade/new", "/bots/new", "/creator", "/portfolio", "/settings", "/signals", "/ranks"]) {
+  for (const path of ["/cat", "/feed", "/baskets", "/baskets/new", "/trade/new", "/bots/new", "/creator", "/portfolio", "/settings", "/ranks"]) {
     const html = (await c(path)).text;
     const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
     for (const code of scripts) assert.doesNotThrow(() => new Function(code), `${path}: inline script has a syntax error`);

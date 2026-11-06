@@ -7,7 +7,6 @@ import { esc, icon, money2, signCls } from "../ui.js";
 const ITEMS: [string, string, string, string][] = [
   ["feed", "/feed", "home", "Feed"],
   ["baskets", "/baskets", "list", "Baskets"],
-  ["signals", "/signals", "rise", "Signals"],
   ["ranks", "/ranks", "bars", "Leaderboard"],
   ["cat", "/cat", "chat", "Ask Chief"],
   ["guard", "/guard", "shield", "Guard"],
@@ -19,7 +18,6 @@ const ITEMS: [string, string, string, string][] = [
 /** Which sidebar item a path highlights. */
 export function activeFor(path: string): string {
   const p = path.split("?")[0];
-  if (p.startsWith("/signal")) return "signals";
   if (p.startsWith("/basket") || p.startsWith("/b/")) return "baskets";
   if (["/ranks", "/season", "/squad"].some((x) => p.startsWith(x))) return "ranks";
   if (["/progress", "/badges", "/levelup"].some((x) => p.startsWith(x))) return "me";

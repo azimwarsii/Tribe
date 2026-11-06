@@ -1,5 +1,4 @@
 import { reactionCounts } from "../db.js";
-import { signalReactionCounts } from "../signals.js";
 
 /**
  * Trade reactions, LinkedIn style: one per person per trade, picked from a bar that pops up on hover (long-press on
@@ -22,9 +21,9 @@ export const badge = (key: string, size = 20) => {
   return r ? `<span class="rx rx-${key}" style="--s:${size}px" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${r.path}"/></svg></span>` : "";
 };
 
-/** The reaction control on a trade (or a signal): top three badges and the count, with the picker. Re-rendered by POST /api/react. */
-export function reactBar(tradeId: number, viewer: number | undefined, kind: "trade" | "signal" = "trade"): string {
-  const rows = (kind === "signal" ? signalReactionCounts(tradeId, viewer) : reactionCounts(tradeId, viewer)).filter((r) => BY.has(r.emoji)).sort((a, b) => b.n - a.n);
+/** The reaction control on a trade: top three badges and the count, with the picker. Re-rendered by POST /api/react. */
+export function reactBar(tradeId: number, viewer: number | undefined): string {
+  const rows = reactionCounts(tradeId, viewer).filter((r) => BY.has(r.emoji)).sort((a, b) => b.n - a.n);
   const total = rows.reduce((a, r) => a + r.n, 0);
   const mine = rows.find((r) => r.mine)?.emoji;
   const top = rows.slice(0, 3).map((r) => r.emoji);
@@ -32,7 +31,7 @@ export function reactBar(tradeId: number, viewer: number | undefined, kind: "tra
     ? `<span class="rxstack">${top.map((k) => badge(k, 18)).join("")}</span><span>${total}</span>`
     : `<span class="rxstack">${badge("fire", 18)}</span><span>React</span>`;
   const label = `${total} reaction${total === 1 ? "" : "s"}${mine ? `, yours: ${BY.get(mine)!.label}` : ""}. Hover or long-press for more`;
-  return `<div class="react" data-react="${tradeId}"${kind === "signal" ? ' data-kind="signal"' : ""} data-mine="${mine ?? ""}"><button type="button" class="chip rxbtn${mine ? " mine" : ""}" aria-label="${label}" aria-haspopup="true">${summary}</button>
+  return `<div class="react" data-react="${tradeId}" data-mine="${mine ?? ""}"><button type="button" class="chip rxbtn${mine ? " mine" : ""}" aria-label="${label}" aria-haspopup="true">${summary}</button>
 <div class="rxpick" role="menu" aria-label="Reactions">${REACTIONS.map((r) => `<button type="button" role="menuitemradio" aria-checked="${r.key === mine}" data-rx="${r.key}" aria-label="${r.label}">${badge(r.key, 38)}<b>${r.label}</b></button>`).join("")}</div></div>`;
 }
 
@@ -45,7 +44,7 @@ export function reactBreakdown(tradeId: number): string {
 export const REACT_JS = `(function(){
 function close(x){document.querySelectorAll('.react.open').forEach(function(r){if(r!==x)r.classList.remove('open')})}
 function send(bar,key){var mine=bar.dataset.mine;bar.classList.remove('open');
-fetch('/api/react',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify((function(o){o[bar.dataset.kind==='signal'?'signal':'trade']=Number(bar.dataset.react);return o})({emoji:key===mine?'':key}))}).then(function(r){return r.json()}).then(function(j){
+fetch('/api/react',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({trade:Number(bar.dataset.react),emoji:key===mine?'':key})}).then(function(r){return r.json()}).then(function(j){
 if(j.error){tribe.toast(j.error);if(j.redirect)location.href=j.redirect;return}var t=document.createElement('div');t.innerHTML=j.html;var nb=t.firstElementChild;bar.replaceWith(nb);
 if(key!==mine){var b=nb.querySelector('.rxbtn .rx-'+key)||nb.querySelector('.rxbtn .rx');if(b)b.classList.add('pop')}})}
 var hover=matchMedia('(hover: hover) and (pointer: fine)').matches,ti,to,pressed=false,lp;

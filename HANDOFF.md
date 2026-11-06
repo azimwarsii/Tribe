@@ -41,6 +41,8 @@ Tabs work the same way as X's:
 - **Trending** shows the top 3 this week, plus trades copied 2 or more times, most copied first.
 
 ### Signals
+> Removed from the app in Nov 2026 (not needed for now). The notes below are history; the code is in git before this change. `/cre/signal` and `bot_signals` are separate and still in use. Existing `signals` tables in old databases were left alone.
+
 **Signals** (`/signals`) sits next to **Leaderboard** (`/ranks`) in both navs. Leaderboard is the explore page: a "Find a trader by name" search that covers everyone who has traded, a **New** tab for traders who started in the last 30 days (before they qualify for the ranked boards), and the Profit, Copied, Streaks, Safest and Squads boards.
 
 What a signal is:

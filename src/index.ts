@@ -21,7 +21,6 @@ import { researchTrade, verdictText } from "./research.js";
 import { latestChat } from "./db.js";
 import { enableDemoPrices } from "./prices.js";
 import { snapshotBaskets } from "./baskets.js";
-import { seedDemoSignals } from "./signals.js";
 import { assertSafeConfig } from "./preflight.js";
 import { rateLimit } from "./ratelimit.js";
 import { privyRouter } from "./privy-api.js";
@@ -40,8 +39,6 @@ const linkable = () => (process.env.PUBLIC_URL ?? "").startsWith("https://");
 // DEMO=true gives the /demo sign-in, the director and seeded data. Its offline prices can be turned off
 // (DEMO_PRICES=false) to record the seeded app with real Flash prices and, with DRY_RUN=false, real orders.
 if (process.env.DEMO === "true" && process.env.DEMO_PRICES !== "false") enableDemoPrices();
-// Demo: a few calls from the seeded traders on the Signals page (once; posted calls are kept).
-if (process.env.DEMO === "true") void seedDemoSignals().catch(() => undefined);
 
 // Live demo: trade from funded wallets instead of the generated demo wallets (Base mainnet, real Flash orders with DRY_RUN=false).
 // LIVE_WALLET_PRIVATE_KEY binds one wallet to LIVE_WALLET_HANDLE (default "you"); LIVE_WALLETS="you:0x…,kestrel:0x…" (kestrel runs a bot in the demo, so its key makes bot trades real too)

@@ -10,8 +10,6 @@ import { execute, mirror, mirrorStopMove, type PendingNotice } from "./copy.js";
 import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, retireBasket, retryCopy, skipRebalance, updateWeights } from "./baskets.js";
 import { basketBuilderPage, basketOgSvg, basketPage, basketsPage } from "./views/baskets.js";
 import { activeHtml, briefHtml, deckCards, deckLive, deckPage, deckTab } from "./views/deck.js";
-import { publicSignalPage, signalCommentHtml, signalsPage, signalTab } from "./views/signals.js";
-import { addSignalComment, postSignal, setSignalReaction, signalById, signalComments, signalExists } from "./signals.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
 import {
@@ -204,7 +202,6 @@ export function appRouter(): Router {
   r.get("/cat/ctxbar/:id", authed((uid, req) => ctxBarHtml(uid, Number(req.params.id))));
   r.get("/cat/voice", authed((uid) => catVoicePage(uid)));
   r.get("/cat/memory", authed((uid) => catMemoryPage(uid)));
-  r.get("/signals", authed((uid, req) => signalsPage(uid, signalTab(req.query.tab))));
   r.get("/ranks", authed((uid, req) => ranksPage(uid, req.query as Record<string, unknown>)));
   r.get("/season", authed((uid) => seasonPage(uid)));
   r.get("/progress", authed((uid, req) => progressPage(uid, String(req.query.tab ?? "Daily"))));
@@ -259,12 +256,6 @@ export function appRouter(): Router {
   r.get("/share/:who", authed((uid, req) => sharePage(uid, req.params.who)));
   r.get("/top", (req, res) => html(res, topPage(me(req) !== undefined)));
   r.get("/og/top.png", (_q, res) => res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(topSvg())));
-  // A shared signal: public, so the link works for anyone it was sent to (and for link previews).
-  r.get("/signal/:id", async (req, res) => {
-    const sig = await signalById(Number(req.params.id));
-    if (!sig) return html(res, notFound("Signal not found"), 404);
-    html(res, await publicSignalPage(sig, me(req)));
-  });
   r.get("/s/:id", (req, res) => res.redirect(301, `/t/${Number(req.params.id)}`));
   r.get("/og/u/:handle.svg", async (req, res) => {
     const s = await ogSvg(req.params.handle);
@@ -560,7 +551,6 @@ export function appRouter(): Router {
 
   // ---- Social ----
   // Swipe deck: left skips a trade for good; right copies it once (same Guard, cap and stop rules as auto-copy).
-  r.post("/api/signal", json, act((uid, req) => postSignal(uid, req.body ?? {})));
   r.post("/api/swipe", json, act((uid, req) => {
     // A basket's swipe is kept on its negative id.
     if (req.body?.basket !== undefined) {
@@ -623,21 +613,10 @@ export function appRouter(): Router {
   r.post("/api/react", json, act((uid, req) => {
     const key = String(req.body.emoji ?? "");
     if (key && !isReaction(key)) throw new Error("Unknown reaction");
-    if (req.body.signal !== undefined) {
-      const sig = Number(req.body.signal);
-      if (!signalExists(sig)) throw new Error("Signal not found");
-      setSignalReaction(sig, uid, key || null);
-      return { html: reactBar(sig, uid, "signal") };
-    }
     const trade = Number(req.body.trade);
     if (!tradeById(trade)) throw new Error("Trade not found");
     setReaction(trade, uid, key || null);
     return { html: reactBar(trade, uid) };
-  }));
-  r.post("/api/signal-comment", json, act((uid, req) => {
-    const sig = Number(req.body?.signal);
-    addSignalComment(sig, uid, String(req.body?.text ?? ""));
-    return { html: signalCommentHtml(signalComments(sig).at(-1)!), count: signalComments(sig).length };
   }));
   r.post("/api/comment", express.urlencoded({ extended: false }), json, act((uid, req) => {
     const text = String(req.body.text ?? "").trim();

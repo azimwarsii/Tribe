@@ -175,8 +175,7 @@ export async function basketsPage(uid: number): Promise<string> {
 <main class="main" style="gap:12px">${requests.join("")}
 ${holding ? `<section class="col" style="gap:8px"><h2 style="font-size:16px">You copy</h2>${holding}</section>` : ""}
 ${mine.length ? `<section class="col" style="gap:8px"><h2 style="font-size:16px">You built</h2>${mine.map(basketRow).join("")}</section>` : `<section class="flat col" style="gap:8px"><b class="md">Build your own basket</b><span class="sm mut">Pick up to ${MAX_TOKENS} tokens, set their weights and a stop. Anyone can copy it, and you earn a share of the fee.</span><a class="btn p" href="/baskets/new">New basket</a></section>`}
-<section class="col" style="gap:8px"><h2 style="font-size:16px">Top baskets</h2>${board.map(basketRow).join("") || `<div class="sm mut">No baskets yet. Be first.</div>`}</section>
-<a class="sm" href="/signals">Trader signals ›</a></main>`;
+<section class="col" style="gap:8px"><h2 style="font-size:16px">Top baskets</h2>${board.map(basketRow).join("") || `<div class="sm mut">No baskets yet. Be first.</div>`}</section></main>`;
   return page({ title: "Baskets", nav: "baskets", body });
 }
 
