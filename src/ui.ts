@@ -81,6 +81,8 @@ button,input,textarea,select{font-family:inherit;cursor:pointer}input,textarea{c
 button{color:inherit}
 .app{position:relative;max-width:430px;min-height:100vh;margin:0 auto;background-color:var(--bg);background-image:radial-gradient(ellipse 70% 22% at 50% 0%,rgba(255,255,255,.09),rgba(255,255,255,0) 100%);display:flex;flex-direction:column;animation:tr-fade 220ms ease-out both;overflow-x:hidden;overflow-x:clip}
 .app.pad{padding-bottom:calc(110px + var(--sab))}
+html:has(.app.lock),html:has(.app.lock) body{height:100%;overflow:hidden;overscroll-behavior:none}
+.app.lock{position:fixed;top:0;bottom:0;left:0;right:0;min-height:0;padding-bottom:0!important;overflow:hidden}
 .hd{display:flex;align-items:center;gap:12px;padding:18px 20px 12px}
 .hd h1{margin:0;font-size:16px;font-weight:600}.hd .sub{font-size:13px;color:var(--mut)}.hd .grow{flex:1;min-width:0}
 .main{padding:0 20px;display:flex;flex-direction:column;gap:16px;flex:1}
@@ -199,7 +201,11 @@ h2{margin:0;font-size:17px;font-weight:600}
 @media (max-width:899px){
   /* Phones: the card fills the screen between the header and the tab bar. */
   .swmain{padding:0 10px}.deck{height:calc(100vh - 190px - var(--sab));height:calc(100dvh - 190px - var(--sab));min-height:430px;margin:0 8px;--peek:16%}
-  .swmain .swbar{margin-bottom:-16px}}
+  .swmain .swbar{margin-bottom:-16px}
+  /* The deck is the whole screen on a phone: nothing scrolls, and the card gives way on short screens. */
+  html:has(.deck),html:has(.deck) body{height:100%;overflow:hidden;overscroll-behavior:none}
+  .app.pad:has(.deck){position:fixed;top:0;bottom:0;left:0;right:0;min-height:0;padding-bottom:0;overflow:hidden}
+  .deck{min-height:0}.swmain{padding-top:env(safe-area-inset-top,0px)}}
 /* Short phones: Chief's read and the worst case stay; the extras give way. */
 @media (max-width:899px) and (max-height:740px){.swcard{gap:7px;padding:12px 14px 50px}.swcard .soc,.swcard .allockey,.swcard .swthesis,.swcard .freshband{display:none}.swcard .swread{padding:9px 11px}.swcard .swread li:nth-child(n+3){display:none}}
 .bcard{padding:20px 20px 18px;gap:16px!important}.bcard #brief{gap:16px!important;flex:1 1 auto}

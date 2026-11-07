@@ -975,6 +975,7 @@ test("automatic signing: the embedded wallet takes over, auto copies open up, an
   assert.deepEqual([after.address, after.wallet_kind, after.privy_wallet_id, after.pk], [embedded, "privy", "w1", ""]);
   assert.equal(isExternal(u.id), false, "copies no longer need a prompt");
   assert.match((await c("/wallet")).text, /Tribe wallet/);
+  assert.match((await c("/feed")).text ?? "", /<a class="row" href="\/wallet" aria-label="Balance \$/, "the feed's balance opens the Wallet page");
 
   // The shortcut sits at the top of the money pages, only for accounts that can use it.
   assert.doesNotMatch((await c("/me")).text ?? "", /Auto signing/, "off until Privy is set up");

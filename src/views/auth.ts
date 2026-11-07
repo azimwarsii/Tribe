@@ -7,7 +7,7 @@ export function splashPage(next = "/feed"): string {
   return page({
     title: "Tribe",
     focus: true,
-    extraClass: "splash",
+    extraClass: "splash lock",
     head: `<style>
 .splash{background:#050505;align-items:center;justify-content:center;text-align:center;cursor:pointer}
 .splash .glow{position:absolute;left:50%;top:38%;width:520px;height:520px;margin:-260px 0 0 -260px;border-radius:50%;background:radial-gradient(circle,rgba(52,211,153,.16) 0%,rgba(52,211,153,0) 62%);animation:sp-glow 3.2s ease-in-out infinite}
@@ -79,18 +79,19 @@ ${[["ETH", "50%"], ["cbBTC", "30%"], ["AERO", "20%"]].map(([t, w]) => `<div clas
 /** The intro slides; Skip and Get started go to `done` (the app after sign-up, or sign-in when signed out). */
 export function introPage(done = "/signin"): string {
   const slides = SLIDES.map(
-    (s, i) => `<div class="step ${i ? "hide" : ""}" data-step-id="${i + 1}" style="flex:1;display:flex;flex-direction:column;gap:28px">
-<div aria-hidden="true" style="height:300px;border-radius:28px;background:radial-gradient(ellipse 80% 60% at 50% 30%,rgba(255,255,255,.07),rgba(255,255,255,0) 70%),#0E0E0E;border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">${s.art}</div>
-<div><h1 class="h1" style="font-size:30px">${esc(s.h)}</h1><p style="margin:10px 0 0;font-size:16px;color:#A3A3A3;line-height:1.5">${esc(s.p)}</p></div></div>`,
+    (s, i) => `<div class="step ${i ? "hide" : ""}" data-step-id="${i + 1}" style="flex:1;min-height:0;display:flex;flex-direction:column;gap:clamp(12px,3vh,28px)">
+<div aria-hidden="true" class="ihero" style="flex:1 1 300px;min-height:0;max-height:300px;border-radius:28px;background:radial-gradient(ellipse 80% 60% at 50% 30%,rgba(255,255,255,.07),rgba(255,255,255,0) 70%),#0E0E0E;border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">${s.art}</div>
+<div style="flex:none"><h1 class="h1" style="font-size:clamp(23px,4.2vh,30px)">${esc(s.h)}</h1><p style="margin:8px 0 0;font-size:clamp(14px,2.3vh,16px);color:#A3A3A3;line-height:1.45">${esc(s.p)}</p></div></div>`,
   ).join("");
   const dots = SLIDES.map((_, i) => `<button role="tab" aria-label="Page ${i + 1}" data-goto="${i + 1}" data-dot="${i + 1}" style="width:${i ? 8 : 24}px;height:8px;border-radius:4px;border:0;padding:0;background:${i ? "#3A3A3A" : "#F5F5F5"}"></button>`).join("");
   return page({
     title: "Welcome",
     focus: true,
-    body: `<div data-scope id="intro" style="flex:1;display:flex;flex-direction:column">
-<header class="hd" style="justify-content:space-between;padding:20px 20px 8px">${wordmark(22)}<a href="${esc(done)}" class="mut md" style="min-height:40px;display:flex;align-items:center">Skip</a></header>
-<main class="main" style="padding-top:12px">${slides}</main>
-<div style="padding:16px 20px 28px;display:flex;flex-direction:column;gap:16px"><div class="row" style="justify-content:center;gap:6px" role="tablist">${dots}</div>
+    extraClass: "lock",
+    body: `<div data-scope id="intro" style="flex:1;min-height:0;display:flex;flex-direction:column">
+<header class="hd" style="flex:none;justify-content:space-between;padding:calc(12px + env(safe-area-inset-top,0px)) 20px 4px">${wordmark(22)}<a href="${esc(done)}" class="mut md" style="min-height:40px;display:flex;align-items:center">Skip</a></header>
+<main class="main" style="padding-top:8px;min-height:0">${slides}</main>
+<div style="flex:none;padding:12px 20px max(16px,calc(var(--sab) + 8px));display:flex;flex-direction:column;gap:12px"><div class="row" style="justify-content:center;gap:6px" role="tablist">${dots}</div>
 <button class="btn w big" id="next">Next</button><a class="btn p big hide" id="start" href="${esc(done)}">Get started</a></div></div>
 <script>(function(){var i=1,n=${SLIDES.length},sc=document.getElementById('intro');function show(k){i=k;sc.querySelectorAll('[data-step-id]').forEach(function(s){s.classList.toggle('hide',Number(s.dataset.stepId)!==k)});sc.querySelectorAll('[data-dot]').forEach(function(d){var on=Number(d.dataset.dot)===k;d.style.width=on?'24px':'8px';d.style.background=on?'#F5F5F5':'#3A3A3A'});document.getElementById('next').classList.toggle('hide',k===n);document.getElementById('start').classList.toggle('hide',k!==n)}
 document.getElementById('next').onclick=function(){show(i+1)};sc.querySelectorAll('[data-dot]').forEach(function(d){d.onclick=function(e){e.stopPropagation();show(Number(d.dataset.dot))}})})()</script>`,
