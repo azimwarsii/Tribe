@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { decodeFunctionData, erc20Abi } from "viem";
+import { plainGasError } from "./flash.js";
 import { GAS_TOP_UP_WEI, parseUsdc, usdcTransferData } from "../web/fund.js";
 import { FLASH_CONTRACT, PERMIT2, tribeSignerActive, walletPolicy } from "./privy.js";
 
@@ -43,10 +44,18 @@ test("funding: typed amounts become exact USDC units, and anything unclear sends
   assert.equal(parseUsdc(" 0.5 "), 500_000n);
   assert.equal(parseUsdc("1.000001"), 1_000_001n);
   for (const bad of ["", "0", "0.00", "-1", "1.2345678", "1e3", "abc", "1,000"]) assert.equal(parseUsdc(bad), undefined, bad);
-  assert.equal(BigInt(GAS_TOP_UP_WEI), 500_000_000_000_000n, "the ETH top-up is 0.0005 ETH");
+  assert.equal(BigInt(GAS_TOP_UP_WEI), 200_000_000_000_000n, "the ETH top-up is 0.0002 ETH");
 });
 test("funding: the transfer pays the given wallet the exact amount", () => {
   const data = usdcTransferData(ADDR, 25_000_000n);
   assert.deepEqual(decodeFunctionData({ abi: erc20Abi, data: data as `0x${string}` }), { functionName: "transfer", args: [ADDR, 25_000_000n] });
   assert.throws(() => usdcTransferData("not-an-address", 1n));
+});
+
+test("a wallet with no ETH gets a plain message, and other errors pass through unchanged", () => {
+  const raw = new Error("The total cost (gas * gas fee + value) of executing this transaction exceeds the balance of the account.");
+  assert.match(plainGasError(raw).message, /needs a little ETH on Base/);
+  assert.match(plainGasError(new Error("insufficient funds for gas")).message, /needs a little ETH/);
+  const other = new Error("nonce too low");
+  assert.equal(plainGasError(other), other);
 });

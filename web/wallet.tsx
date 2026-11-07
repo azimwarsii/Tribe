@@ -31,19 +31,17 @@ function AddFunds({ auto, to, needsGas }: { auto: boolean; to?: string; needsGas
   const outside = wallets.find((w) => w.walletClientType !== "privy");
   const units = parseUsdc(amount);
 
-  const send = async () => {
-    if (!outside || units === undefined || !to) return;
+  // Asks the outside wallet for one transfer, on Base only: funds sent on another network wouldn't arrive.
+  const transfer = async (tx: { to: string; data?: string; value?: string }) => {
+    if (!outside) return;
     setBusy(true);
     setError("");
     setSent("");
     try {
       await outside.switchChain(BASE_CHAIN_ID);
       const provider = await outside.getEthereumProvider();
-      // Never send on the wrong network: funds sent there wouldn't arrive.
       if (Number(await provider.request({ method: "eth_chainId" })) !== BASE_CHAIN_ID) throw new Error("Switch your wallet to Base, then try again.");
-      const hash = await provider.request({ method: "eth_sendTransaction", params: [{ from: outside.address, to: USDC, data: usdcTransferData(to, units) }] });
-      setSent(hash as string);
-      if (needsGas) await provider.request({ method: "eth_sendTransaction", params: [{ from: outside.address, to, value: GAS_TOP_UP_WEI }] });
+      setSent((await provider.request({ method: "eth_sendTransaction", params: [{ from: outside.address, ...tx }] })) as string);
       setAmount("");
     } catch (e) {
       setError((e as { code?: number }).code === 4001 ? "You cancelled in your wallet." : (e as Error).message);
@@ -59,13 +57,17 @@ function AddFunds({ auto, to, needsGas }: { auto: boolean; to?: string; needsGas
         <span className="sm mut" style={{ lineHeight: 1.5 }}>{blocked}</span>
       ) : outside ? (
         <>
-          <span className="sm" style={{ lineHeight: 1.5 }}>
-            Real USDC on Base, straight from your wallet.{needsGas ? ` You'll approve a second transfer of ${GAS_TOP_UP_ETH} ETH (about $1) for network fees.` : ""}
-          </span>
+          {needsGas && (
+            <div className="col" style={{ gap: 8, padding: 12, borderRadius: 14, border: "1px solid rgba(252,211,77,.45)", background: "rgba(252,211,77,.06)" }}>
+              <span className="sm" style={{ lineHeight: 1.5 }}><b className="warn">Add ETH first.</b> Trades need a little ETH on Base for network fees, even when you have USDC.</span>
+              <button className="btn sm" disabled={busy} onClick={() => void transfer({ to: to!, value: GAS_TOP_UP_WEI })}>Add {GAS_TOP_UP_ETH} ETH for fees</button>
+            </div>
+          )}
+          <span className="sm" style={{ lineHeight: 1.5 }}>Real USDC on Base, straight from your wallet.</span>
           <input className="f" aria-label="Amount in USDC" inputMode="decimal" placeholder="Amount in USDC" value={amount} onChange={(e) => setAmount(e.target.value)} />
           {error && <div className="sm down" role="alert">{error}</div>}
           {sent && <a className="sm" href={`https://basescan.org/tx/${sent}`} target="_blank" rel="noopener">Sent. It arrives in a moment: view on Basescan ↗</a>}
-          <button className="btn p" disabled={busy || units === undefined} onClick={() => void send()}>{busy ? "Check your wallet…" : "Add USDC"}</button>
+          <button className="btn p" disabled={busy || units === undefined} onClick={() => void transfer({ to: USDC, data: usdcTransferData(to!, units!) })}>{busy ? "Check your wallet…" : "Add USDC"}</button>
         </>
       ) : (
         <button className="btn p" onClick={() => connectWallet()}>Connect your wallet</button>

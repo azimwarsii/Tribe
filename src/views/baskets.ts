@@ -280,5 +280,5 @@ function val(i){var el=document.getElementById(i);return el?el.value:''}
 function pick(n){var i=document.querySelector('#bk input[name="'+n+'"]');return i?Number(i.value):0}
 go.onclick=function(){go.disabled=true;var w=rows.map(function(r){var a=r.adv,on=a&&(a.entry!=='market'||a.trail);return {token:r.token,weight:Number(r.weight),order:on?a:undefined}});
  var url=editing?'/api/baskets/'+editing+'/weights':'/api/baskets',body=editing?{weights:w,note:val('bk-note')}:{name:val('bk-name'),thesis:val('bk-thesis'),stopPct:pick('stop'),tpPct:pick('tp'),usd:Number(val('bk-usd')),weights:w};
- fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(j){if(j.error){tribe.toast(j.error);sum();return}if(j.toast)tribe.toast(j.toast);if(j.unlock){tribe.unlock(j.unlock);return}location.href=j.redirect}).catch(function(){tribe.toast('Network error');sum()})};
+ fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(j){if(j.error){tribe.toast(j.error,true);sum();return}if(j.toast)tribe.toast(j.toast);if(j.unlock){tribe.unlock(j.unlock);return}location.href=j.redirect}).catch(function(){tribe.toast('Network error');sum()})};
 draw()})()`;

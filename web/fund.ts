@@ -1,8 +1,8 @@
 /** The transactions behind "Add USDC": what a user's outside wallet is asked to send to their Tribe wallet on Base. */
 export const BASE_CHAIN_ID = 8453;
 export const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-export const GAS_TOP_UP_ETH = "0.0005"; // about $1 of network fees for approvals
-export const GAS_TOP_UP_WEI = "0x1c6bf52634000"; // the same amount in wei
+export const GAS_TOP_UP_ETH = "0.0002"; // network fees for hundreds of approvals on Base
+export const GAS_TOP_UP_WEI = "0xb5e620f48000"; // the same amount in wei
 
 /** A typed dollar amount in USDC's 6 decimals, or undefined if it isn't a positive amount. */
 export function parseUsdc(text: string): bigint | undefined {

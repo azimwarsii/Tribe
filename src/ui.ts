@@ -347,6 +347,7 @@ gap:10px;padding:16px 16px 54px;border:0;border-radius:22px;background:none;colo
 .toast{position:fixed;left:var(--cx,50%);top:14px;transform:translateX(-50%);width:calc(100% - 32px);max-width:398px;z-index:80;display:none;align-items:center;gap:10px;padding:10px 12px;border-radius:18px;background:rgba(245,245,245,.97);color:#0A0A0A;box-shadow:0 14px 34px rgba(0,0,0,.55);font-size:14px;font-weight:600}
 .toast.show{display:flex;animation:tr-toast 260ms cubic-bezier(.2,.8,.2,1) both}
 .toast .tick{width:28px;height:28px;border-radius:14px;background:#0A0A0A;color:var(--ac);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.toast.bad .tick{color:var(--bad)}.toast.bad .tick svg{display:none}.toast.bad .tick::after{content:"!";font-weight:700;font-size:16px}
 input.f,textarea.f,select.f{width:100%;height:52px;padding:0 16px;border-radius:16px;border:1px solid rgba(255,255,255,.12);background:#151515;color:var(--tx);font-size:16px}
 textarea.f{height:auto;padding:12px 16px;resize:none}
 label.l{display:block;font-size:13px;font-weight:600;margin-bottom:6px}

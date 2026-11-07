@@ -96,7 +96,7 @@ export function walletRouter() {
     const auto = u.wallet_kind === "privy";
     const b = u.wallet_kind === "demo" ? undefined : await balancesOf(u.address).catch(() => undefined);
     // Funding sends real money, so a practice server never offers it. The address comes from here, not the browser.
-    const funding = auto && !isDry() ? { fundTo: u.address, needsGas: !!b && b.eth < 0.0002 } : {};
+    const funding = auto && !isDry() ? { fundTo: u.address, needsGas: !!b && b.eth < 0.00005 } : {};
     // The browser part: turn automatic signing on or off, and export the key. Needs the Privy login behind the account.
     const signing = privyEnabled() && process.env.PRIVY_KEY_QUORUM_ID && u.privy_user_id
       ? `<div id="wallet-root" class="col" style="gap:14px"><section class="card" aria-label="Automatic signing" style="padding:16px;border-radius:18px"><b style="font-size:17px">Automatic signing</b><div class="sm mut" style="margin-top:6px">Loading…</div></section></div><script>window.TRIBE=${JSON.stringify({ appId: process.env.PRIVY_APP_ID, auto, ...funding }).replace(/</g, "\\u003c")}</script><script src="/static/wallet.js?v=${bundleVersion("wallet.js")}" defer></script>`

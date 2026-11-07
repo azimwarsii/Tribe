@@ -45,7 +45,7 @@ export const REACT_JS = `(function(){
 function close(x){document.querySelectorAll('.react.open').forEach(function(r){if(r!==x)r.classList.remove('open')})}
 function send(bar,key){var mine=bar.dataset.mine;bar.classList.remove('open');
 fetch('/api/react',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({trade:Number(bar.dataset.react),emoji:key===mine?'':key})}).then(function(r){return r.json()}).then(function(j){
-if(j.error){tribe.toast(j.error);if(j.redirect)location.href=j.redirect;return}var t=document.createElement('div');t.innerHTML=j.html;var nb=t.firstElementChild;bar.replaceWith(nb);
+if(j.error){tribe.toast(j.error,true);if(j.redirect)location.href=j.redirect;return}var t=document.createElement('div');t.innerHTML=j.html;var nb=t.firstElementChild;bar.replaceWith(nb);
 if(key!==mine){var b=nb.querySelector('.rxbtn .rx-'+key)||nb.querySelector('.rxbtn .rx');if(b)b.classList.add('pop')}})}
 var hover=matchMedia('(hover: hover) and (pointer: fine)').matches,ti,to,pressed=false,lp;
 document.addEventListener('pointerover',function(e){if(!hover)return;var bar=e.target.closest&&e.target.closest('.react');if(!bar)return;clearTimeout(to);if(!bar.classList.contains('open')){clearTimeout(ti);ti=setTimeout(function(){close(bar);bar.classList.add('open')},350)}});

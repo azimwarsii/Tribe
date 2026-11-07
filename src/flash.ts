@@ -181,6 +181,10 @@ const signMsg = (signer: Signer, message: string, label?: string) => (isRemote(s
 
 const publicClient = () => createPublicClient({ chain: base, transport: http(RPC()) });
 
+/** A wallet with no ETH can't pay for an approval. The chain's own message for that is long and unclear. */
+export const plainGasError = (e: Error) =>
+  /exceeds the balance of the account|insufficient funds/i.test(e.message) ? new Error("Your wallet needs a little ETH on Base for network fees. Add some on the Wallet page, then try again.") : e;
+
 /** Send a plain transaction (approval for the attached bracket's exit, or a wrap) from the funder and wait for it. */
 async function sendTx(signer: Signer, tx: { to: string; data: string; value?: string }, label = "Approve") {
   if (isRemote(signer)) {
@@ -189,7 +193,7 @@ async function sendTx(signer: Signer, tx: { to: string; data: string; value?: st
     return hash;
   }
   const wallet = createWalletClient({ account: asAccount(signer), chain: base, transport: http(RPC()) });
-  const hash = await wallet.sendTransaction({ to: tx.to as Hex, data: tx.data as Hex, value: tx.value ? BigInt(tx.value) : 0n });
+  const hash = await wallet.sendTransaction({ to: tx.to as Hex, data: tx.data as Hex, value: tx.value ? BigInt(tx.value) : 0n }).catch((e: Error) => { throw plainGasError(e); });
   await publicClient().waitForTransactionReceipt({ hash, timeout: 60_000 });
   return hash;
 }

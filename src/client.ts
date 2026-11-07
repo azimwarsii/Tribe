@@ -1,7 +1,7 @@
 /** Tiny client runtime served at /app.js. Server renders pages; this adds actions, sheets, wizards and timers. */
 export const CLIENT_JS = `(function(){
 var $=function(s,r){return (r||document).querySelector(s)},$$=function(s,r){return [].slice.call((r||document).querySelectorAll(s))};
-var tt;function toast(m){var t=$('#toast');if(!t)return;$('#toast-t').textContent=m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('show')},2800)}
+var tt;function toast(m,bad){var t=$('#toast');if(!t)return;$('#toast-t').textContent=m;t.classList.toggle('bad',!!bad);t.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){t.classList.remove('show')},bad?8000:2800)}
 window.tribe={toast:toast,sheet:sheet,unlock:unlock};
 try{var p=sessionStorage.getItem('toast');if(p){sessionStorage.removeItem('toast');toast(p)}}catch(e){}
 function post(url,body){return fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().catch(function(){return {}}).then(function(j){j.ok=r.ok;return j})})}
@@ -17,7 +17,7 @@ function unlock(u){var old=$('.unlock');if(old)old.remove();
  $('[data-close]',d).onclick=close;$('[data-go]',d).onclick=leave;document.addEventListener('keydown',esc);
  document.body.appendChild(d);$('[data-go]',d).focus()}
 function done(res){
-  if(res.error){toast(res.error);return}
+  if(res.error){toast(res.error,true);return}
   if(res.unlock){if(res.toast)try{sessionStorage.setItem('toast',res.toast)}catch(e){};unlock(res.unlock);return}
   if(res.redirect){if(res.toast)try{sessionStorage.setItem('toast',res.toast)}catch(e){};var to=new URL(res.redirect,location.href);location.href=res.redirect;if(to.pathname===location.pathname&&to.search===location.search)location.reload();return}
   if(res.reload){if(res.toast)try{sessionStorage.setItem('toast',res.toast)}catch(e){};location.reload();return}
