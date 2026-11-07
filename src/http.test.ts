@@ -1084,7 +1084,14 @@ test("basket cards: a published basket's card is served, shown to its owner, and
   assert.match(text, /ORIGINAL/);
   assert.ok(text.includes("Card &lt;b&gt;Basket"));
 
-  const meta = await (await fetch(`${base}/card/${id}.json`)).json() as { name: string; attributes: { trait_type: string; value: unknown }[] };
+  const png = await fetch(`${base}/card/${id}.png`);
+  assert.equal(png.status, 200);
+  assert.match(png.headers.get("content-type") ?? "", /image\/png/);
+  assert.equal(Buffer.from(await png.arrayBuffer()).subarray(1, 4).toString(), "PNG");
+  assert.equal((await fetch(`${base}/card/999999.png`)).status, 404);
+
+  const meta = await (await fetch(`${base}/card/${id}.json`)).json() as { name: string; image: string; attributes: { trait_type: string; value: unknown }[] };
+  assert.match(meta.image, new RegExp(`/card/${id}\\.png$`));
   assert.equal(meta.attributes.find((a) => a.trait_type === "Tier")?.value, "BASE");
 
   assert.match((await maker(`/b/${basket}`)).text, new RegExp(`/card/${id}\\.svg`));

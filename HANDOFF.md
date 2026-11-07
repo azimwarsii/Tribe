@@ -1,30 +1,26 @@
-# Tribe: hand-off for the morning
+# Tribe: hand-off
 
-## Start here (about 20 minutes)
-1. Open a **new** terminal (so `cre` is on PATH) and run `cre login`.
-2. Make three fresh wallets: one on Base Sepolia with test ETH, two on Base mainnet with ~$25 USDC + ~$1 ETH each (table below).
-3. `cp .env.example .env` and `cp cre-workflow/.env.example cre-workflow/.env`, then fill them in (table below says what goes where).
-4. `npm run flash:check` (all 7 order types should pass), `npm run guard:deploy`, `npm run cre:install`.
-5. Expose the app (`cloudflared tunnel --url http://localhost:8787`) and put that URL into `snapshotUrl` / `verdictUrl` (guard), `signalUrl` (agent), `tradersUrl` / `boardUrl` (board) in `cre-workflow/*/config.staging.json`.
-6. `npm run demo:reset:live && npm run demo:live`, then in another terminal `npm run cre:preview` (checks everything end to end), then `npm run cre:broadcast`.
-7. Record with `DEMO.md`, then paste `SUBMISSION.md` into the ETHGlobal form (add the two proof links from your run).
+Last updated 2026-11-07. The product is now copyable ETFs with NFT cards: see [README.md](README.md) for what it is and [PLAN.md](PLAN.md) for what's next. Everything from Round 9 down is build history. Some of it describes features since removed or renamed: Ask Cat and Ask Chief are parked, Signals is gone, and copying moved from single trades to ETFs.
 
-## What I need from you
+## Start here
+1. Run `npm run flash:check`. All order types should pass.
+2. Run `npm test` and `npm run typecheck`, with `DRY_RUN=true`, a scratch `DB_PATH` and an empty `DOTENV_CONFIG_PATH`, because `.env` holds live keys.
+3. Run `npm run privy:check`, then walk the browser enrollment flow on the Wallet page end to end. It hasn't been done yet.
+4. Record with `DEMO.md`.
 
-| # | What | Why | Where it goes |
-| --- | --- | --- | --- |
-| 1 | **`cre login`** once (free account at https://cre.chain.link) | `cre workflow simulate` refuses to run without it, and simulation is the CRE track's core requirement. The CLI is installed (`cre` v1.39.0). | Stored by the CLI |
-| 2 | **A Base Sepolia wallet with ~0.05 test ETH** (https://faucets.chain.link/base-sepolia) | Deploys `CopyGuard` + `SeasonBoard` and pays for `--broadcast` simulations that write onchain. Fresh wallet only. | `cre-workflow/.env` → `CRE_ETH_PRIVATE_KEY`; root `.env` → `DEPLOYER_PRIVATE_KEY` |
-| 3 | **Two Base mainnet wallets, ~$25 USDC + ~$1 ETH each** (fresh) | The Flash track needs a real onchain order on screen (Flash is mainnet only). One wallet = a real order; two = a real *copy* (the leader's own order must fill first). | Root `.env` → `LIVE_WALLETS=you:0x<key1>,kestrel:0x<key2>` (kestrel runs the demo bot, so its trades become real too) |
-| 4 | **Your own Flash integrator key** (optional, app.definitive.fi → More → Flash) | Works today on Flash's public dev key; yours makes Tribe the integrator of record so the fee is paid to you ("monetized from day 1"). | Root `.env` → `FLASH_API_KEY` |
-| 5 | **Anthropic API key** (optional) | The Guard's grey-zone judgment, the agent's thesis, and better Ask Cat. All work without it. | `cre-workflow/.env` → `LLM_API_KEY_ENV`; root `.env` → `ANTHROPIC_API_KEY` |
-| 6 | **A public URL** (tunnel above, or deploy: the Dockerfile is ready for Railway/Render/Fly) | CRE nodes call the app; X/Telegram previews need `PUBLIC_URL`. | Workflow configs (step 5) and root `.env` → `PUBLIC_URL` |
-| 7 | Telegram bot token (optional, @BotFather) | Approve copies / chat with Cat in Telegram on camera. | Root `.env` → `TELEGRAM_BOT_TOKEN`, `BOT_USERNAME` |
-| 8 | Privy app id (optional) | Browser-side embedded wallets instead of server-held demo keys (not built yet). | Root `.env` → `PRIVY_APP_ID` |
+## Where it runs
+- **Hosted:** Railway, with `DRY_RUN=false`, so it's real money with a $25 cap per copy. SQLite sits on a `/data` volume. Keep one replica. The free trial's volume gets deleted if the account isn't upgraded.
+- **Guard:** the automated check isn't running anywhere, so on the live app nobody gets paused and auto-copies wait for approval.
+- **Cards:** Base Sepolia. Local and hosted each have their own `BasketCards` contract because token ids are card ids. They share one minter wallet, so nonces can clash and the worker retries.
 
-Set `CRE_SHARED_SECRET` in root `.env` and the same value as `TRIBE_SECRET_ENV` in `cre-workflow/.env`.
+## What you can add
 
-**Heads-up for the live recording:** once `GUARD_ADDRESS` is set, auto-copies are held for approval if CRE hasn't reported for 30 minutes (the new dead-man's switch). If you run the workflow by hand, either run `npm run cre:broadcast` shortly before recording or set `GUARD_MAX_SILENCE_MIN=0`.
+| What | Why | Where it goes |
+| --- | --- | --- |
+| **Two Base mainnet wallets, ~$25 USDC + ~$1 ETH each** (fresh) | A real order on screen in the demo (Flash is mainnet only). | Root `.env` → `LIVE_WALLETS=you:0x<key1>,kestrel:0x<key2>` |
+| **A Base Sepolia wallet with test ETH** | Deploys contracts and pays for card minting. Fresh wallet only. | Root `.env` → `DEPLOYER_PRIVATE_KEY` |
+| **Your own Flash integrator key** (optional, app.definitive.fi → More → Flash) | Makes Tribe the integrator of record so the fee is paid to you. | Root `.env` → `FLASH_API_KEY` |
+| Telegram bot token (optional, @BotFather) | Approve copies in Telegram. The hosted app runs without it. | Root `.env` → `TELEGRAM_BOT_TOKEN`, `BOT_USERNAME` |
 
 ## Round 9: social feed and Signals
 
@@ -41,7 +37,7 @@ Tabs work the same way as X's:
 - **Trending** shows the top 3 this week, plus trades copied 2 or more times, most copied first.
 
 ### Signals
-> Removed from the app in Nov 2026 (not needed for now). The notes below are history; the code is in git before this change. `/cre/signal` and `bot_signals` are separate and still in use. Existing `signals` tables in old databases were left alone.
+> Removed from the app in Nov 2026 (not needed for now). The notes below are history; the code is in git before this change. The bot signal endpoint and `bot_signals` are separate and still in use. Existing `signals` tables in old databases were left alone.
 
 **Signals** (`/signals`) sits next to **Leaderboard** (`/ranks`) in both navs. Leaderboard is the explore page: a "Find a trader by name" search that covers everyone who has traded, a **New** tab for traders who started in the last 30 days (before they qualify for the ranked boards), and the Profit, Copied, Streaks, Safest and Squads boards.
 
@@ -82,7 +78,7 @@ Sharing:
 - **The scrolling feed is gone.** `/feed` is always the live deck. Links to a post (Ask Cat's "back to post", Telegram) open `/thread/:id`. The top-bar search goes to a matching trader's profile, or to the Leaderboard.
 - **Desktop deck:** the swipe card is first and centred. Everything else is in a side panel (later trimmed to three cards):
   - portfolio and quick actions;
-  - **Cat on this trader** (`traderBrief`, `/api/deck/brief`): follows the top card. Cat ranks what matters most in that trader's portfolio, riskiest first (Guard pause, CRE flag, biggest hit this month, a position with no stop, a losing run, a thin record, bot vs manual), then their last 3 closed trades (Manual/Bot) and win rate, closed, max drawdown, copiers. Built from fills, so every line is checkable;
+  - **Cat on this trader** (`traderBrief`, `/api/deck/brief`): follows the top card. Cat ranks what matters most in that trader's portfolio, riskiest first (Guard pause, Guard flag, biggest hit this month, a position with no stop, a losing run, a thin record, bot vs manual), then their last 3 closed trades (Manual/Bot) and win rate, closed, max drawdown, copiers. Built from fills, so every line is checkable;
   - **Active trades** (`activeTrades`, `/api/deck/active`): every live entry of yours, one per copy rather than merged per token, plus buy orders still waiting to fill. It shows as a carousel:
     - one trade at a time, with amount in, P&L, entry vs now, stop/target and who you copied;
     - it moves on every 6s and pauses on hover or focus;
@@ -178,13 +174,13 @@ Checked the whole integration against the Flash docs and OpenAPI spec. The full 
 
 **There is no separate "Cat Agent" account any more.** Bots belong to people.
 - **Your bot** (Me → Your bot, or `/bot`): switch it on, pick the size per trade ($10–$100) and the most bot trades a day (1–5).
-  - When the CRE strategy signals, every user whose bot is on gets the trade from their own wallet, under their own username, with the bot's one-line reason (`src/bots.ts`, `POST /cre/signal`).
+  - When the bot strategy signals, every user whose bot is on gets the trade from their own wallet, under their own username, with the bot's one-line reason (`src/bots.ts`).
   - A user paused by CopyGuard has their bot stop too.
   - Their copiers copy bot trades like any other trade, by their own rules.
 - **Manual / Bot tags** on every trade card.
   - **Manual** = placed by the person: in the app, by voice, in Telegram, or via Ask Cat with their confirmation.
-  - **Bot** = placed by their CRE bot, or proposed by their own AI agent over MCP and confirmed (Bearer-token confirms are tagged this way).
-  - Bot cards show "@name's bot · runs on Chainlink CRE" with the reason. A bot badge sits on the user's story ring.
+  - **Bot** = placed by their bot, or proposed by their own AI agent over MCP and confirmed (Bearer-token confirms are tagged this way).
+  - Bot cards show "@name's bot" with the reason. A bot badge sits on the user's story ring.
 - **Unique usernames:** 3–20 letters, numbers or _, unique ignoring case (stored lowercase). A few app words are reserved (admin, tribe, cat, bot, guard…). Sign-up and the new **Edit profile** page (`/profile/edit`) check live and say why a name is refused.
 - **Profile photos:** upload on Edit profile. The browser crops to a square and resizes to 256px JPEG before upload. Photos are served at `/avatar/:id` with a cache-busting URL and appear everywhere an avatar does (feed, story rail, profiles, leaderboards, requests, sidebar, Cat). Plus a 160-character **bio**.
 - **Follow (free) vs Copy:** **Follow** on any profile adds them to your Following feed tab without copying. **Copy with Flash** still copies. Profiles show followers, copiers and following counts.
@@ -206,7 +202,7 @@ Checked the whole integration against the Flash docs and OpenAPI spec. The full 
 ## Round 2: your three winning points (done while you slept)
 
 **AI bot across every feature (Ask Cat research)**
-- Every feed card has an **Ask Cat** button. It opens a chat about that post, with **Cat's read**: ✓/! checks on the stop, the risk/reward, whether you'd be chasing, the track record, drawdown, Guard risk, the **latest CRE CopyGuard verdict** and the **Chainlink vs DEX price**. Verdicts are "Looks solid", "Mixed", "Risky" or "Avoid for now"; a missing stop or a CRE flag caps it at Mixed.
+- Every feed card has an **Ask Cat** button. It opens a chat about that post, with **Cat's read**: ✓/! checks on the stop, the risk/reward, whether you'd be chasing, the track record, drawdown, Guard risk, the **latest CopyGuard verdict** and the **oracle vs DEX price**. Verdicts are "Looks solid", "Mixed", "Risky" or "Avoid for now"; a missing stop or a Guard flag caps it at Mixed.
 - Follow-ups stay about the post: "Their track record" ("Bot vs manual record" on bot trades) and "Worst case if I copy", which sizes it with *your* copy rules.
 - The post stays **pinned above the composer** with **Copy with Flash** and a link back to the post, which is highlighted on return. The header back button returns to the post too.
 - Ask by name from anywhere: "is @nightowl worth copying?" works in the app, in **Telegram** (Cat's read as text, plus "Open the post" and "Copy with Flash" buttons) and over **MCP** (new `tribe_research` tool). A concrete order ("buy $20 ETH…") still becomes an order, and "why was X paused" keeps the Guard answer.
@@ -222,19 +218,18 @@ Checked the whole integration against the Flash docs and OpenAPI spec. The full 
   - Telegram link buttons are only added with a public https URL. Telegram rejects localhost links and would drop the whole message.
 - Everything is grounded in fills, Guard and your rules, with no LLM, so every number can be checked and it works offline.
 
-**CRE security**
+**Guard security**
 - **Copy-time onchain gate** (`guardGate` in `src/guard.ts`): right before fan-out, Tribe reads `CopyGuard.halted(leader)` from the contract. It is uncached, one call per trade. A halt onchain blocks the copy even if the event watcher missed it or the DB was edited, and it heals the local mirror.
-- **Dead-man's switch:** if the chain can't be read, or CRE is silent for `GUARD_MAX_SILENCE_MIN`, auto-copies become ask-first. Nothing signs on its own.
+- **Dead-man's switch:** if the chain can't be read, or the check is silent for `GUARD_MAX_SILENCE_MIN`, auto-copies become ask-first. Nothing signs on its own.
 - The Guard page has a **CopyGuard heartbeat** row; the "how it works" sheet and README explain both.
 - New `src/guard-gate.test.ts` covers this against the real contract on a Ganache JSON-RPC server: blocked when halted onchain only, held when silent, held when the RPC is down.
-- The Guard hero and price check now survive restarts (they fall back to the stored CRE runs).
-- `npm run demo:cre` posts one CopyGuard run, using the workflow's own logic on real Chainlink and Flash prices, to the demo. Reasons are marked "(preview, not CRE)".
+- The Guard hero and price check now survive restarts (they fall back to the stored Guard runs).
 
 **Social and gamified**
 - New daily quest **"Ask Cat about a post before you copy"** (+5 XP) and a seventh badge, **Did the Homework** (5 research chats). The game now rewards checking before copying.
 - On phones, the copier avatars stay but the "copied by" text is hidden for screen space; screen readers still get it.
 
-Tests: `npm test` 42/42, `npm run cre:test` all pass, typecheck clean.
+Tests: `npm test` 42/42, typecheck clean.
 
 ## What changed overnight
 
@@ -244,15 +239,10 @@ Tests: `npm test` 42/42, `npm run cre:test` all pass, typecheck clean.
 - **Validated without funds**: `npm run flash:check` quotes, signs and submits all 7 order types from an empty wallet; Flash accepts every body and signature and refuses only for the zero balance.
 - Receipts everywhere: feed cards ("filled onchain ↗"), Activity ("Receipt ↗"), Guard events (CopyGuard tx). Creator earnings use the real fee from fills.
 
-**Chainlink CRE (three workflows, `cre-workflow/`)**
-- Proper CRE project (project/workflow/secrets YAML, package.json, from the official templates). All three compile to WASM with the SDK's compiler and stay within CRE's per-run quotas (15 HTTP calls, 15 EVM reads).
-- **CopyGuard**: Tribe's risk API + Flash price + **Chainlink ETH/USD Data Feed read onchain** (pauses active traders if the DEX drifts from Chainlink) + LLM in the grey zone with node consensus → signed report → `CopyGuard.sol`. Posts verdicts and tx hashes back to the app; the Guard page shows the price check.
-- **Bot strategy** (new; since Round 3 each user runs it as their own bot, see above): refuses to trade when Chainlink and the DEX disagree, posts a one-line thesis with every trade.
-- **Season board** (new): recomputes every trader's return straight from Flash's order data and attests the ranking onchain (`SeasonBoard.sol`); Season/Leaderboard show "Verified by Chainlink CRE ↗".
-- Contracts hardened per the CRE guide: ERC-165 (the forwarder checks it; the old contract would have been rejected), owner-settable forwarder, replay protection, batch reads. Tested on an in-process EVM.
-- `npm run cre:preview` runs the workflows' own decision code against the real data without CRE, to check configs before simulating. It found and fixed a bug (in an ETH-only book every trader was flagged for an LLM call every run).
+**Contracts**
+- `CopyGuard.sol` and `SeasonBoard.sol` were hardened with ERC-165, replay protection and batch reads, and tested on an in-process EVM.
 
-- **Guard log** (borrowed from Sentinel's "AI logs" page, github.com/Nailer/Sentinel): the Guard page lists each CRE run with its price check and every trader's verdict, whether rules or the AI decided it, and the tx. We deliberately did not copy Sentinel's committed API key, its first-node-wins "consensus", or its receiver contract, which doesn't match the Forwarder's `onReport(bytes,bytes)`.
+- **Guard log:** the Guard page lists each run with its price check and every trader's verdict, whether rules or the AI decided it, and the tx.
 
 **Social**
 - 9:16 TikTok/Reels share card (phone share sheet), Telegram share, public `/top` leaderboard whose X preview is a rendered board, "Share on X" on the Leaderboard.
@@ -263,16 +253,16 @@ Tests: `npm test` 42/42, `npm run cre:test` all pass, typecheck clean.
 - `npm run demo:reset:live && npm run demo:live`: the seeded app with real prices and real orders, for recording.
 - README rewritten for judges (requirement → code → command), DEMO.md live segment, complete `.env.example`, Dockerfile.
 
-**Tooling installed on your machine**: CRE CLI v1.39.0 (`%LOCALAPPDATA%\Programs\cre`, added to your user PATH), Bun 1.4.4 (npm global), and dev dependencies `solc` and `ganache` in the project.
+**Tooling installed on your machine**: dev dependencies `solc` and `ganache` in the project.
 
 ## Verified vs not
-- Verified: `npm test` 42/42 (incl. contracts on an EVM, the copy-time CopyGuard gate over JSON-RPC, Ask Cat research, the CRE endpoints exactly as the workflows call them, and agent bearer auth), `npm run cre:test` 25/25, all three workflows compile to WASM, typecheck clean, every route 200 on the seeded demo, director beats run, live Flash quote + submit validation for all 7 order types, Chainlink feed read live, MCP server driven end to end by an MCP client.
-- Not yet (needs your items above): a funded Flash order filling onchain, `cre workflow simulate`, contracts on Base Sepolia, cancel/update on a live order.
+- Verified at the time: `npm test` 42/42 (incl. contracts on an EVM, the copy-time CopyGuard gate over JSON-RPC, Ask Cat research, and agent bearer auth), typecheck clean, every route 200 on the seeded demo, director beats run, live Flash quote + submit validation for all 7 order types, MCP server driven end to end by an MCP client.
+- Not yet: a funded Flash order filling onchain, cancel/update on a live order.
 
 ## Ideas, highest value first
-1. **Record the live segment** (items 1–3). Both tracks need onchain proof on screen.
-2. **Deploy publicly** so judges can click a link (and CRE reaches the app without a tunnel).
-3. **Privy embedded wallets**: users sign in the browser, the server never holds keys (Flash accepts EIP-1271). Needs `PRIVY_APP_ID`.
+1. **Record the live segment** (`DEMO.md`). The submission needs onchain proof on screen.
+2. ~~Deploy publicly~~ **Done** on Railway.
+3. ~~Privy embedded wallets~~ **Built**; the browser flow still needs an end-to-end run.
 4. ~~Tribe MCP server~~ **Built** (`src/mcp.ts`, 8 tools incl. `tribe_research`): any MCP client can read the leaderboard, check a trader and Guard, see your positions, copy with limits, and propose → confirm a bracketed Flash trade. Agent token and ready-to-paste config on Settings → AI agent access. Tested end to end with the MCP client SDK against the running app. It also caught an Ask Cat gap ("12% target" wasn't understood, only "take profit"), now fixed.
 5. **Cat on X**: reply bot that turns "@TribeCat buy $20 ETH with 5% stop" into a one-tap bracket link. Needs a paid X API tier.
-6. A 10-second architecture slide in the video: CRE → CopyGuard → copy blocked; Ask Cat → Flash bracket → copied by followers.
+6. A 10-second architecture slide in the video: Guard → copy blocked; ETF copy → Flash orders → NFT card.

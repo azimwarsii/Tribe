@@ -22,7 +22,7 @@ Hyperliquid user vaults set the template: a 10% leader profit share, the leader 
 - **dHEDGE, now Chamber** (official docs, undated). The manager is paid a performance fee only when the vault token price exceeds its previous high-water mark. The mark is vault-level, not per depositor. Fees are paid by minting vault tokens to the manager, and the DAO takes 10% of all manager fees. dHEDGE added Hyperliquid vault support: managers trade on Hyperliquid while dHEDGE handles pooling, accounting and fees. Chamber TVL on DefiLlama was about $20.39M (snapshot undated). — [dHEDGE performance fees](https://docs.dhedge.org/dhedge-protocol/vault-fees/performance-fees); [dHEDGE DAO fees](https://docs.dhedge.org/dhedge-protocol/dao-protocol-fees); [dHEDGE Hyperliquid early access](https://blog.dhedge.org/dhedge-opens-hyperliquid-early-access-for-managers); [DefiLlama Chamber](https://defillama.com/protocol/chamber-vaults)
 
 ### Inferences
-- The industry-standard creator-economics menu is: profit share (about 10%) with a high-water mark, a skin-in-the-game requirement (5% leader stake), and fees that can only go down. Tribe's fee-share model (creators get a cut of Flash execution fees) pays on volume, not performance. This avoids high-water-mark accounting, but it rewards creators for churning trades. A CRE risk pause plus a cap on creator trade frequency could offset that bias.
+- The industry-standard creator-economics menu is: profit share (about 10%) with a high-water mark, a skin-in-the-game requirement (5% leader stake), and fees that can only go down. Tribe's fee-share model (creators get a cut of Flash execution fees) pays on volume, not performance. This avoids high-water-mark accounting, but it rewards creators for churning trades. A Guard risk pause plus a cap on creator trade frequency could offset that bias.
 - Builder-code revenue concentrates in distribution (wallets and apps) rather than in individual traders. The money accrues to whoever owns the user relationship.
 
 ### Gaps
@@ -82,7 +82,7 @@ The working UX is "talk to a bot", typically on X, Farcaster or Telegram, backed
 - **Almanak** TVL reports conflict wildly: the alUSD vault at about $105M and "TVL past $120M" around token listing (both undated), versus DefiLlama snapshots of $9.76M and about $520K. This suggests a sharp post-listing outflow, but it is unconfirmed. — [Oak Research](https://oakresearch.io/en/reports/protocols/early-birds-almanak-defai-platform-automating-yield); [DefiLlama Almanak](https://defillama.com/protocol/almanak)
 
 ### Inferences
-- For Tribe, the lesson is that natural-language bot creation and an auto-provisioned custodial wallet are a strong pairing for growth but a liability for security. Bounded permissions are the differentiator to market: session keys or spending policies, allowlisted contracts, per-trade and per-day caps. Tribe's CRE risk pauses play the same role. A creator's bot should never be able to `transfer()` arbitrary funds. It should only be able to call Flash trade routes within policy.
+- For Tribe, the lesson is that natural-language bot creation and an auto-provisioned custodial wallet are a strong pairing for growth but a liability for security. Bounded permissions are the differentiator to market: session keys or spending policies, allowlisted contracts, per-trade and per-day caps. Tribe's Guard pauses play the same role. A creator's bot should never be able to `transfer()` arbitrary funds. It should only be able to call Flash trade routes within policy.
 - The gap between "aGDP" and real revenue means Tribe should report realized creator payouts, not notional volume, to keep credibility.
 
 ### Gaps
@@ -159,7 +159,7 @@ Traction comes from products that cut execution friction and own distribution: T
 - Implications for a Tribe Creator Studio:
   1. Monetize trades, not creators: fee share on Flash volume, which fits the evidence.
   2. Make "follow and copy" a feed-native, one-tap action with fiat and gasless onboarding.
-  3. Sell safety as a feature: CRE pauses, scoped session-key policies, no arbitrary transfers, a lesson from Bankr.
+  3. Sell safety as a feature: Guard pauses, scoped session-key policies, no arbitrary transfers, a lesson from Bankr.
   4. Require creator skin in the game and add anti-wash rules, borrowing from Hyperliquid's 5% stake and friend.tech's bot problems.
   5. Show realized creator earnings rather than notional volume.
   6. Plan for 70 to 90% volume drawdowns in bear phases.

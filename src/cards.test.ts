@@ -254,7 +254,7 @@ test("a live card says so, and a practice card says that", () => {
 
 test("the metadata has no handle or dollars", () => {
   const m = cardMetadata(sample, "https://tribe.example");
-  assert.equal(m.image, "https://tribe.example/card/1.svg");
+  assert.equal(m.image, "https://tribe.example/card/1.png");
   assert.deepEqual(m.attributes.find((a) => a.trait_type === "Tier"), { trait_type: "Tier", value: "HOLO" });
   assert.deepEqual(m.attributes.find((a) => a.trait_type === "Mode"), { trait_type: "Mode", value: "Practice" });
   assert.doesNotMatch(JSON.stringify(m), /\$|@/);

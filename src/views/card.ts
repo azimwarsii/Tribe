@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { Resvg } from "@resvg/resvg-js";
 import { CARD_FONTS } from "../card-fonts.js";
 import type { CardView } from "../cards.js";
 import { progressOf, type CardKind, type Tier } from "../card-tiers.js";
@@ -236,3 +238,11 @@ export function sampleCardSvg(tier: Tier): string {
     progress: progressOf("copy", tier, { returnPct, copiers: 0 }),
   });
 }
+
+// resvg can't read the fonts inside the SVG, and the hosted image has none installed, so without these a PNG has no text.
+// Static cuts of the card-fonts.ts typefaces, same licence, one file per weight because resvg only uses a variable font's default.
+const FONT_DIR = fileURLToPath(new URL("../fonts", import.meta.url));
+
+/** The card as a still PNG, for wallets and explorers that won't show the SVG. The foil animation stops on its first frame. */
+export const cardPng = (v: CardView): Buffer =>
+  Buffer.from(new Resvg(cardSvg(v), { fitTo: { mode: "width", value: CARD_W * 2 }, font: { fontDirs: [FONT_DIR], loadSystemFonts: false, defaultFontFamily: "Inter" } }).render().asPng());

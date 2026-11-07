@@ -57,7 +57,7 @@ In onchain copy trading the dominant risks are adversarial leaders and infrastru
 - **Cherry-picking.** The SEC continues to fine advisers for allocating winning trades to favoured accounts, for example a $750K penalty — [Law360](https://law360.com/articles/1881103); [JD Supra](https://production.jdsupra.com/legalnews/sec-targets-investment-adviser-cherry-1519904)
 
 ### Inferences
-- Tribe's design (Chainlink CRE "CopyGuard", non-custodial, Base) maps directly onto these failure modes. Useful guards include per-token liquidity and market-cap minimums, per-period copy caps, slippage limits, and delaying or blocking copies when the leader's own buy is a large share of pool depth. Detecting linked or side wallets and funding-source clustering helps against groomed track records.
+- Tribe's design ("CopyGuard", non-custodial, Base) maps directly onto these failure modes. Useful guards include per-token liquidity and market-cap minimums, per-period copy caps, slippage limits, and delaying or blocking copies when the leader's own buy is a large share of pool depth. Detecting linked or side wallets and funding-source clustering helps against groomed track records.
 - The AIXBT and Banana Gun cases show that the key-management and dashboard or bot backend is the real attack surface, not the model. Session keys or spend permissions scoped to specific contracts and amounts, plus 2FA or delays on withdrawals and changes to permissions, are the controls the market converged on.
 - Fee-share-on-volume gives creators an incentive to churn and to trade illiquid tokens their copiers then push up. That is the front-running conflict in fee form.
 

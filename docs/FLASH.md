@@ -15,7 +15,7 @@ refuses it only for the empty balance. `npm run flash:check -- --live 5` places 
 
 | Flash feature | How Tribe uses it | Where |
 |---|---|---|
-| `market` order | Every plain buy and sell, for leaders and followers. Ask Cat ("buy $50 ETH") and swipe-to-copy produce these. | `src/flash.ts` `quoteBody`, `placeOrder` |
+| `market` order | Every plain buy and sell, for leaders and followers. The trade form and swipe-to-copy produce these. | `src/flash.ts` `quoteBody`, `placeOrder` |
 | `maxSlippage` | Each user's slippage setting (0.3% / 0.5% / 1%) is sent on market orders. | Settings → Copying |
 | `limit` order (`limitNotionalPrice`) | "limit ETH 50 1800" from chat, and the chase-limit copy (below) | `src/parse.ts`, `src/copy.ts` `chaseGuard` |
 | `expireTime` (good-til-time) | Chase-limit copies are good for 30 minutes, so a copy never rests forever at a stale price. It is sent on the quote only and never echoed on submit, which Flash requires. | `quoteBody` / `submitEcho` |

@@ -1,65 +1,91 @@
-# Tribe (formerly CopyCat Arena): app with built-in Grok-style bot, gamified
-Name: Tribe. Rename the `copycat/` folder, the package name, bot copy text, and README to Tribe when implementation starts.
-Revision: the product is an app (not just a Telegram bot). Screens: Onboarding, Feed, Ask Cat (AI bot chat, also on Telegram and X), Trade, Leaderboard (Profit, Most Copied, Streaks, Safest, Squads), Trader profile (public share link), Copy settings, Approvals inbox, Share card, Quests/XP/badges, Squads, Guard center. Hackathon cut: Feed, Ask Cat, Profile+share, Copy settings, Leaderboard, Guard center; quests and squads are light extras. CRE is central: the CopyGuard workflow halts copying onchain (see below). Wow factor: copy trading with an onchain AI circuit breaker, ask-first copying with protective-order mirroring, talk-to-trade bot, viral share links, verified onchain PnL.
+# Tribe plan
 
-# Original v2 plan: social copy-trading bot with feed, share pages, leaderboard and CRE "Sentinel" guard
+Last updated 2026-11-07. This replaces the original hackathon plan, which is still in git history.
 
-## Context
-Hackathon entry for two tracks: Flash advanced orders in a social app ($2.5k) and Chainlink CRE. The v1 scaffold (`copycat/`) has a Telegram bot, a Flash quote/sign/order client, a copy engine, and a thin CRE cron workflow. It is unrun (no Node or Bun on the machine). v2 turns it into a product: a bot plus a public web feed, shareable profit cards that link to a leader's portfolio, copy-with-controls, a leaderboard, and a CRE+AI risk guard in the style of SentinelCRE (github.com/Nailer/Sentinel: CRE cron -> AI judgment -> onchain report via Forwarder -> contract enforces a pause).
+## What Tribe is
+Tribe is a social trading app where anyone can build their own version of a crypto ETF and anyone else can copy it in one tap. Every ETF earns NFT cards that level up with performance.
 
-Assumed stack: TypeScript, Node, SQLite, Next.js. Deployed to a free host for the demo. Say if you want something different.
+"ETF" is shorthand for a ready-made mix of assets. These aren't regulated ETFs: there's no fund, no shares and no fund manager. Each one is a public recipe of tokens and weights, and a copier buys the tokens and holds them in their own wallet. In the code the same thing is called a basket or a trade (`src/baskets.ts`, `contracts/BasketCards.sol`).
 
-## Architecture
-1. **Bot** (grammy, extends `src/index.ts`): trade, follow, approve, settings, share.
-2. **API + DB** (Express + SQLite via better-sqlite3), replacing in-memory `src/store.ts`. Tables: `users`, `wallets`, `trades`, `positions`, `follows` (with rules), `pending_copies`, `guard_events`.
-3. **Web app** (Next.js, `web/`): `/feed`, `/leaderboard`, `/u/[handle]` (portfolio and a Copy button), `/s/[tradeId]` (share card with OG image).
-4. **Flash layer** (`src/flash.ts`, kept): quote, EIP-712 sign, order. Add order-status polling via `GET /v1/orders` so trades and PnL come from real fills (no fake profit). Fee via `flashIntegratorFeeBps`.
-5. **CRE guard** (`cre-workflow/guard-workflow/`) plus `contracts/CopyGuard.sol`.
+## Where things stand
 
-## Features
-**Feed:** a stream of fills from all leaders (token, side, order type, entry, current PnL%) from `trades` filled via Flash order status. Leaders can set a profile to private or public.
+### Built
+- **ETFs:** 1 to 10 tokens with target weights, a stop and a target. Creators publish by buying. Each ETF shows its asset mix, a risk band and rule-based safety checks. Its record is an index that starts at 100.
+- **Copying:** one tap, one Flash order per token at its weight, within the user's own limits. Partial fills can be retried or closed.
+- **Versions:** new weights make a new version, and every copier approves the exact buys and sells.
+- **Cards:** Original and numbered Copy cards, minted as transferable ERC-721s on Base Sepolia with Tribe paying the gas. Tiers go Base, Glitter, Holo and never drop.
+- **Safety:** Tribe reads trader verdicts from `contracts/CopyGuard.sol` right before each copy. The automated check that writes those verdicts isn't running yet, so nobody gets paused on the live app and auto-copies wait for approval.
+- **Social:** profiles, feed, leaderboards, squads, streaks, quests and share cards.
+- **Delivery:** mobile-first PWA, hosted on Railway.
 
-**Copy controls** (a `follows` row per follower and leader):
-- `mode`: `auto` or `ask`. In `ask`, a Telegram message shows the trade with Approve / Skip inline buttons. No order is signed until Approve, and unanswered requests expire (stored in `pending_copies`).
-- Filters: allowed tokens, allowed order types (for example only stop-loss, take-profit and bracket), max size per trade, daily USD cap, and copy ratio.
-- Copying a leader's stop-loss, take-profit or bracket along with the entry is a toggle.
+### Deliberately limited
+- Real-money copies are capped at $25 per copy (`BASKET_LIVE_MAX_USD`).
+- Rebalancing runs in practice mode only.
+- Card thresholds are low for the demo: Glitter is +10%, Holo is +25%, and Original cards also need 2 and 3 copiers. The design file asks for far more copiers.
+- Ask Chief is parked. The files remain, but nothing calls them.
 
-**Sharing:** `/share` on a closed or open trade produces a link `/s/<id>`. The page has an OG image card (token, PnL%, leader handle), a "Copy this trader" button that deep-links to `t.me/<bot>?start=follow_<handle>`, and links to the leader's portfolio. Pre-filled X post text tags @DefinitiveFi.
+### Still to do
+- [ ] Run the Privy browser enrollment flow end to end.
+- [ ] Get an automated risk check running so CopyGuard receives verdicts.
+- [ ] Get a legal review before any wider launch, including the use of the word "ETF".
+- [ ] Turn on live rebalancing.
+- [ ] Give cards a dedicated minter wallet. Local and hosted share one today, so nonces can clash, and mainnet needs its own key anyway.
+- [ ] Upgrade Railway before the trial ends, or the volume holding the database is deleted.
 
-**Leaderboard:** ranks by realised PnL% (window: 7d, 30d, all), copy count, and follower AUM. It needs a minimum trade count to appear. PnL is computed from filled Flash orders only.
+## Future approach: collectible cards
+Today a card has one thing that varies: its tier. The goal is to make cards worth collecting and showing off for their own sake, the way people collect trading cards and game skins. No two cards should look quite alike, some should be rare, and people should want to trade them.
 
-**Wallets:** keep generated wallets only for the demo. Plan for Privy embedded wallets so users sign client-side and the bot never holds keys. Needs a decision before launch (see questions).
+We're borrowing mechanics only. Pokémon cards show how sets, holo finishes and first editions drive collecting. CS2 skins show how wear, pattern seeds and trade-ups make every item unique. All names, art and styles stay Tribe's own.
 
-## CRE + AI: "CopyGuard" (Sentinel pattern applied to copy trading)
-Workflow (cron, every few minutes):
-1. **Read** (offchain, HTTP with consensus): recent leader trades and stats from our `/guard/snapshot` API, plus token market data (price, liquidity, volume) from a public API.
-2. **Read** (onchain, EVMClient): Chainlink price feed for the traded asset, compared with the market-data price to catch depegs or manipulated prices.
-3. **AI judgment** (HTTP call to an LLM): input is leader drawdown, trade burst rate, position concentration, token anomalies. Output is strict JSON `{ leader, severity: ok|warn|halt, reason }`.
-4. **Write** (EVMClient write report via CRE Forwarder) to `CopyGuard.sol`.
+### What makes a card
+Each card combines six layers. Tier is the only one that exists today.
 
-`CopyGuard.sol`: `onReport()` is restricted to the Forwarder and records `halted[leader]` with a reason hash. The bot subscribes to the event (or polls) and immediately stops mirroring that leader's new trades, notifies followers, and posts the reason on the leader's page ("Paused by CopyGuard: 22% drawdown in 1h"). Followers' existing protective orders are untouched. Leaders can be resumed by an owner or a cooldown.
+| Layer | How it's set | Changes later? | Inspired by |
+| --- | --- | --- | --- |
+| **Tier** | Earned through performance: Base, Glitter, Holo, then the unbuilt Full Art | Moves up only | Holo finishes |
+| **Rarity** | Rolled at mint | No | Card rarity symbols |
+| **Style** | The ETF's make-up: frame art for Major, Stocks, Altcoin and Meme, colored by risk band | No | Card types |
+| **Pattern** | A random seed at mint that shifts the art, with a few rare seeds | No | CS2 pattern seeds |
+| **Condition** | How the position was managed, fixed when the copy closes | Once | CS2 wear |
+| **Set and edition** | The season it was minted in, its number, and a First Edition stamp for the earliest copiers | No | First editions, seasonal sets |
 
-This gives a real onchain write, an external API, an LLM and a blockchain in the workflow. The guard is also meaningfully used: it gates every copy in `src/copy.ts`.
+Tier rewards results and rarity rewards luck, so a Legendary Base and a Common Holo are both worth having. The most valuable cards combine several layers, such as a Legendary Holo with a rare pattern and a First Edition stamp.
 
-## Build order
-1. DB layer replacing `store.ts`. Port `copy.ts` to rules-based copying and the ask-first flow. Unit-test the rules.
-2. Order status and fills, PnL calculation.
-3. API plus feed, portfolio and leaderboard pages.
-4. Share page and OG card, deep-link follow.
-5. `CopyGuard.sol` (Foundry), then CRE guard workflow, simulated with the CRE CLI. Then bot integration (halt check).
-6. Demo script: leader places a bracket trade, followers copy (one with ask-first), share link opened, guard trips on a seeded drawdown, copying halts. Record the video, with an onchain Flash order and CopyGuard tx hash shown.
+### Rarity odds
+Starting points, to be tuned:
 
-## Critical files
-- Existing: `copycat/src/flash.ts`, `src/copy.ts`, `src/parse.ts`, `src/index.ts`, `src/store.ts` (to replace), `cre-workflow/signal-workflow/main.ts` (to rework into guard).
-- New: `src/db.ts`, `src/rules.ts`, `src/pnl.ts`, `src/api.ts`, `web/*`, `contracts/CopyGuard.sol`, `cre-workflow/guard-workflow/*`.
+| Rarity | Odds |
+| --- | --- |
+| Common | 60% |
+| Uncommon | 25% |
+| Rare | 10% |
+| Epic | 4% |
+| Legendary | 1% |
 
-## Verification
-- Install Node 22, Bun and the CRE CLI (none present now). `npm run typecheck`.
-- Dry run with `DRY_RUN=true`: a follower in `ask` mode gets buttons and nothing is signed before Approve; filters block disallowed tokens and order types.
-- Real small orders on Base using the Flash dev key: confirm the order id and onchain fill, and that the feed and PnL match.
-- `cre workflow simulate guard-workflow --target staging-settings` shows the AI verdict and the report write. Check the `CopyGuard` event onchain, then that the bot halts copying.
-- Open the share link in a fresh browser: the card renders and the Copy button opens the bot.
+### Collecting and trading
+- **Card book:** a page per season showing what you own and what's missing, with rewards for finishing a set.
+- **Profile showcase:** pin your best cards to your public profile.
+- **Trade-ups:** burn several cards of one rarity for one card of the next rarity up.
+- **Marketplace:** list and buy cards in the app, with a royalty to Tribe and the ETF's creator. Cards already work on outside marketplaces because they're standard ERC-721s.
+- **Reveal moment:** a flip animation when a card unlocks, with a bigger effect for rare pulls.
 
-## Open risks
-- Unverified Flash details: bracket signing, approvals and the token list. The CRE SDK write and secrets APIs were not in the docs I could read.
-- Copy-trading real users' funds may have regulatory implications. Keep the demo to your own wallets.
+### Design rules
+- **Reward good habits, not volume.** Odds must not rise with trade size or trade count, or the cards would push people to overtrade. Condition should reward using stops and staying within limits.
+- **No paid packs for now.** Cards are earned by creating or copying, never bought as random packs. Paid randomness can count as gambling, so it needs the legal review first.
+- **Provably fair rolls.** Rarity and pattern need randomness that users can verify and Tribe can't steer, such as commit-reveal or an onchain randomness service.
+- **Never imply returns.** Cards are collectibles. Nothing should suggest a card pays out or tracks a share of an ETF.
+
+### Build order
+1. **Card art system:** design the frames, finishes and patterns as layers the SVG renderer can combine. Finish the Full Art tier from the design file.
+2. **New contract:** add rarity, seed, set and condition. `BasketCards.sol` stores only a tier. Existing testnet cards stay as a Genesis set.
+3. **Fair rolls:** add randomness at mint and show the proof on each card's page.
+4. **Season one:** launch the first set, with the card book, First Edition stamps and the reveal animation.
+5. **Condition:** calculate it when a copy closes and write it onchain.
+6. **Trade-ups and marketplace:** build these once enough cards are in circulation.
+7. **Mainnet:** move after the legal review, with the dedicated minter wallet in place.
+
+### Open questions
+- Which chain should cards live on for mainnet?
+- Should a card's tier keep following its ETF after the card is sold?
+- How many cards belong in a season, and how long does a season last?
+- What should Condition be measured on: stop use, worst drawdown, or both?

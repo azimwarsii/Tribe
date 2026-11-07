@@ -78,7 +78,7 @@ export function cardMetadata(v: CardView, origin: string) {
   return {
     name: `${v.name} · ${v.editionLabel}`,
     description: `A Tribe Trading Card for ${v.name}. ${v.practice ? "Practice mode: returns come from simulated fills." : "Real orders on Base."} ${v.onchain ? "Minted on Base Sepolia." : "Not minted onchain yet."}`,
-    image: `${origin}/card/${v.id}.svg`,
+    image: `${origin}/card/${v.id}.png`,
     external_url: `${origin}/b/${v.basket}`,
     attributes: [
       { trait_type: "Tier", value: v.tier.toUpperCase() },

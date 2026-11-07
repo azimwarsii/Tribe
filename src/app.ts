@@ -10,7 +10,7 @@ import { assetFilter, matchesFilter } from "./assets.js";
 import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, createBasket, liveCapUsd, publishBasket, retireBasket, retryCopy, skipRebalance, tokensText, updateWeights } from "./baskets.js";
 import { basketBuilderPage, basketOgSvg, basketPage, collectionPage, collectionTab } from "./views/baskets.js";
 import { cardById, cardFor, cardMetadata, cardOfCopy, cardView, unlockOf, type CardView } from "./cards.js";
-import { cardSvg, sampleCardSvg } from "./views/card.js";
+import { cardPng, cardSvg, sampleCardSvg } from "./views/card.js";
 import { activeHtml, briefHtml, deckCards, deckLive, deckPage, feedTopPage } from "./views/deck.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
@@ -301,6 +301,7 @@ export function appRouter(): Router {
     TIERS.includes(tier) ? res.type("image/svg+xml").set("Cache-Control", "public, max-age=3600").send(sampleCardSvg(tier)) : res.sendStatus(404);
   });
   r.get("/card/:id.svg", cardRoute((v, res) => res.type("image/svg+xml").send(cardSvg(v))));
+  r.get("/card/:id.png", cardRoute((v, res) => res.type("image/png").send(cardPng(v))));
   r.get("/card/:id.json", cardRoute((v, res) => res.json(cardMetadata(v, process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`))));
   r.get("/og/t/:id.png", async (req, res) => {
     const t = await tradeCard(Number(req.params.id));

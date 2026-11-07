@@ -87,13 +87,13 @@ The highest-leverage tactics with documented results are **points programs tied 
 
 ### Gaps
 - No published conversion data for PnL-card sharing (Fomo, Photon and others). I found no source quantifying it.
-- No source found for Chainlink BUILD/SCALE or Definitive partner co-marketing programs relevant to small apps. This needs a direct check with those teams.
+- No source found for Definitive partner co-marketing programs relevant to small apps. This needs a direct check with that team.
 - Onchain Summer 2024/2025 results for trading apps were not researched within the tool budget.
 
 ## Positioning and messaging: what worked and what backfired
 
 ### Takeaway
-"Copy the pros" and "get copied, get paid" (eToro) and "human vs bot" (Bybit) are common framings. Regulators in 2025–2026 are actively targeting finfluencers who promote "easy profit" copy trading, so safety and transparency framing (high-water marks, loss caps, disclosed fees) is both a differentiator and a compliance need. Tribe's Chainlink CRE guard supports this.
+"Copy the pros" and "get copied, get paid" (eToro) and "human vs bot" (Bybit) are common framings. Regulators in 2025–2026 are actively targeting finfluencers who promote "easy profit" copy trading, so safety and transparency framing (high-water marks, loss caps, disclosed fees) is both a differentiator and a compliance need. Tribe's Guard supports this.
 
 ### Cited Findings
 - eToro creator pitch: "Think You're a Great Trader? Get Copied, get paid: It's that Simple." — [eToro](https://www.etoro.com/news-and-analysis/etoro-updates/think-youre-a-great-trader-get-copied-get-paid-its-that-simple)
@@ -105,7 +105,7 @@ The highest-leverage tactics with documented results are **points programs tied 
 - Base and Zora's "every post is a coin" positioning collapsed: content coins fell about 95%, and leadership said it "didn't work". — [eGamers](https://egamers.io/?p=105823)
 
 ### Inferences
-- Lead with "copy with guardrails" (CRE risk guard, max drawdown, no profit share without new highs) and "creators earn when you trade". Avoid guaranteed-return wording, "AI trades for you, profit" claims, and payment for promotional posts. All three are regulatory or platform-ban risks as of 2025–2026.
+- Lead with "copy with guardrails" (Guard risk check, max drawdown, no profit share without new highs) and "creators earn when you trade". Avoid guaranteed-return wording, "AI trades for you, profit" claims, and payment for promotional posts. All three are regulatory or platform-ban risks as of 2025–2026.
 - Removing onboarding friction (Fomo's Apple Pay) mattered more than campaigns. For Tribe, smart wallets and a fiat onramp on Base fill that role.
 
 ### Gaps
