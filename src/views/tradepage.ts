@@ -23,7 +23,7 @@ export async function tradePage(id: number, viewer: number | undefined): Promise
   const month = windowPnl(c.leader, Date.now() - 30 * 86400e3);
   const side = c.trade.side === "buy" ? "long" : "sell";
   const url = tradeUrl(id);
-  const shareText = `@${c.handle}'s ${c.symbol} ${side} on Tribe${c.sincePct !== null ? ` (${pct(c.sincePct)} since entry)` : ""}. Guarded onchain.`;
+  const shareText = `@${c.handle}'s ${c.symbol} ${side} on Tribe${c.sincePct !== null ? ` (${pct(c.sincePct)} since entry)` : ""}.`;
   const img = `${BASE_URL()}/og/t/${id}.png`;
 
   // Details as small tiles, three to a row. The card's price ladder already shows entry, stop and target on open

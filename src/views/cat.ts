@@ -35,7 +35,7 @@ export async function catReadCard(viewer: number, leader: number, style = "", tr
   if (!v) return "";
   const col = { ok: "#34D399", warn: "#FCD34D", bad: "#F87171" }[v.tone];
   const judged = v.checks.filter((c) => c.ok !== null);
-  const note = v.checks.find((c) => c.ok === false) ?? v.checks.find((c) => c.ok && /CRE CopyGuard/.test(c.t));
+  const note = v.checks.find((c) => c.ok === false) ?? v.checks.find((c) => c.ok && /CopyGuard/.test(c.t));
   return `<div class="card catread" style="border-color:${col}44;${style}">${orb(34, false)}<span class="grow" style="min-width:0"><span class="xs mut" style="display:block">Safety read on ${trade ? "this trade" : "their latest trade"}</span><b style="color:${col}">${esc(v.label)}</b><span class="sm mut"> · ${judged.filter((c) => c.ok).length} of ${judged.length} checks pass</span>${note ? `<span class="xs row" style="gap:5px;color:#A3A3A3;margin-top:3px"><i class="ck${note.ok ? "" : " bad"}" aria-hidden="true">${note.ok ? icon("check", 9, "currentColor", 3.4) : "!"}</i>${esc(note.t)}</span>` : ""}</span></div>`;
 }
 

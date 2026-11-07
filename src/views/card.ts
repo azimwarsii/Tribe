@@ -244,5 +244,7 @@ export function sampleCardSvg(tier: Tier): string {
 const FONT_DIR = fileURLToPath(new URL("../fonts", import.meta.url));
 
 /** The card as a still PNG, for wallets and explorers that won't show the SVG. The foil animation stops on its first frame. */
-export const cardPng = (v: CardView): Buffer =>
-  Buffer.from(new Resvg(cardSvg(v), { fitTo: { mode: "width", value: CARD_W * 2 }, font: { fontDirs: [FONT_DIR], loadSystemFonts: false, defaultFontFamily: "Inter" } }).render().asPng());
+export const cardPng = (v: CardView): Buffer => renderPng(cardSvg(v), CARD_W * 2);
+/** Any SVG to a PNG of this width, using the card's fonts. */
+export const renderPng = (svg: string, width: number): Buffer =>
+  Buffer.from(new Resvg(svg, { fitTo: { mode: "width", value: width }, font: { fontDirs: [FONT_DIR], loadSystemFonts: false, defaultFontFamily: "Inter" } }).render().asPng());

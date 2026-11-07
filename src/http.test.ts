@@ -85,7 +85,7 @@ test("signup, trade through Ask Chief, follow, approve", async () => {
   assert.match(pos.text, /ETH · Long/);
 
   // Pages render with data.
-  for (const p of ["/feed", "/feed?tab=top", "/guard", "/me", "/traders", "/u/leader1", "/portfolio?tab=creating", "/activity", "/settings", "/share/me"]) {
+  for (const p of ["/feed", "/feed?tab=top", "/guard", "/me", "/traders", "/u/leader1", "/portfolio?tab=creating", "/activity", "/settings"]) {
     assert.equal((await fol(p)).status, 200, p);
   }
 });
@@ -235,6 +235,30 @@ test("share cards render as PNG", async () => {
   assert.equal((await fetch(`${base}/og/u/nobody-here.png`)).status, 404);
 });
 
+test("the card share screen: /share lands on your best card, and the card and its images are public", async () => {
+  const c = client();
+  assert.equal((await c("/share")).loc, "/signin");
+  assert.equal((await c("/share/someone")).loc, "/u/someone");
+  await c("/api/signup", { handle: "cardsharer", avatar: 1, persona: "Sniper" });
+  assert.equal((await c("/share/me")).loc, "/trades", "no cards yet: go and earn one");
+  await c("/api/baskets", { name: "Card Share", stopPct: 10, weights: basketWeights });
+  const loc = (await c("/share")).loc!;
+  assert.match(loc, /^\/card\/\d+$/);
+  assert.match((await c(loc)).text, /Share your card/);
+  const pub = await client()(loc);
+  assert.equal(pub.status, 200);
+  assert.match(pub.text, /Copy this trade/);
+  assert.match(pub.text, /summary_large_image/);
+  assert.ok(!pub.text.includes("cardsharer"), "the page doesn't name the holder");
+  for (const f of ["", "?f=story"]) {
+    const r = await fetch(`${base}/og${loc}.png${f}`);
+    assert.equal(r.headers.get("content-type"), "image/png");
+    assert.ok(Buffer.from(await r.arrayBuffer()).length > 2000);
+  }
+  assert.equal((await client()("/card/999999")).status, 404);
+  assert.equal((await fetch(`${base}/og/card/999999.png`)).status, 404);
+});
+
 test("demo director beats run in order", async () => {
   const { BEATS } = await import("./director.js");
   for (const h of ["nightowl", "traderx", "you"]) {
@@ -352,8 +376,8 @@ test("Ask Chief about a feed post: verdict, history, worst case, and the way bac
   // CRE CopyGuard verdicts show up in Chief's read once the workflow reports.
   await fetch(`${base}/cre/guard`, { method: "POST", headers: { "content-type": "application/json", "x-cre-secret": "cre-test" }, body: JSON.stringify({ oracle: 2500, dex: 2502, deviationPct: 0.08, verdicts: [{ leader: db.userByHandle("postlead")!.id, severity: "ok", risk: 20, reason: "checks passed" }] }) });
   const cre = await me("/api/cat/ask", { text: "Is this a good trade?", trade });
-  assert.ok(cre.json.verdict.checks.some((x: { t: string; ok: boolean }) => /CRE CopyGuard .* clear/.test(x.t) && x.ok));
-  assert.ok(cre.json.verdict.checks.some((x: { t: string }) => /Chainlink ETH\/USD \$2500 vs DEX \$2502/.test(x.t)));
+  assert.ok(cre.json.verdict.checks.some((x: { t: string; ok: boolean }) => /CopyGuard .* clear/.test(x.t) && x.ok));
+  assert.ok(cre.json.verdict.checks.some((x: { t: string }) => /Oracle ETH\/USD \$2500 vs DEX \$2502/.test(x.t)));
 
   // Research is part of the game: a daily quest, and Chief's read before you copy.
   const uid = db.userByHandle("researcher")!.id;

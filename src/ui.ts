@@ -261,6 +261,7 @@ gap:10px;padding:16px 16px 54px;border:0;border-radius:22px;background:none;colo
 .swcard.p1::after,.swcard.pn::after,.swcard.was::after{animation:none}
 .cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}.ctile>a:first-child{display:block;transition:transform .15s}.ctile>a:first-child:hover{transform:translateY(-3px)}.cgrid img{display:block;width:100%;height:auto}
 .tkadv{gap:8px;margin-top:8px;padding:10px;border-radius:12px;background:#141414;border:1px solid rgba(255,255,255,.08)}.tkadv label{display:flex;flex-direction:column;gap:4px}.tkadv label.row{flex-direction:row;align-items:center}.tkadv [hidden]{display:none}
+.cstage{display:flex;justify-content:center;padding:6px 0}.cstage img{display:block;width:min(340px,100%);height:auto}.cpick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.cpick img{display:block;width:100%;height:auto}
 .ctile{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}.ctile>a:first-child{width:100%}.cnft{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--mut)}.cnft:hover{color:#F5F5F5}
 /* A trade unlocks its card: locked and dark, the lock opens, light breaks, the card shows. */
 .unlock{position:fixed;inset:0;z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px;background:rgba(5,5,5,.9);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);animation:un-fade .25s both}

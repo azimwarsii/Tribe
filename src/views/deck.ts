@@ -191,7 +191,7 @@ async function deckAside(viewer: number): Promise<string> {
 
 /** Top: the leaderboard, for browsing everything the deck deals one card at a time. Reached from "All baskets" links. */
 export async function feedTopPage(viewer: number, q: Record<string, unknown>): Promise<string> {
-  const share = `<a class="ic" target="_blank" rel="noopener" aria-label="Share this week's top traders on X" href="https://x.com/intent/post?text=${encodeURIComponent("This week's top traders on Tribe. Copy them with your own limits, guarded onchain by Chainlink CRE. Built on @DefinitiveFi Flash")}&url=${encodeURIComponent(`${process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`}/top`)}">${icon("share", 17, "currentColor", 2)}</a><a class="ic" href="/season" aria-label="Last season">${icon("star", 18)}</a>`;
+  const share = `<a class="ic" target="_blank" rel="noopener" aria-label="Share this week's top traders on X" href="https://x.com/intent/post?text=${encodeURIComponent("This week's top traders on Tribe. Copy them with your own limits. Built on @DefinitiveFi Flash")}&url=${encodeURIComponent(`${process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`}/top`)}">${icon("share", 17, "currentColor", 2)}</a><a class="ic" href="/season" aria-label="Last season">${icon("star", 18)}</a>`;
   const body = `${header("Top", "The best trades, traders and squads", "/feed", share)}
 ${await ranksHtml(viewer, q)}`;
   return page({ title: "Top · Tribe", nav: "feed", body });

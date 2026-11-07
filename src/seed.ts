@@ -95,7 +95,7 @@ await mirror(kestrel, parseTrade(["buy", "ETH", "60"]));
 await mirror(mav, parseTrade(["buy", "ETH", "40"]));
 await mirror(nightowl, { ...parseTrade(["buy", "ETH", "100"]), hasStop: true });
 // What the agent workflow posts to /cre/signal: every bot that is on (kestrel's) places it under its owner's name.
-await runBots(["long", "ETH", "25", at(1.06), at(0.97)], "Buying a 2.4% pullback: the Chainlink feed and the DEX price agree, so the dip looks real, not a bad print.");
+await runBots(["long", "ETH", "25", at(1.06), at(0.97)], "Buying a 2.4% pullback: the oracle feed and the DEX price agree, so the dip looks real, not a bad print.");
 await mirror(ember, parseTrade(["long", "ETH", "60", at(1.08), at(0.96)]), "user", "Range low held three times. Stop under it, target at the last high.");
 await mirror(traderx, parseTrade(["buy", "ETH", "80"]));
 await mirror(traderx, parseTrade(["buy", "ETH", "40"]));

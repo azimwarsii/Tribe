@@ -87,8 +87,8 @@ ${botsStrip(u.id)}
     : `<a class="btn p" href="#baskets" style="flex:2">${icon("cards", 14, "currentColor", 2)}See trades</a>`;
   const count = (n: number, label: string, link?: string) => `<${link ? `a href="${link}"` : "span"} class="pcount"><b>${n}</b><span>${label}</span></${link ? "a" : "span"}>`;
   const botBanner = bot.on
-    ? `<a class="card row" href="${me ? "/bot" : href({ tab: "Trades" })}" style="margin:0 20px 12px;gap:12px;color:#F5F5F5;border-color:rgba(52,211,153,.3);background:linear-gradient(135deg,rgba(52,211,153,.08),#141414 60%)"><span class="ic36" style="color:#34D399;background:rgba(52,211,153,.12)">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">${me ? "Your bot is on" : `@${esc(handle)} runs a bot`}</b><span class="sm mut">Chainlink CRE strategy · $${bot.usd} a trade · up to ${bot.perDay} a day · tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>`
-    : me ? `<a class="flat row" href="/bot" style="margin:0 20px 12px;gap:12px;color:#F5F5F5"><span class="ic36">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">Turn on your bot</b><span class="sm mut">It trades the CRE strategy under your name, tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>` : "";
+    ? `<a class="card row" href="${me ? "/bot" : href({ tab: "Trades" })}" style="margin:0 20px 12px;gap:12px;color:#F5F5F5;border-color:rgba(52,211,153,.3);background:linear-gradient(135deg,rgba(52,211,153,.08),#141414 60%)"><span class="ic36" style="color:#34D399;background:rgba(52,211,153,.12)">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">${me ? "Your bot is on" : `@${esc(handle)} runs a bot`}</b><span class="sm mut">Bot strategy · $${bot.usd} a trade · up to ${bot.perDay} a day · tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>`
+    : me ? `<a class="flat row" href="/bot" style="margin:0 20px 12px;gap:12px;color:#F5F5F5"><span class="ic36">${icon("bot", 18, "currentColor", 2)}</span><span class="grow"><b class="md" style="display:block">Turn on your bot</b><span class="sm mut">It trades the Tribe strategy under your name, tagged Bot</span></span><span class="mut" aria-hidden="true">›</span></a>` : "";
   const body = `<header class="hd" style="justify-content:space-between">${`<a class="ic" href="/feed" aria-label="Back">${icon("back", 18, "currentColor", 2)}</a>`}<a class="ic" href="/share/${esc(handle)}" aria-label="Share">${icon("share", 17, "currentColor", 2)}</a></header>
 <div class="row" style="padding:0 20px 10px;gap:14px;align-items:flex-start"><a class="av w lg pav" ${me ? 'href="/profile/edit" aria-label="Change photo"' : 'aria-hidden="true"'}>${face(handle)}${me ? `<i>${icon("camera", 12, "currentColor", 2.2)}</i>` : ""}</a>
 <div class="grow" style="min-width:0"><h1 style="margin:0;font-size:20px">@${esc(handle)}</h1><div class="sm mut">${esc(u.persona ?? "Trader")} · Lv ${p.level} · ${p.days ? `trading ${p.days} day${p.days === 1 ? "" : "s"}` : "new"}</div>${u.bio ? `<p class="md" style="margin:6px 0 0;color:#D4D4D4;line-height:1.45">${esc(u.bio)}</p>` : me ? `<a class="sm" href="/profile/edit" style="display:inline-block;margin-top:6px">Add a bio</a>` : ""}</div>
@@ -229,7 +229,7 @@ export async function requestsPage(viewer: number, q: Record<string, unknown>): 
 <div class="note" style="padding:0 4px">You can also approve from Telegram.</div>`;
     const checks: [string, string, string][] = [
       ["Trader filled onchain", "Real fill, not a screenshot", ago(c?.at ?? Date.now()) + " ago"],
-      ["CRE Guard check", `Risk ${risk} of 100 · ${haltOf(sel.leader) ? "paused" : "not paused"}`, haltOf(sel.leader) ? "Paused" : "Passed"],
+      ["Guard check", `Risk ${risk} of 100 · ${haltOf(sel.leader) ? "paused" : "not paused"}`, haltOf(sel.leader) ? "Paused" : "Passed"],
       ["Your filters", rules ? `${rules.requireStop ? "Needs stop · " : ""}max ${money(rules.maxUsdPerTrade)} · cap ${money(rules.dailyCapUsd)}` : "Defaults", "Passed"],
       ["Sign Flash order", "Waiting for you", "Now"],
     ];
@@ -336,7 +336,7 @@ export async function publicPage(handle: string, tradeId?: number): Promise<stri
   const url = `${BASE_URL()}/u/${encodeURIComponent(handle)}`;
   const recent = (await Promise.all((db.prepare("SELECT id FROM trades WHERE leader = ? AND private = 0 ORDER BY id DESC LIMIT 5").all(u.id) as unknown as { id: number }[]).map((r) => tradeCard(r.id)))).filter((c) => c !== undefined);
   const spark = p.curve.length > 1 ? `<svg class="only-d" width="100%" height="80" viewBox="0 0 310 80" preserveAspectRatio="none" aria-hidden="true" style="margin-top:12px"><path d="${polyline(p.curve.slice(-40), 310, 80)}" fill="none" stroke="#34D399" stroke-width="2"/></svg>` : "";
-  const pitch = `<ul class="mut md" style="margin:0;padding-left:18px;line-height:1.7"><li>Every trade is copied with its stop and target</li><li>A Chainlink-powered Guard pauses risky traders onchain</li><li>Your wallet stays yours, and you set the limits</li></ul>`;
+  const pitch = `<ul class="mut md" style="margin:0;padding-left:18px;line-height:1.7"><li>Every trade is copied with its stop and target</li><li>Tribe reads an onchain Guard before every copy</li><li>Your wallet stays yours, and you set the limits</li></ul>`;
   const join = `<a class="btn p big" href="/onboarding?follow=${esc(handle)}">${icon("bolt", 14)}Join and copy @${esc(handle)}</a>`;
   const shareText = encodeURIComponent(`Copying @${handle} on Tribe, guarded onchain. @DefinitiveFi`);
   const main = `<main class="main" style="gap:16px"><div class="row" style="gap:12px"><span class="av w lg">${face(handle)}</span><div class="grow"><h1 style="margin:0;font-size:22px">@${esc(handle)}</h1><div class="sm mut">${esc(u.persona ?? "Trader")} · ${p.followers} people copy them · on Tribe ${p.days} days</div></div><span class="pill ok only-d">${icon("shield", 11, "currentColor", 2)} Verified onchain</span></div>
@@ -356,30 +356,6 @@ ${recent.length ? `<section class="card only-d" style="padding:6px 8px"><h2 styl
 export function ogHead(handle: string, pnlPct: number, tradeId?: number): string {
   const img = `${BASE_URL()}/og/${tradeId ? "t/" + tradeId : "u/" + encodeURIComponent(handle)}.png`;
   return `<meta property="og:title" content="@${esc(handle)} ${esc(pct(pnlPct, 1))} on Tribe"><meta property="og:description" content="Copy this trader. Guarded onchain."><meta property="og:image" content="${esc(img)}"><meta name="twitter:card" content="summary_large_image">`;
-}
-
-export async function sharePage(viewer: number, who: string, tradeId?: number): Promise<string> {
-  const handle = who === "me" ? getUser(viewer).handle : who;
-  const u = userByHandle(handle);
-  if (!u) return notFound("Trader not found");
-  const p = await profile(u.id);
-  const url = tradeId ? `${BASE_URL()}/t/${tradeId}` : `${BASE_URL()}/u/${handle}`;
-  const tweet = `I'm ${pct(p.pnlPct, 1)} on Tribe. Copy my trades, protected by Chainlink CRE. Built on @DefinitiveFi Flash ${url}`;
-  const img = `/og/${tradeId ? "t/" + tradeId : "u/" + encodeURIComponent(handle)}.png`;
-  const curve = polyline(p.curve, 400, 150);
-  const body = `${header("Share", "Post your PnL card to X or TikTok", tradeId ? "/feed" : "/me")}<main class="main" style="gap:14px">
-<section class="card" style="padding:20px;background:linear-gradient(180deg,#262626,#111)" aria-label="Share card"><div class="row sp"><span style="font-size:20px;font-weight:700;letter-spacing:-.04em">tribe<span style="color:#34D399">.</span></span><span class="pill ok">${icon("shield", 11, "currentColor", 2)} Verified onchain</span></div>
-<div class="row" style="gap:10px;margin-top:16px"><span class="av w">${face(handle)}</span><div><b>@${esc(handle)}</b><div class="xs mut">Total return</div></div></div>
-<div class="big ${signCls(p.pnlPct)}" style="font-size:56px;margin-top:6px">${pct(p.pnlPct, 1)}</div><div class="sm mut">↑ ${p.trades} trades · ${p.followers} copiers</div>
-<svg viewBox="0 0 400 150" width="100%" height="110" preserveAspectRatio="none" style="margin-top:8px" aria-label="Equity curve"><path d="${curve}" fill="none" stroke="#34D399" stroke-width="2.5"/></svg>
-<div class="grid3" style="margin-top:8px">${stat("Win rate", p.winRate === null ? "—" : p.winRate + "%")}${stat("Max drawdown", p.maxDd ? "−" + p.maxDd.toFixed(1) + "pp" : "—")}${stat("Guard halts", String(p.guardPauses))}</div>
-<div class="row sp sm" style="margin-top:12px"><span class="mut">${esc(url.replace(/^https?:\/\//, ""))}</span><span class="pill ok">+ Copy</span></div></section>
-<a class="btn p big" target="_blank" rel="noopener" href="https://x.com/intent/post?text=${encodeURIComponent(tweet)}">${icon("share", 16, "currentColor", 2)}Share on X</a>
-<div class="grid2"><button class="btn" id="story" data-img="${img}?f=story" data-text="${esc(tweet)}">TikTok / Reels</button><a class="btn" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(tweet.replace(url, "").trim())}">${icon("tg", 16, "currentColor", 2)}Telegram</a></div>
-<div class="grid2"><button class="btn" data-copy="${esc(url)}">${icon("copy", 16, "currentColor", 2)}Copy link</button><a class="btn" href="${img}" download="tribe-${esc(handle)}.png">Image for X (PNG)</a></div>
-<p class="note">Tag @DefinitiveFi. The link lands on ${esc(handle)}'s portfolio with a copy button. TikTok / Reels sends a 9:16 card to your phone's share sheet, or downloads it on desktop.</p></main>
-<script>document.getElementById('story').onclick=async function(){var b=this,u=b.dataset.img,t=b.dataset.text;try{var blob=await (await fetch(u)).blob();var f=new File([blob],'tribe-story.png',{type:'image/png'});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],text:t});return}var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tribe-story.png';a.click();navigator.clipboard&&navigator.clipboard.writeText(t);tribe.toast('Story card downloaded, caption copied')}catch(e){if(e&&e.name!=='AbortError')tribe.toast('Could not share the card')}}</script>`;
-  return page({ title: "Share", body, head: ogHead(handle, p.pnlPct, tradeId) });
 }
 
 /** 9:16 card (1080x1920) for TikTok, Instagram and YouTube Shorts. Same data as the X card. */
@@ -404,7 +380,7 @@ export async function storySvg(handle: string, tradeId?: number): Promise<string
 <g transform="translate(60,800)"><path d="${curve} L960 360 L0 360 Z" fill="url(#fill)"/><path d="${curve}" fill="none" stroke="#34D399" stroke-width="7" stroke-linejoin="round"/></g>
 ${row(1300, "Total return", `<tspan fill="${col}">${esc(pct(p.pnlPct, 1))}</tspan>`)}${row(1390, "Win rate", p.winRate === null ? "—" : p.winRate + "%")}${row(1480, "Max drawdown", p.maxDd ? "−" + p.maxDd.toFixed(1) + "pp" : "—")}${row(1570, "Guard pauses", String(p.guardPauses))}
 <rect x="60" y="1660" width="960" height="130" rx="65" fill="#34D399"/><text x="540" y="1742" text-anchor="middle" fill="#052E1C" font-size="48" font-family="sans-serif" font-weight="700">Copy me on Tribe</text>
-<text x="540" y="1860" text-anchor="middle" fill="#8A8A8A" font-size="32" font-family="sans-serif">Guarded onchain by Chainlink CRE · trades on Flash</text></svg>`;
+<text x="540" y="1860" text-anchor="middle" fill="#8A8A8A" font-size="32" font-family="sans-serif">Trades on Flash</text></svg>`;
 }
 
 export async function ogSvg(handle: string, tradeId?: number): Promise<string | undefined> {
@@ -426,5 +402,5 @@ export async function ogSvg(handle: string, tradeId?: number): Promise<string | 
 <text x="60" y="372" fill="#A3A3A3" font-size="30" font-family="sans-serif">${sub}</text>
 ${chip(640, "Win rate", p.winRate === null ? "—" : p.winRate + "%")}${chip(910, "Max drawdown", p.maxDd ? "−" + p.maxDd.toFixed(1) + "pp" : "—")}
 <g transform="translate(60,410)"><path d="${curve} L1080 150 L0 150 Z" fill="url(#fill)"/><path d="${curve}" fill="none" stroke="#34D399" stroke-width="4" stroke-linejoin="round"/></g>
-<text x="60" y="610" fill="#8A8A8A" font-size="26" font-family="sans-serif">Copy this trader on Tribe · guarded onchain by Chainlink CRE · powered by Flash</text></svg>`;
+<text x="60" y="610" fill="#8A8A8A" font-size="26" font-family="sans-serif">Copy this trader on Tribe · powered by Flash</text></svg>`;
 }

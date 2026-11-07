@@ -126,7 +126,7 @@ ${partial ? `<div class="sm warn row" style="gap:6px">${icon("shield", 13, "curr
 }
 
 /** A card picture, linking to the full-size file. */
-const cardImg = (id: number, name: string, width: number) => `<a href="/card/${id}.svg" target="_blank" rel="noopener" style="flex:none;display:block;width:${width}px;max-width:100%"><img src="/card/${id}.svg" alt="${esc(`Tribe Trading Card for ${name}`)}" width="360" height="504" loading="lazy" style="display:block;width:100%;height:auto"></a>`;
+const cardImg = (id: number, name: string, width: number) => `<a href="/card/${id}" style="flex:none;display:block;width:${width}px;max-width:100%"><img src="/card/${id}.svg" alt="${esc(`Tribe Trading Card for ${name}`)}" width="360" height="504" loading="lazy" style="display:block;width:100%;height:auto"></a>`;
 
 export type CollectionTab = "all" | "yours" | "copied";
 export const collectionTab = (t: unknown): CollectionTab => (t === "yours" || t === "copied" ? t : "all");
@@ -140,7 +140,7 @@ export function collectionPage(uid: number, tab: CollectionTab = "all"): string 
   const all = cardsOf(uid);
   const own = all.filter((c) => c.kind === "original"), copied = all.filter((c) => c.kind === "copy");
   const shown = tab === "yours" ? own : tab === "copied" ? copied : all;
-  const tile = (c: (typeof all)[number]) => `<div class="ctile"><a href="/b/${c.basket}"><img src="/card/${c.id}.svg" alt="${esc(`Tribe Trading Card for ${basketById(c.basket)?.name ?? "a trade"}`)}" width="360" height="504" loading="lazy"></a>${nftLink(c)}</div>`;
+  const tile = (c: (typeof all)[number]) => `<div class="ctile"><a href="/card/${c.id}"><img src="/card/${c.id}.svg" alt="${esc(`Tribe Trading Card for ${basketById(c.basket)?.name ?? "a trade"}`)}" width="360" height="504" loading="lazy"></a><div class="row" style="gap:10px;flex-wrap:wrap;justify-content:center"><a class="cnft" href="/card/${c.id}">Share</a>${nftLink(c)}</div></div>`;
   const empty = tab === "copied" ? ["No copies yet", "Copy a trade from the feed and its card lands here.", "/feed", "Go to the feed"] : ["No cards here yet", "Publish a trade or copy one, and your card lands here.", "/trades/new", "Make a trade"];
   const list = shown.length
     ? `<div class="cgrid">${shown.map(tile).join("")}</div>`
@@ -188,7 +188,7 @@ ${v.thesis ? `<p class="md" style="margin:0;line-height:1.45;color:#D4D4D4">“$
 <button class="btn p"${needStop ? " disabled" : ""}>${icon("bolt", 14)}Copy with Flash</button></form></section>`;
 
   const myCard = signedIn ? cardFor(viewer!, id) : undefined;
-  const cardBox = myCard ? `<section class="card col" style="gap:10px;align-items:center" aria-label="Your Tribe Trading Card"><b class="md" style="align-self:flex-start">Your Tribe Trading Card</b>${cardImg(myCard.id, v.name, 260)}${nftLink(myCard)}</section>` : "";
+  const cardBox = myCard ? `<section class="card col" style="gap:10px;align-items:center" aria-label="Your Tribe Trading Card"><b class="md" style="align-self:flex-start">Your Tribe Trading Card</b>${cardImg(myCard.id, v.name, 260)}<a class="btn sm" style="width:auto" href="/card/${myCard.id}">${icon("share", 14, "currentColor", 2)}Share card</a>${nftLink(myCard)}</section>` : "";
   const main = `<main class="main" style="gap:10px">${request ? await rebalancePanel(request, v.name) : ""}${mine && value ? copyPanel(mine, value, v.name) : ""}${summary}${copyBox}${makeup}${config}${cardBox}${versions}</main>`;
   const aside = `<section class="card col" style="gap:12px"><div class="row" style="gap:12px"><span class="av w lg">${face(v.handle)}</span><div class="grow"><b style="display:block;font-size:16px">@${esc(v.handle)}</b><span class="sm mut">Launched ${ago(v.at)} ago</span></div></div><a class="btn" href="/u/${esc(v.handle)}">View profile</a></section>${readHtml(read)}`;
   const desc = `${v.weights.map((w) => `${w.symbol} ${w.weight}%`).join(", ")}. ${flatPct(v.returnPct)} since launch.`;
@@ -215,7 +215,7 @@ export function basketOgSvg(v: BasketView): string {
 <text x="60" y="200" fill="#F5F5F5" font-size="68" font-weight="700" font-family="sans-serif">${x(v.name)}</text>
 <text x="60" y="300" fill="${v.returnPct >= 0 ? "#34D399" : "#F87171"}" font-size="60" font-weight="700" font-family="sans-serif">${x(pct(v.returnPct))} since launch</text>
 ${bar}<text x="60" y="430" fill="#D4D4D4" font-size="30" font-family="sans-serif">${x(key)}</text>
-<text x="60" y="570" fill="#8A8A8A" font-size="26" font-family="sans-serif">Copy it on Tribe · guarded onchain by Chainlink CRE · powered by Flash</text></svg>`;
+<text x="60" y="570" fill="#8A8A8A" font-size="26" font-family="sans-serif">Copy it on Tribe · powered by Flash</text></svg>`;
 }
 
 /** The portfolio's basket section. */

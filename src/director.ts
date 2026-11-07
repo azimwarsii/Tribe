@@ -79,8 +79,8 @@ export const BEATS: Beat[] = [
   },
   {
     id: "guard",
-    title: "6 · CRE Guard pauses @traderx",
-    say: "The CRE workflow reads drawdown, bursts and token flags, the AI confirms, and a report lands in CopyGuard. Their trades can't be copied.",
+    title: "6 · Guard pauses @traderx",
+    say: "Guard reads drawdown, bursts and token flags, the AI confirms, and a report lands in CopyGuard. Their trades can't be copied.",
     run: async () => {
       const id = who("traderx");
       db.prepare("INSERT INTO snapshots (trader, at, pnl_pct) VALUES (?, ?, ?)").run(id, Date.now(), -22);
@@ -92,7 +92,7 @@ export const BEATS: Beat[] = [
   {
     id: "resume",
     title: "7 · Guard clears @traderx",
-    say: "Risk falls back under the line. The next CRE check clears the pause and copying resumes.",
+    say: "Risk falls back under the line. The next check clears the pause and copying resumes.",
     run: async () => {
       resumeLeader(who("traderx"));
       return "@traderx cleared.";

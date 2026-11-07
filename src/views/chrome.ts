@@ -47,7 +47,7 @@ ${ITEMS.map(([k, href, ic, label]) => `<a class="side-item${k === active ? " on"
 <a class="ic" href="/requests" aria-label="Copy requests, ${pend.length} pending">${icon("inbox", 18)}${pend.length ? `<span class="badge">${pend.length}</span>` : ""}</a><a class="btn sm w" href="/funds">Add funds</a></div>`;
 
   const at = lastGuardCheck();
-  const checked = at ? `CRE Guard checked ${ago(at)} ago` : "Waiting for the first CRE check";
+  const checked = at ? `Guard checked ${ago(at)} ago` : "Waiting for the first check";
   const rail = `<aside class="rail" aria-label="Summary">
 <section class="card${meta.pausedAll ? " bad" : ""}"><div class="row sp sm mut"><span>Copy portfolio</span><span style="color:#F5F5F5;display:inline-flex;gap:3px;align-items:center">${icon("bolt", 11)}Flash</span></div>
 <div class="big" style="margin-top:6px">${meta.hideBalance ? "••••" : money2(pf.total)}</div><div class="${signCls(pf.todayUsd)}" style="font-size:13px">${pf.todayUsd >= 0 ? "↑" : "↓"} ${money(Math.abs(pf.todayUsd))} (${pct(pf.todayPct, 2)}) today</div>

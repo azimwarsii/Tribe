@@ -73,7 +73,7 @@ function copySize(c: TradeCard, viewer: number) {
   return { usd: Math.min(leaderUsd * ratio, max), leaderUsd, ratio, max, requireStop: r?.requireStop ?? d.stop, custom: !!r };
 }
 
-/** The latest CRE CopyGuard verdict on a trader and the latest Chainlink-vs-DEX price check, as the workflow reported them. */
+/** The latest CopyGuard verdict on a trader and the latest Chainlink-vs-DEX price check, as the workflow reported them. */
 export function creEvidence(leader: number) {
   const runs = creRuns(30);
   const run = runs.find((r) => r.verdicts.some((v) => v.leader === leader));
@@ -84,11 +84,11 @@ export function creEvidence(leader: number) {
 function creChecks(c: TradeCard): Check[] {
   const { run, v, price } = creEvidence(c.leader);
   const out: Check[] = [v && run
-    ? { ok: v.severity === "ok", key: true, t: `CRE CopyGuard ${ago(run.at)} ago: ${v.severity === "ok" ? "clear" : v.severity === "warn" ? `flagged, ${v.reason}` : `halted, ${v.reason}`}${v.ai ? " (AI reviewed, nodes agreed)" : ""}` }
-    : { ok: null, t: "No CRE CopyGuard run has checked them yet" }];
+    ? { ok: v.severity === "ok", key: true, t: `CopyGuard ${ago(run.at)} ago: ${v.severity === "ok" ? "clear" : v.severity === "warn" ? `flagged, ${v.reason}` : `halted, ${v.reason}`}${v.ai ? " (AI reviewed, nodes agreed)" : ""}` }
+    : { ok: null, t: "No CopyGuard run has checked them yet" }];
   if (price && c.symbol === "ETH") {
     const dev = Math.abs(price.deviation ?? 0);
-    out.push({ ok: dev < 1, t: `Chainlink ETH/USD $${price.oracle!.toFixed(0)} vs DEX $${price.dex!.toFixed(0)}: ${dev.toFixed(2)}% apart${dev < 1 ? "" : ", the prices disagree"}` });
+    out.push({ ok: dev < 1, t: `Oracle ETH/USD $${price.oracle!.toFixed(0)} vs DEX $${price.dex!.toFixed(0)}: ${dev.toFixed(2)}% apart${dev < 1 ? "" : ", the prices disagree"}` });
   }
   return out;
 }
@@ -114,7 +114,7 @@ function checksOf(c: TradeCard, p: Awaited<ReturnType<typeof profile>>, line: nu
   out.push({ ok: p.maxDd < 10, t: `Worst drawdown ${p.maxDd.toFixed(1)}%${p.maxDd < 10 ? "" : ", a bumpy ride"}` });
   out.push(c.guard === "paused" ? { ok: false, t: "Paused by Guard: new trades from them are not copied" } : { ok: c.risk < line, t: `Guard risk score ${c.risk} of 100 (pauses at ${line})` });
   out.push(...creChecks(c));
-  if (c.source === "bot") out.push({ ok: true, t: `Placed by @${c.handle}'s bot, which only trades when the Chainlink ETH/USD feed and the DEX price agree` });
+  if (c.source === "bot") out.push({ ok: true, t: `Placed by @${c.handle}'s bot, which only trades when an onchain ETH/USD feed and the DEX price agree` });
   if (c.source === "agent") out.push({ ok: null, t: `Proposed by @${c.handle}'s AI agent and confirmed by them` });
   return out;
 }
@@ -151,7 +151,7 @@ export async function traderBrief(leader: number): Promise<Brief | undefined> {
   const halt = haltOf(leader);
   if (halt) picks.push({ w: 100, tone: "bad", t: `Paused by Guard: ${halt.reason}. Nothing from them gets copied right now.` });
   const cre = creEvidence(leader);
-  if (cre.v && cre.run && cre.v.severity === "warn") picks.push({ w: 90, tone: "warn", t: `CRE CopyGuard flagged them ${ago(cre.run.at)} ago: ${cre.v.reason}` });
+  if (cre.v && cre.run && cre.v.severity === "warn") picks.push({ w: 90, tone: "warn", t: `CopyGuard flagged them ${ago(cre.run.at)} ago: ${cre.v.reason}` });
   const month = closed.filter((c) => c.at >= Date.now() - 30 * 86400e3);
   const worst = month.reduce<(typeof closed)[number] | undefined>((a, c) => (!a || c.pct < a.pct ? c : a), undefined);
   if (worst && worst.pct <= -3) picks.push({ w: 80, tone: "bad", t: `Biggest hit this month: ${pct(worst.pct)} on ${worst.symbol}, ${ago(worst.at)} ago` });
@@ -204,7 +204,7 @@ export async function researchTrade(viewer: number, tradeId: number, text: strin
     reply = [
       `${who} has traded for ${p.days} day${p.days === 1 ? "" : "s"}: ${p.trades} trades, ${p.closed} closed${p.winRate !== null ? `, ${p.winRate}% winners` : ""}. Overall ${pct(p.pnlPct)}, worst drawdown ${p.maxDd.toFixed(1)}%.`,
       last.length ? `Last closed: ${last.join(", ")}.` : "No closed trades yet, so there is no realised record to go on.",
-      split.bot.trades ? `Manual: ${side(split.manual)}. Bot: ${side(split.bot)}. Their bot runs on Chainlink CRE: it only buys when the Chainlink ETH/USD feed and the DEX price agree, always with a stop and target.` : `All ${split.manual.trades} entries were placed by hand.`,
+      split.bot.trades ? `Manual: ${side(split.manual)}. Bot: ${side(split.bot)}. Their bot only buys when an onchain ETH/USD feed and the DEX price agree, always with a stop and target.` : `All ${split.manual.trades} entries were placed by hand.`,
       `${p.followers} ${p.followers === 1 ? "person copies" : "people copy"} them and Guard has paused them ${p.guardPauses} time${p.guardPauses === 1 ? "" : "s"}${halt ? ` (paused now: ${halt.reason})` : ""}.`,
     ].filter(Boolean).join("\n");
   } else if (topic === "risk") {
@@ -236,9 +236,9 @@ export async function researchTrade(viewer: number, tradeId: number, text: strin
     steps: [
       { t: "The post", d: `${verbOf(c)} ${c.symbol}, ${ago(c.at)} ago${c.tx ? ", settled onchain" : ""}` },
       { t: "Track record", d: `${p.closed} closed trades, worst drawdown ${p.maxDd.toFixed(1)}%` },
-      { t: "CRE CopyGuard", d: c.guard === "paused" ? "Paused" : cre.v && cre.run ? `${cre.v.severity} ${ago(cre.run.at)} ago, risk ${c.risk}/100` : `No run yet, risk ${c.risk}/100` },
+      { t: "CopyGuard", d: c.guard === "paused" ? "Paused" : cre.v && cre.run ? `${cre.v.severity} ${ago(cre.run.at)} ago, risk ${c.risk}/100` : `No run yet, risk ${c.risk}/100` },
       { t: "Your rules", d: `${money(size.usd)} per copy, max ${money(size.max)}` },
     ],
-    sources: [`${who} fills`, cre.v ? "CRE CopyGuard report" : "Guard status", ...(cre.price ? ["Chainlink ETH/USD"] : []), "Your copy rules", ...(c.source === "bot" ? ["Chainlink CRE bot"] : [])],
+    sources: [`${who} fills`, cre.v ? "CopyGuard report" : "Guard status", ...(cre.price ? ["Oracle ETH/USD"] : []), "Your copy rules", ...(c.source === "bot" ? ["Tribe bot"] : [])],
   };
 }

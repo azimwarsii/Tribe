@@ -231,7 +231,7 @@ async function levelUpInner(uid: number): Promise<string> {
 ${since.rows.map(([label, xp], i) => `<div class="row sp step" style="min-height:36px;border-bottom:1px solid #222;font-size:14px;animation-delay:${420 + i * 80}ms"><span style="color:#D4D4D4">${esc(label)}</span><b class="up">+${xp} XP</b></div>`).join("")}
 <div class="row sp" style="min-height:40px;font-size:15px;font-weight:600"><span>Total</span><span>+${since.total} XP</span></div></section>
 <div class="col" style="align-self:stretch;gap:8px">${progress(Math.max(1, lv.pct), `Progress to Level ${lv.level + 1}`, "s")}<div class="row sp" style="font-size:13px"><span style="color:#C4C4C4">${lv.toNext.toLocaleString("en-US")} XP to Level ${lv.level + 1}</span><span class="mut">Level ${lv.level + 1} at ${lv.hi.toLocaleString("en-US")}</span></div></div>
-<div class="grid2" style="align-self:stretch;gap:10px"><a class="btn big" href="/share/me">Share</a><a class="btn p big" href="/progress">See progress</a></div></div>`;
+<div class="grid2" style="align-self:stretch;gap:10px"><a class="btn big" href="/share">Share</a><a class="btn p big" href="/progress">See progress</a></div></div>`;
 }
 
 export async function levelUpPage(uid: number): Promise<string> {

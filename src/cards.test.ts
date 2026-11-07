@@ -14,6 +14,7 @@ const { CARD_TIERS, finishOf, higherTier, progressOf, tierOf } = await import(".
 const { cardById, cardFor, cardMetadata, cardsOf, cardView, refreshCards } = await import("./cards.js");
 const { CARD_H, CARD_W, cardSvg } = await import("./views/card.js");
 const { svgToPng } = await import("./views/trader.js");
+const { bestCard, cardCaption, cardPage, cardPostPng, cardStoryPng } = await import("./views/cardshare.js");
 
 const addr = (s: string) => DEMO_TOKENS.find((t) => t.symbol === s)!.address;
 const ETH = addr("ETH"), BTC = addr("cbBTC");
@@ -270,4 +271,40 @@ test("with real money switched on, a card is only Live once a real order backs i
   } finally {
     process.env.DRY_RUN = "true";
   }
+});
+
+const pngSize = (b: Buffer) => [b.readUInt32BE(16), b.readUInt32BE(20)];
+
+test("sharing: the images are the right shape for link previews and stories", () => {
+  assert.deepEqual(pngSize(cardPostPng(sample)), [1200, 630]);
+  assert.deepEqual(pngSize(cardStoryPng(sample)), [1080, 1920]);
+});
+
+test("sharing: the caption speaks for the holder only, says NFT once minted, and never hides practice mode", () => {
+  const live = { ...sample, returnPct: 12.34, practice: false };
+  assert.match(cardCaption(live, true), /^My Holo card for Sample on Tribe: \+12\.3% since launch\.$/);
+  assert.match(cardCaption({ ...live, onchain: "https://x/1" }, false), /^A Holo NFT card/);
+  assert.match(cardCaption({ ...live, practice: true }, true), /in practice mode\.$/);
+});
+
+test("sharing: the page has a link preview and the apps, and shows no holder or dollars", async () => {
+  const owner = user(), viewer = user();
+  const row = cardFor(owner, await make(owner, "Share Me <b>"))!;
+  const v = await view(row.id);
+  const html = cardPage(row, v, viewer);
+  for (const s of [`/og/card/${row.id}.png`, "summary_large_image", "x.com/intent/post", "t.me/share", "wa.me", "farcaster.xyz", "linkedin.com", `f=story`, "Copy this trade"]) assert.ok(html.includes(s), s);
+  assert.ok(!html.includes("Share Me <b>"), "the name is escaped");
+  assert.ok(!html.includes("carduser"), "no holder handle");
+  assert.doesNotMatch(html, /Chainlink/);
+  assert.ok(cardPage(row, v, owner).includes("Share your card"));
+  assert.match(html, /Practice/);
+});
+
+test("sharing: your best card is the highest tier, then the newest", async () => {
+  const owner = user();
+  const first = cardFor(owner, await make(owner, "First"))!, second = cardFor(owner, await make(owner, "Second"))!;
+  assert.equal(bestCard(owner)!.id, second.id);
+  db.prepare("UPDATE basket_cards SET tier = 'holo' WHERE id = ?").run(first.id);
+  assert.equal(bestCard(owner)!.id, first.id);
+  assert.equal(bestCard(user()), undefined);
 });

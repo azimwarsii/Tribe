@@ -23,7 +23,7 @@ export function splashPage(next = "/feed"): string {
 @keyframes sp-glow{0%,100%{opacity:.55}50%{opacity:.9}}</style>`,
     body: `<a href="/intro?next=${encodeURIComponent(next)}" data-auto="/intro?next=${encodeURIComponent(next)}" data-delay="2600" aria-label="Tribe. Tap to continue" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:inherit">
 <div class="glow" aria-hidden="true"></div><div class="w">tribe<i aria-hidden="true"></i></div><p>Custom ETF-style trades. Cards that level up.</p>
-<div class="ld" aria-hidden="true"><div></div></div><div class="ft"><span>Flash orders</span><span aria-hidden="true">·</span><span>Chainlink CRE</span><span aria-hidden="true">·</span><span>Privy</span></div></a>`,
+<div class="ld" aria-hidden="true"><div></div></div><div class="ft"><span>Flash orders</span><span aria-hidden="true">·</span><span>Privy</span></div></a>`,
   });
 }
 
@@ -61,7 +61,7 @@ ${[["ETH", "50%"], ["cbBTC", "30%"], ["AERO", "20%"]].map(([t, w]) => `<div clas
   },
   {
     h: "Guard: a safety net, onchain",
-    p: "Chainlink CRE checks creators and pauses risky ones before you copy them. The pause is written onchain, so anyone can verify why.",
+    p: "Tribe reads an onchain Guard before every copy. A paused creator can't be copied, and anyone can verify why.",
     art: `<div style="width:270px;${CARD.replace("rgba(255,255,255,.08)", "rgba(248,113,113,.4)")}">
 <div class="row sp"><span class="md" style="font-weight:600">@traderx</span><span class="pill bad">Paused by Guard</span></div>
 <div style="position:relative;height:6px;border-radius:3px;background:#262626"><div style="width:91%;height:6px;border-radius:3px;background:#F87171"></div><span style="position:absolute;left:65%;top:-4px;width:2px;height:14px;background:#F5F5F5"></span></div>

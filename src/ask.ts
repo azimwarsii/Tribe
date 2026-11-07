@@ -186,7 +186,7 @@ export async function ask(text: string): Promise<Answer> {
     if (h) {
       return {
         reply: `Guard paused @${who}: ${h.reason}. New trades from them are not copied; your open positions keep their stops.`,
-        sources: [`Guard report ${new Date(h.at).toLocaleTimeString()}`, h.tx ? "CopyGuard tx" : "CRE verdict", `@${who} fills`],
+        sources: [`Guard report ${new Date(h.at).toLocaleTimeString()}`, h.tx ? "CopyGuard tx" : "Guard verdict", `@${who} fills`],
       };
     }
     return { reply: `@${who} is not paused. Their risk score is ${await riskOf(u.id)} of 100.`, sources: [`@${who} fills`] };

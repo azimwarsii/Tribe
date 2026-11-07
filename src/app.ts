@@ -11,6 +11,7 @@ import { approveRebalance, basketBoard, basketView, closeCopy, copyBasket, creat
 import { basketBuilderPage, basketOgSvg, basketPage, collectionPage, collectionTab } from "./views/baskets.js";
 import { cardById, cardFor, cardMetadata, cardOfCopy, cardView, unlockOf, type CardView } from "./cards.js";
 import { cardPng, cardSvg, sampleCardSvg } from "./views/card.js";
+import { bestCard, cardPage, cardPostPng, cardStoryPng } from "./views/cardshare.js";
 import { activeHtml, briefHtml, deckCards, deckLive, deckPage, feedTopPage } from "./views/deck.js";
 import { CLIENT_JS } from "./client.js";
 import { isReaction, reactBar, REACT_JS } from "./views/reactions.js";
@@ -26,7 +27,7 @@ import { RISK_LINE } from "./rules.js";
 import { creatorEarnings, activityCsv, activityPage, alertsPage, creatorPage, fundsPage, mePage, newStrategyPage, seasonPage, settingsPage, transferPage } from "./views/me.js";
 import { onboardingPage, introPage, splashPage } from "./views/auth.js";
 import { guardPage } from "./views/social.js";
-import { svgToPng, storySvg, copyPage, myTradersPage, ogSvg, positionsPage, profilePage, publicPage, requestsPage, sharePage, simulateCopy, threadPage, commentHtml } from "./views/trader.js";
+import { svgToPng, storySvg, copyPage, myTradersPage, ogSvg, positionsPage, profilePage, publicPage, requestsPage, simulateCopy, threadPage, commentHtml } from "./views/trader.js";
 import { esc, icon, notFound, page, SIDE_JS } from "./ui.js";
 import { finalize } from "./views/chrome.js";
 import { tradePage } from "./views/tradepage.js";
@@ -264,7 +265,15 @@ export function appRouter(): Router {
     html(res, await tradePage(id, me(req)));
   });
   r.get("/thread/:id", (req, res) => res.redirect(301, `/t/${Number(req.params.id)}#comments`));
-  r.get("/share/:who", authed((uid, req) => sharePage(uid, req.params.who)));
+  // Sharing is built around your cards. Older links to a trader's share page land on their profile.
+  r.get(["/share", "/share/:who"], (req, res) => {
+    const who = req.params.who;
+    if (who && who !== "me") return res.redirect(`/u/${encodeURIComponent(who)}`);
+    const uid = me(req);
+    if (uid === undefined) return res.redirect("/signin");
+    const best = bestCard(uid);
+    res.redirect(best ? `/card/${best.id}` : "/trades");
+  });
   r.get("/top", (req, res) => html(res, topPage(me(req) !== undefined)));
   r.get("/og/top.png", (_q, res) => res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(topSvg())));
   r.get("/s/:id", (req, res) => res.redirect(301, `/t/${Number(req.params.id)}`));
@@ -285,12 +294,12 @@ export function appRouter(): Router {
     const v = await basketView(Number(req.params.id));
     v ? res.type("image/png").set("Cache-Control", "public, max-age=300").send(svgToPng(basketOgSvg(v))) : res.sendStatus(404);
   });
-  // A card is public by link, like a basket. It carries no handle or dollar amount.
-  const cardRoute = (send: (v: CardView, res: express.Response) => void): express.RequestHandler => async (req, res) => {
+  // A card is public by link, like a basket. It shows no dollar amount and doesn't say who holds a copy.
+  const cardRoute = (send: (v: CardView, res: express.Response, req: express.Request) => void): express.RequestHandler => async (req, res) => {
     try {
       const row = cardById(Number(req.params.id));
       const v = row && (await cardView(row));
-      v ? send(v, res.set("Cache-Control", "public, max-age=300")) : res.sendStatus(404);
+      v ? send(v, res.set("Cache-Control", "public, max-age=300"), req) : res.sendStatus(404);
     } catch (e) {
       console.error(req.path, e);
       res.sendStatus(500);
@@ -302,6 +311,17 @@ export function appRouter(): Router {
   });
   r.get("/card/:id.svg", cardRoute((v, res) => res.type("image/svg+xml").send(cardSvg(v))));
   r.get("/card/:id.png", cardRoute((v, res) => res.type("image/png").send(cardPng(v))));
+  r.get("/og/card/:id.png", cardRoute((v, res, req) => res.type("image/png").send(req.query.f === "story" ? cardStoryPng(v) : cardPostPng(v))));
+  r.get("/card/:id(\\d+)", async (req, res) => {
+    try {
+      const row = cardById(Number(req.params.id));
+      const v = row && (await cardView(row));
+      row && v ? html(res, cardPage(row, v, me(req))) : html(res, notFound("Card not found"), 404);
+    } catch (e) {
+      console.error(req.path, e);
+      html(res, notFound("Something went wrong"), 500);
+    }
+  });
   r.get("/card/:id.json", cardRoute((v, res) => res.json(cardMetadata(v, process.env.PUBLIC_URL ?? `http://localhost:${process.env.PORT ?? 8787}`))));
   r.get("/og/t/:id.png", async (req, res) => {
     const t = await tradeCard(Number(req.params.id));

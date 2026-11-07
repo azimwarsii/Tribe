@@ -36,7 +36,7 @@ const server = new McpServer({ name: "tribe", version: "0.2.0" });
 
 server.registerTool("tribe_leaderboard", {
   title: "Top traders",
-  description: "Traders ranked by realised return from filled Flash orders over the last N days, with whether Chainlink CRE Guard has paused them.",
+  description: "Traders ranked by realised return from filled Flash orders over the last N days, with whether Guard has paused them.",
   inputSchema: { days: z.number().int().min(1).max(90).optional().describe("Window in days, default 7") },
   annotations: { readOnlyHint: true },
 }, safe(async ({ days }: { days?: number }) => api(`/api/v1/top?days=${days ?? 7}`)));
@@ -50,7 +50,7 @@ server.registerTool("tribe_trader", {
 
 server.registerTool("tribe_guard", {
   title: "Guard status",
-  description: "Traders currently paused by the Chainlink CRE CopyGuard workflow (with reasons and onchain proof) and the latest Chainlink-vs-DEX price check.",
+  description: "Traders currently paused by CopyGuard (with reasons and onchain proof) and the latest oracle-vs-DEX price check.",
   annotations: { readOnlyHint: true },
 }, safe(async () => api("/api/v1/guard")));
 
