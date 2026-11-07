@@ -952,6 +952,10 @@ test("Deleting an account frees its wallet and ends the wallet session", async (
   assert.equal((await c("/feed")).status, 302, "signed out");
 });
 
+test("wallet balances are only for the signed-in owner", async () => {
+  assert.equal((await client()("/api/wallet/balances")).status, 401);
+});
+
 test("automatic signing: the embedded wallet takes over, auto copies open up, and open positions block the move", async () => {
   const c = client();
   await c("/api/signup", { handle: "autosign", persona: "Hodler" });

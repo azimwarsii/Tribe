@@ -15,6 +15,7 @@ import { bundleVersion, esc, header, icon, page } from "./ui.js";
  * key. Trades are approved in the wallet, unless the user turns on automatic signing (see src/privy-api.ts).
  *
  *   GET  /wallet                     the Wallet page: connect, or the address and live Base balances
+ *   GET  /api/wallet/balances        -> { eth, usdc, weth } read live from Base
  *   POST /api/wallet/challenge       { address } -> { id, message } to connect a wallet to the signed-in account
  *   POST /api/wallet/link            { id, signature } -> the wallet becomes the account's trading wallet (or replaces it)
  */
@@ -131,6 +132,9 @@ ${walletButtonScript("mm", "mm-msg", "/api/wallet/challenge", "/api/wallet/link"
     }
     res.type("html").send(page({ title: "Wallet", body: `${header("Wallet", "Your money, your keys", "/me")}<main class="main">${body}</main>` }));
   });
+
+  // Read after a transfer, to show when the money has reached the wallet.
+  r.get("/api/wallet/balances", owner((uid) => balancesOf(getUser(uid).address)));
 
   r.post("/api/wallet/challenge", json, owner((uid, req) => {
     const address = String(req.body?.address ?? "");

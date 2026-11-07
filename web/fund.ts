@@ -17,3 +17,12 @@ export function usdcTransferData(to: string, amount: bigint): string {
   if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error("That isn't a wallet address.");
   return `0xa9059cbb${to.slice(2).toLowerCase().padStart(64, "0")}${amount.toString(16).padStart(64, "0")}`;
 }
+
+export interface WalletBalance { eth: number; usdc: number }
+
+/** What reached the wallet between two balance reads, in words, or undefined if nothing has yet. */
+export function arrived(before: WalletBalance, now: WalletBalance): string | undefined {
+  if (now.usdc - before.usdc >= 0.000001) return `${(now.usdc - before.usdc).toFixed(2)} USDC`;
+  if (now.eth - before.eth >= 1e-9) return `${(now.eth - before.eth).toFixed(6)} ETH`;
+  return undefined;
+}

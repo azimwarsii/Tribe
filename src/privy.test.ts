@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { decodeFunctionData, erc20Abi } from "viem";
 import { plainGasError } from "./flash.js";
-import { GAS_TOP_UP_WEI, parseUsdc, usdcTransferData } from "../web/fund.js";
+import { arrived, GAS_TOP_UP_WEI, parseUsdc, usdcTransferData } from "../web/fund.js";
 import { FLASH_CONTRACT, PERMIT2, tribeSignerActive, walletPolicy } from "./privy.js";
 
 const ADDR = "0x8aAB6863d537e47D75f2fF7Ddbbb7C5b076c4Eb8";
@@ -58,4 +58,12 @@ test("a wallet with no ETH gets a plain message, and other errors pass through u
   assert.match(plainGasError(new Error("insufficient funds for gas")).message, /needs a little ETH/);
   const other = new Error("nonce too low");
   assert.equal(plainGasError(other), other);
+});
+
+test("funding: a transfer counts as arrived only when the wallet's balance has gone up", () => {
+  const before = { eth: 0, usdc: 2 };
+  assert.equal(arrived(before, before), undefined);
+  assert.equal(arrived(before, { eth: 0, usdc: 1 }), undefined, "spending isn't an arrival");
+  assert.equal(arrived(before, { eth: 0, usdc: 7.5 }), "5.50 USDC");
+  assert.equal(arrived(before, { eth: 0.0002, usdc: 2 }), "0.000200 ETH");
 });
