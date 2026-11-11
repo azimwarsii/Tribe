@@ -5,8 +5,10 @@ import { base } from "viem/chains";
 import { currentUser, isAgent } from "./auth.js";
 import { db, getMeta, getUser, setMeta } from "./db.js";
 import { privyEnabled } from "./privy.js";
-import { isDry } from "./tracker.js";
-import { balancesOf } from "./wallet.js";
+import { heldTokens, isDry } from "./tracker.js";
+import { balancesOf, signerOf } from "./wallet.js";
+import { placeOrder } from "./flash.js";
+import { TOKENS, USDC } from "./parse.js";
 import { bundleVersion, esc, header, icon, page } from "./ui.js";
 
 /**
@@ -135,6 +137,25 @@ ${walletButtonScript("mm", "mm-msg", "/api/wallet/challenge", "/api/wallet/link"
 
   // Read after a transfer, to show when the money has reached the wallet.
   r.get("/api/wallet/balances", owner((uid) => balancesOf(getUser(uid).address)));
+
+  // Sell WETH for USDC on Flash from the Tribe wallet. The browser has just wrapped the ETH (see web/wallet.tsx), so only
+  // WETH that isn't in an open trade can be sold, and the fee reserve stays. Not tracked as a trade, so it has no position.
+  r.post("/api/convert", json, owner(async (uid, req) => {
+    if (isDry()) throw new Error("Converting needs a live Tribe wallet.");
+    const u = getUser(uid);
+    if (u.wallet_kind !== "privy") throw new Error("Turn on automatic signing first.");
+    const eth = Math.floor(Number(req.body?.eth) * 1e6) / 1e6; // rounded down to 0.000001
+    if (!(eth >= 0.000001)) throw new Error("Enter an amount of ETH to convert.");
+    const b = await balancesOf(u.address);
+    const free = b.weth - heldTokens(uid, TOKENS.WETH);
+    if (eth > free + 1e-9) throw new Error(`Only ${Math.max(0, free).toFixed(6)} WETH is free to sell. The rest is in your open trades.`);
+    const slip = parseFloat(getMeta(uid).slip) / 100;
+    const placed = await placeOrder(
+      { chain: "base", target: TOKENS.WETH, contra: USDC, side: "sell", qty: eth.toFixed(6), orderType: "market" },
+      u.address, signerOf(uid), Number.isFinite(slip) ? String(slip) : undefined, { tight: getMeta(uid).tightApprovals },
+    );
+    return { toast: `Selling ${eth.toFixed(6)} ETH for USDC on Flash`, orderId: placed.orderId };
+  }));
 
   r.post("/api/wallet/challenge", json, owner((uid, req) => {
     const address = String(req.body?.address ?? "");

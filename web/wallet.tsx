@@ -4,10 +4,10 @@
  * runs here, in their browser, and the server then reads the result back from Privy (src/privy-api.ts).
  * The user can always export the wallet's key: Tribe's policy limits Tribe, not them.
  */
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { PrivyProvider, useConnectWallet, useCreateWallet, useExportWallet, usePrivy, useSigners, useWallets } from "@privy-io/react-auth";
-import { arrived, BASE_CHAIN_ID, GAS_TOP_UP_ETH, GAS_TOP_UP_WEI, parseUsdc, USDC, usdcTransferData, type WalletBalance } from "./fund";
+import { arrived, BASE_CHAIN_ID, GAS_TOP_UP_ETH, GAS_TOP_UP_WEI, parseEth, parseUsdc, USDC, usdcTransferData, type WalletBalance } from "./fund";
 
 declare global {
   interface Window { TRIBE: { appId: string; auto?: boolean; fundTo?: string; needsGas?: boolean } }
@@ -106,6 +106,154 @@ function AddFunds({ auto, to, needsGas }: { auto: boolean; to?: string; needsGas
   );
 }
 
+/**
+ * Send USDC from the Tribe wallet back to the outside wallet it was funded from. The Tribe wallet is the user's own
+ * embedded wallet, so the user signs here, in their browser. Tribe's signing policy limits Tribe's server, not this.
+ */
+function Withdraw() {
+  const { wallets } = useWallets();
+  const { connectWallet } = useConnectWallet();
+  const [available, setAvailable] = useState<number | undefined>();
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState("");
+  const embedded = wallets.find((w) => w.walletClientType === "privy");
+  const outside = wallets.find((w) => w.walletClientType !== "privy");
+  const units = parseUsdc(amount);
+
+  useEffect(() => {
+    balances().then((b) => setAvailable(b.usdc)).catch(() => setAvailable(undefined));
+  }, []);
+
+  const send = async () => {
+    if (!embedded || !outside || units === undefined) return;
+    setBusy(true);
+    setError("");
+    setSent("");
+    try {
+      const before = await balances();
+      if (units > BigInt(Math.floor(before.usdc * 1_000_000))) throw new Error("That's more than your Tribe wallet holds.");
+      await embedded.switchChain(BASE_CHAIN_ID);
+      const provider = await embedded.getEthereumProvider();
+      const hash = (await provider.request({ method: "eth_sendTransaction", params: [{ from: embedded.address, to: USDC, data: usdcTransferData(outside.address, units) }] })) as string;
+      setSent(hash);
+      setAmount("");
+      // Wait for the Tribe wallet's balance to drop, so the page shows what is left.
+      for (let i = 0; i < 40; i++) {
+        await pause(3000);
+        const now = await balances().catch(() => undefined);
+        if (now && now.usdc < before.usdc - 0.0000005) {
+          setAvailable(now.usdc);
+          break;
+        }
+      }
+    } catch (e) {
+      setError((e as { code?: number }).code === 4001 ? "You cancelled in your wallet." : (e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <section id="withdraw" className="card col" aria-label="Send USDC back" style={{ gap: 10, padding: 16, borderRadius: 18, borderColor: "rgba(255,255,255,.14)" }}>
+      <b style={{ fontSize: 17 }}>Send USDC back</b>
+      {!embedded ? (
+        <span className="sm mut" style={{ lineHeight: 1.5 }}>Your Tribe wallet isn't ready yet. Refresh and try again.</span>
+      ) : !outside ? (
+        <>
+          <span className="sm" style={{ lineHeight: 1.5 }}>Connect the wallet you added USDC from. Funds go only there.</span>
+          <button className="btn" onClick={() => connectWallet()}>Connect that wallet</button>
+        </>
+      ) : (
+        <>
+          <span className="sm" style={{ lineHeight: 1.5 }}>Sent on Base to this wallet, the one you connected:</span>
+          <div className="md" style={{ fontFamily: "ui-monospace,monospace", wordBreak: "break-all" }}>{outside.address}</div>
+          <span className="sm mut">Available: {available === undefined ? "…" : `${available.toFixed(2)} USDC`}</span>
+          <input className="f" aria-label="Amount in USDC to send back" inputMode="decimal" placeholder="Amount in USDC" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          {error && <div className="sm down" role="alert">{error}</div>}
+          {sent && (
+            <div className="col" role="status" style={{ gap: 6, padding: 12, borderRadius: 14, border: "1px solid rgba(255,255,255,.14)", background: "#151515" }}>
+              <b className="sm">{busy ? "Sent. Waiting for the balance to update…" : "Sent"}</b>
+              <a className="sm" href={`https://basescan.org/tx/${sent}`} target="_blank" rel="noopener">View on Basescan ↗</a>
+            </div>
+          )}
+          <button className="btn p" disabled={busy || units === undefined} onClick={() => void send()}>{busy ? "Check your wallet…" : "Send to this wallet"}</button>
+        </>
+      )}
+    </section>
+  );
+}
+
+const WETH_ADDRESS = "0x4200000000000000000000000000000000000006";
+const WRAP_DATA = "0xd0e30db0"; // WETH's deposit(): turns ETH into WETH
+const WRAP_GAS_ETH = 0.00002; // left so the wrap transaction itself can pay its network fee
+
+/**
+ * Sell ETH for USDC on Flash, from the Tribe wallet. The browser wraps the ETH first (the user's own signature), then Tribe
+ * places a market sell of that WETH. Tribe's policy allows Flash orders but not wrapping, so the wrap runs here.
+ */
+function Convert() {
+  const { wallets } = useWallets();
+  const [bal, setBal] = useState<WalletBalance | undefined>();
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState("");
+  const embedded = wallets.find((w) => w.walletClientType === "privy");
+  const wei = parseEth(amount);
+  const max = bal ? Math.max(0, bal.eth - WRAP_GAS_ETH) : 0;
+
+  useEffect(() => {
+    balances().then(setBal).catch(() => setBal(undefined));
+  }, []);
+
+  const convert = async () => {
+    if (!embedded || wei === undefined) return;
+    setBusy(true);
+    setError("");
+    setDone("");
+    try {
+      const now = await balances();
+      const eth = Number(wei) / 1e18;
+      if (eth > now.eth + 1e-12) throw new Error("That's more ETH than your wallet holds.");
+      const before = now.weth;
+      await embedded.switchChain(BASE_CHAIN_ID);
+      const provider = await embedded.getEthereumProvider();
+      await provider.request({ method: "eth_sendTransaction", params: [{ from: embedded.address, to: WETH_ADDRESS, data: WRAP_DATA, value: "0x" + wei.toString(16) }] });
+      // Wait until the wrapped ETH shows, so Tribe sells it and not something else.
+      let wrapped = false;
+      for (let i = 0; i < 40 && !wrapped; i++) {
+        await pause(3000);
+        const n = await balances().catch(() => undefined);
+        wrapped = !!n && n.weth >= before + eth - 1e-9;
+      }
+      if (!wrapped) throw new Error("The ETH is still wrapping. Refresh in a minute, then try again.");
+      const r = await post<{ toast: string }>("/api/convert", { eth });
+      setDone(r.toast);
+      setAmount("");
+      setBal(await balances().catch(() => undefined));
+    } catch (e) {
+      setError((e as { code?: number }).code === 4001 ? "You cancelled in your wallet." : (e as Error).message);
+    }
+    setBusy(false);
+  };
+
+  return (
+    <section id="convert" className="card col" aria-label="Convert ETH to USDC" style={{ gap: 10, padding: 16, borderRadius: 18, borderColor: "rgba(255,255,255,.14)" }}>
+      <b style={{ fontSize: 17 }}>Convert ETH to USDC</b>
+      <span className="sm" style={{ lineHeight: 1.5 }}>Sold at market price on Flash. Max leaves only the gas for the wrap, so later trades may need ETH added again.</span>
+      <span className="sm mut">ETH in wallet: {bal ? bal.eth.toFixed(6) : "…"}</span>
+      <div className="row" style={{ gap: 8 }}>
+        <input className="f" aria-label="ETH to convert" inputMode="decimal" placeholder="Amount in ETH" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ flex: 1 }} />
+        <button className="btn sm" disabled={busy || max <= 0} onClick={() => setAmount(max.toFixed(6))}>Max</button>
+      </div>
+      {error && <div className="sm down" role="alert">{error}</div>}
+      {done && <div className="sm up" role="status">{done}</div>}
+      <button className="btn p" disabled={busy || !embedded || wei === undefined} onClick={() => void convert()}>{busy ? "Working…" : "Convert to USDC"}</button>
+    </section>
+  );
+}
+
 function Signing() {
   const { ready, authenticated, login, getAccessToken, user } = usePrivy();
   const { ready: walletsReady, wallets } = useWallets();
@@ -182,6 +330,8 @@ function Signing() {
             : "Trades run without a prompt each time. You get your own Tribe wallet, and you can turn this off at any time.",
       )}
       <AddFunds auto={auto} to={window.TRIBE.fundTo} needsGas={!!window.TRIBE.needsGas} />
+      {auto && !!window.TRIBE.fundTo && <Withdraw />}
+      {auto && !!window.TRIBE.fundTo && <Convert />}
       {embedded && <button className="btn sm" disabled={busy} onClick={() => void exportWallet({ address: embedded.address })}>Export wallet key</button>}
     </>
   );

@@ -12,6 +12,14 @@ export function parseUsdc(text: string): bigint | undefined {
   return units > 0n ? units : undefined;
 }
 
+/** A typed ETH amount in wei, to 6 decimal places (0.000001 ETH), or undefined if it isn't a positive amount. */
+export function parseEth(text: string): bigint | undefined {
+  const m = /^(\d+)(?:\.(\d{1,6}))?$/.exec(text.trim());
+  if (!m) return undefined;
+  const wei = BigInt(m[1]) * 10n ** 18n + BigInt((m[2] ?? "").padEnd(6, "0")) * 10n ** 12n;
+  return wei > 0n ? wei : undefined;
+}
+
 /** Calldata for USDC's transfer(to, amount). */
 export function usdcTransferData(to: string, amount: bigint): string {
   if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error("That isn't a wallet address.");
